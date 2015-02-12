@@ -66,23 +66,29 @@
 				       :element-type '(unsigned-byte 8))))
     (unwind-protect 
 	 (loop 
-	    (let ((conn (usocket:socket-accept socket)))
-	      (log:info "Accepted connection ~A:~A" 
-			(usocket:get-peer-address conn)
-			(usocket:get-peer-port conn))
-	      (unwind-protect (handle-request (usocket:socket-stream conn))
-		(usocket:socket-close conn))))
+	    (with-simple-restart (continue "Close connection")
+	      (let ((conn (usocket:socket-accept socket)))
+		(log:info "Accepted connection ~A:~A" 
+			  (usocket:get-peer-address conn)
+			  (usocket:get-peer-port conn))
+		(unwind-protect (handle-request (usocket:socket-stream conn))
+		  (usocket:socket-close conn)))))
       (log:info "Closing socket")
       (usocket:socket-close socket))))
 
 (defparameter *server-thread* nil)
 
 (defun start-rpc-server (port)
-  (setf *server-thread*
-	(bt:make-thread (lambda () (catch 'terminate-server (run-rpc-server port)))
-			:name "RPC-SERVER")))
+  (unless *server-thread*
+    (setf *server-thread*
+	  (bt:make-thread (lambda () (catch 'terminate-server (run-rpc-server port)))
+			  :name "RPC-SERVER"))))
+
 
 (defun stop-rpc-server ()
-  (bt:interrupt-thread *server-thread*
-		       (lambda () (throw 'terminate-server nil))))
+  (when *server-thread*
+    (bt:interrupt-thread *server-thread*
+			 (lambda () (throw 'terminate-server nil)))
+    (setf *server-thread* nil)))
+
 
