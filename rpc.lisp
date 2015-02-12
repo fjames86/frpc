@@ -18,7 +18,8 @@
    (:prog-unavail 1)
    (:prog-mismatch 2)
    (:proc-unavail 3)
-   (:garbage-args 4)))
+   (:garbage-args 4)
+   (:failed 5))) ;; FJ
 
 (defxenum reject-stat
   ((:rpc-mismatch 0)
@@ -81,7 +82,42 @@
       (:call call-body)
       (:reply reply-body)))))
 
+(defun make-rpc-request (program proc &key (version 0) auth verf (id 0))
+  (unless auth (setf auth *default-opaque-auth*))
+  (unless verf (setf verf *default-opaque-auth*))
 
+  (make-rpc-msg :xid id
+		:body (make-xunion :call
+				   (make-call-body :prog program
+						   :vers version
+						   :proc proc
+						   :auth auth
+						   :verf verf))))
+
+(defun make-rpc-response (&key accept reject verf (id 0) (high 0) (low 0) auth-stat)
+  (unless verf (setf verf *default-opaque-auth*))
+
+  (make-rpc-msg 
+   :xid id
+   :body 
+   (make-xunion 
+    :reply 
+    (if accept
+	(make-xunion 
+	 :msg-accepted 
+	 (make-accepted-reply 
+	  :verf verf
+	  :reply-data 
+	  (case accept
+	    (:success (make-xunion :success nil))
+	    (:prog-mismatch (make-xunion :prog-mismatch `((high . ,high) (low . ,low)))))))
+	(make-xunion 
+	 :msg-rejected
+	 (ecase reject
+	   (:rpc-mismatch (make-xunion :rpc-mismatch `((high . ,high) (low . ,low))))
+	   (:auth-error (make-xunion :auth-error auth-stat))))))))
+	    
+      
 ;; ------ todo: implement the authentication stuff ------------
 
 ;; 9.1 null authentication
@@ -136,6 +172,48 @@
 ;; ----------------------------------------
 
 
+(defparameter *rpc-program* 0)
+(defparameter *rpc-version* 0)
+
+(defmacro with-rpc-program ((program) &body body)
+  `(let ((*rpc-program* ,program))
+     ,@body))
+
+(defmacro with-rpc-version ((version) &body body)
+  `(let ((*rpc-version* ,version))
+     ,@body))
+	 
+;; stores an assoc list for each program id
+;; each program id stores an alist of version ids
+;; each version id stores an aslist of handlers
+(defparameter *handlers* nil)
+
+(defun %defhandler (program version proc arg-type res-type handler)
+  (let ((p (assoc program *handlers*)))
+    (if p
+	(let ((v (assoc version (cdr p))))
+	  (if v
+	      (let ((c (assoc proc (cdr v))))
+		(if c
+		    (progn
+		      (setf (cdr c) (list arg-type res-type handler))
+		      (return-from %defhandler))
+		    (push (cons proc (list arg-type res-type handler)) (cdr v))))
+	      (push (cons version (list (cons proc (list arg-type res-type handler))))
+		    (cdr p))))
+	(push (cons program
+		    (list (cons version
+				(list (cons proc (list arg-type res-type handler))))))
+	      *handlers*)))
+  nil)
+
+(defun find-handler (program &optional version proc)
+  (let ((p (assoc program *handlers*)))
+    (if (and p version)
+	(let ((v (assoc version (cdr p))))
+	  (if (and v proc)
+	      (cdr (assoc proc (cdr v)))
+	      (cdr v)))
+	(cdr p))))
 
 
-     
