@@ -9,6 +9,7 @@
 	(cond
 	  ((not (eq (xunion-tag (rpc-msg-body msg)) :call))
 	   ;; not a call
+	   (log:info "Bad request: not a call")
 	   (%write-rpc-msg stream
 			   (make-rpc-response :reject :rpc-mismatch
 					      :id (rpc-msg-xid msg))))
@@ -20,6 +21,7 @@
 	     (cond
 	       ((not h)
 		;; no handler registered
+		(log:info "No handler registered")
 		(%write-rpc-msg stream
 				(make-rpc-response :accept :proj-mismatch
 						   :id (rpc-msg-xid msg))))
@@ -28,14 +30,17 @@
 		  (handler-case 
 		      (let ((arg (read-xtype arg-type stream)))
 			(let ((res (funcall handler arg)))
+			  (log:info "Call successful")
 			  (%write-rpc-msg stream 
 					  (make-rpc-response :accept :success
 							     :id (rpc-msg-xid msg)))
 			  (write-xtype res-type stream res)))
-		    (error ()
+		    (error (e)
+		      (log:info "Error handling: ~A" e) 
 		      (%write-rpc-msg stream (make-rpc-response :accept :rpc-mismatch
 								:id (rpc-msg-xid msg))))))))))))
-    (error ()
+    (error (e)
+      (log:info "Error reading msg: ~A" e)
       (write-xtype 'rpc-msg stream
 		   (make-rpc-response :reject :rpc-mismatch)))))
 
@@ -47,7 +52,8 @@
 	    (,gproc ,proc)
 	    (,gh (find-handler ,gprogram ,version ,gproc)))
        (unless ,gh
-	 (error "RPC ~A:~A:~A not yet declared. DEFRPC first!" ,gprogram ,version ,gproc))
+	 (error "RPC ~A:~A:~A not yet declared. DEFRPC first!" 
+		,gprogram ,version ,gproc))
        (destructuring-bind (,garg-type ,gres-type ,gha) ,gh
 	 (declare (ignore ,gha))
 	 (defun ,name (,var)
@@ -61,8 +67,12 @@
     (unwind-protect 
 	 (loop 
 	    (let ((conn (usocket:socket-accept socket)))
+	      (log:info "Accepted connection ~A:~A" 
+			(usocket:get-peer-address conn)
+			(usocket:get-peer-port conn))
 	      (unwind-protect (handle-request (usocket:socket-stream conn))
 		(usocket:socket-close conn))))
+      (log:info "Closing socket")
       (usocket:socket-close socket))))
 
 (defparameter *server-thread* nil)
