@@ -531,5 +531,8 @@
      (defreader ,reader ,spec)
      (defwriter ,writer ,spec)
      (eval-when (:compile-toplevel :load-toplevel :execute)
-       (%defxtype ',name (function ,reader) (function ,writer))))))
+       (%defxtype ',name nil nil))
+     (%defxtype ',name (function ,reader) (function ,writer)))))
+
+
 
