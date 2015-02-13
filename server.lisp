@@ -1,6 +1,61 @@
+;;;; Copyright (c) Frank James 2015 <frank.a.james@gmail.com>
+;;;; This code is licensed under the MIT license.
 
 
 (in-package #:frpc)
+
+;; ------------- server handlers ---------------------
+
+;; stores an assoc list for each program id
+;; each program id stores an alist of version ids
+;; each version id stores an aslist of handlers
+(defparameter *handlers* nil)
+
+(defun %defhandler (program version proc arg-type res-type handler)
+  (let ((p (assoc program *handlers*)))
+    (if p
+	(let ((v (assoc version (cdr p))))
+	  (if v
+	      (let ((c (assoc proc (cdr v))))
+		(if c
+		    (progn
+		      (setf (cdr c) (list arg-type res-type handler))
+		      (return-from %defhandler))
+		    (push (cons proc (list arg-type res-type handler)) (cdr v))))
+	      (push (cons version (list (cons proc (list arg-type res-type handler))))
+		    (cdr p))))
+	(push (cons program
+		    (list (cons version
+				(list (cons proc (list arg-type res-type handler))))))
+	      *handlers*)))
+  nil)
+
+(defun find-handler (program &optional version proc)
+  (let ((p (assoc program *handlers*)))
+    (if (and p version)
+	(let ((v (assoc version (cdr p))))
+	  (if (and v proc)
+	      (cdr (assoc proc (cdr v)))
+	      (cdr v)))
+	(cdr p))))
+				     
+(defmacro defhandler (name (var &key (program '*rpc-program*) (version '*rpc-version*)) proc &body body)
+  (alexandria:with-gensyms (gprogram gversion gproc gh gha garg-type gres-type)
+    `(let* ((,gprogram ,program)
+	    (,gversion ,version)
+	    (,gproc ,proc)
+	    (,gh (find-handler ,gprogram ,version ,gproc)))
+       (unless ,gh
+	 (error "RPC ~A:~A:~A not yet declared. DEFRPC first!" 
+		,gprogram ,version ,gproc))
+       (destructuring-bind (,garg-type ,gres-type ,gha) ,gh
+	 (declare (ignore ,gha))
+	 (defun ,name (,var)
+	   ,@body)
+	 (%defhandler ,gprogram ,gversion ,gproc ,garg-type ,gres-type (function ,name))))))
+
+;; ------------------------- handle a request from the stream --------------
+
 
 (defun handle-request (stream &optional output)
 ;;  (info "Handling request")
@@ -51,22 +106,6 @@
 ;;  (info "Flushing output")
   (force-output (or output stream))
   (info "Finished request"))
-
-				     
-(defmacro defhandler (name (var &key (program '*rpc-program*) (version '*rpc-version*)) proc &body body)
-  (alexandria:with-gensyms (gprogram gversion gproc gh gha garg-type gres-type)
-    `(let* ((,gprogram ,program)
-	    (,gversion ,version)
-	    (,gproc ,proc)
-	    (,gh (find-handler ,gprogram ,version ,gproc)))
-       (unless ,gh
-	 (error "RPC ~A:~A:~A not yet declared. DEFRPC first!" 
-		,gprogram ,version ,gproc))
-       (destructuring-bind (,garg-type ,gres-type ,gha) ,gh
-	 (declare (ignore ,gha))
-	 (defun ,name (,var)
-	   ,@body)
-	 (%defhandler ,gprogram ,gversion ,gproc ,garg-type ,gres-type (function ,name))))))
 
 ;; ------------- socket server ----------
 

@@ -1,3 +1,5 @@
+;;;; Copyright (c) Frank James 2015 <frank.a.james@gmail.com>
+;;;; This code is licensed under the MIT license.
 
 (in-package #:frpc)
 
@@ -184,37 +186,3 @@
   `(let ((*rpc-version* ,version))
      ,@body))
 	 
-;; stores an assoc list for each program id
-;; each program id stores an alist of version ids
-;; each version id stores an aslist of handlers
-(defparameter *handlers* nil)
-
-(defun %defhandler (program version proc arg-type res-type handler)
-  (let ((p (assoc program *handlers*)))
-    (if p
-	(let ((v (assoc version (cdr p))))
-	  (if v
-	      (let ((c (assoc proc (cdr v))))
-		(if c
-		    (progn
-		      (setf (cdr c) (list arg-type res-type handler))
-		      (return-from %defhandler))
-		    (push (cons proc (list arg-type res-type handler)) (cdr v))))
-	      (push (cons version (list (cons proc (list arg-type res-type handler))))
-		    (cdr p))))
-	(push (cons program
-		    (list (cons version
-				(list (cons proc (list arg-type res-type handler))))))
-	      *handlers*)))
-  nil)
-
-(defun find-handler (program &optional version proc)
-  (let ((p (assoc program *handlers*)))
-    (if (and p version)
-	(let ((v (assoc version (cdr p))))
-	  (if (and v proc)
-	      (cdr (assoc proc (cdr v)))
-	      (cdr v)))
-	(cdr p))))
-
-

@@ -1,3 +1,5 @@
+;;;; Copyright (c) Frank James 2015 <frank.a.james@gmail.com>
+;;;; This code is licensed under the MIT license.
 
 (in-package #:frpc)
 
@@ -32,14 +34,16 @@
 		   :stat (xunion-tag (accepted-reply-reply-data (xunion-val body)))
 		   :description "RPC Failed"))))))
     ;; only got to here (to read the response) if the message was successful
+    ;; discard the response msg since we don't need it any more 
     (values msg
 	    (read-xtype res-type stream))))
+	    
   
 
 (defun call-rpc (host arg-type arg result-type 
 		 &key (port 111) (program 0) (version 0) 
 		   auth verf (request-id 0) (proc 0) timeout)
-				     
+  "Execute an RPC to a remote machine."
   (let ((socket 
 	 (usocket:socket-connect 
 	  host port 
@@ -57,11 +61,12 @@
 			  arg-type
 			  arg)
 	   ;; read the response (throws error if failed)
-	   (read-response stream result-type))
+	   (nth-value 1 (read-response stream result-type)))
       (usocket:socket-close socket))))
 
 
 (defmacro defrpc (name (arg-type result-type &key (program '*rpc-program*) (version '*rpc-version*)) proc)
+  "Declare an RPC interface."
   (alexandria:with-gensyms (gprogram gversion gproc)
     `(let ((,gprogram ,program)
 	   (,gversion ,version)
@@ -77,6 +82,7 @@
 		   :proc ,gproc
 		   :timeout timeout))
        (%defhandler ,gprogram ,gversion ,gproc ',arg-type ',result-type nil))))
+
 
 
 
