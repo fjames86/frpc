@@ -527,12 +527,22 @@
 		  (if n
 		      n 
 		      (alexandria:symbolicate '%write- name)))))		    
-  `(progn
-     (defreader ,reader ,spec)
-     (defwriter ,writer ,spec)
-     (eval-when (:compile-toplevel :load-toplevel :execute)
-       (%defxtype ',name nil nil))
-     (%defxtype ',name (function ,reader) (function ,writer)))))
+    (cond
+      ((symbolp spec)
+       ;; if the spec is a symbol then it is a trivial redefinition of another type. just associate 
+       ;; this symbol with the original's reader/writer and don't define any new functions 
+       `(progn
+	  (eval-when (:compile-toplevel :load-toplevel :execute)
+	    (%defxtype ',name nil nil))
+	  (%defxtype ',name (xtype-reader ',spec) (xtype-writer ',spec))))
+       (t
+	;; a more complicated spec requires functions
+	`(progn
+	   (defreader ,reader ,spec)
+	   (defwriter ,writer ,spec)
+	   (eval-when (:compile-toplevel :load-toplevel :execute)
+	     (%defxtype ',name nil nil))
+	   (%defxtype ',name (function ,reader) (function ,writer)))))))
 
 
 
