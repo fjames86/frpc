@@ -10,8 +10,8 @@
   (:reply 1)))
 
 (defxenum reply-stat
-  ((:accepted 0)
-   (:denied 1)))
+  ((:msg-accepted 0)
+   (:msg-denied 1)))
 
 (defxenum accept-stat
   ((:success 0)
@@ -73,7 +73,7 @@
 
 (defxunion reply-body (reply-stat)
   ((:msg-accepted accepted-reply)
-   (:msg-rejected rejected-reply)))
+   (:msg-denied rejected-reply)))
 
 (defxstruct rpc-msg ()
   ((xid :uint32 0)
@@ -110,7 +110,8 @@
 	  :reply-data 
 	  (case accept
 	    (:success (make-xunion :success nil))
-	    (:prog-mismatch (make-xunion :prog-mismatch `((high . ,high) (low . ,low)))))))
+	    (:prog-mismatch (make-xunion :prog-mismatch `((high . ,high) (low . ,low))))
+	    (otherwise (make-xunion accept nil)))))
 	(make-xunion 
 	 :msg-rejected
 	 (ecase reject

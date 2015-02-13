@@ -11,7 +11,8 @@
    (:file "rpc" :depends-on ("xdr"))
    (:file "errors" :depends-on ("rpc"))
    (:file "client" :depends-on ("errors"))
-   (:file "server" :depends-on ("errors")))
+   (:file "log" :depends-on ("package"))
+   (:file "server" :depends-on ("errors" "log")))
   :depends-on (:alexandria :nibbles :flexi-streams 
 	       :babel :usocket :bordeaux-threads
 	       :log4cl))

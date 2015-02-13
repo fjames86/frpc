@@ -4,10 +4,11 @@
 (defun write-request (stream msg arg-type arg)
   (write-xtype 'rpc-msg stream msg)
   (write-xtype arg-type stream arg)
+  (force-output stream)
   nil)
 
 (defun read-response (stream res-type)
-  (let ((msg (read-xtype res-type stream)))
+  (let ((msg (read-xtype 'rpc-msg stream)))
     (unless (eq (xunion-tag (rpc-msg-body msg)) :reply)
       (error "Expected REPLY recieved ~S" (xunion-tag (rpc-msg-body msg))))
     ;; validate the message. if there was rejected or a prog mismatch then raise
@@ -37,12 +38,13 @@
 
 (defun call-rpc (host arg-type arg result-type 
 		 &key (port 111) (program 0) (version 0) 
-		   auth verf (request-id 0) (proc 0))
+		   auth verf (request-id 0) (proc 0) timeout)
 				     
   (let ((socket 
 	 (usocket:socket-connect 
 	  host port 
-	  :element-type '(unsigned-byte 8))))
+	  :element-type '(unsigned-byte 8)
+	  :timeout timeout)))
     (unwind-protect 
 	 (let ((stream (usocket:socket-stream socket)))
 	   ;; write the request message
@@ -64,7 +66,7 @@
     `(let ((,gprogram ,program)
 	   (,gversion ,version)
 	   (,gproc ,proc))
-       (defun ,name (host arg &key (port 111) auth verf (request-id 0))
+       (defun ,name (host arg &key (port 111) auth verf (request-id 0) timeout)
 	 (call-rpc host ',arg-type arg ',result-type
 		   :port port
 		   :program ,gprogram
@@ -72,7 +74,8 @@
 		   :auth auth
 		   :verf verf
 		   :request-id request-id
-		   :proc ,gproc))
+		   :proc ,gproc
+		   :timeout timeout))
        (%defhandler ,gprogram ,gversion ,gproc ',arg-type ',result-type nil))))
 
 
