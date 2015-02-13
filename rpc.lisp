@@ -185,4 +185,12 @@
 (defmacro with-rpc-version ((version) &body body)
   `(let ((*rpc-version* ,version))
      ,@body))
-	 
+
+(defmacro use-rpc-program (program)
+  `(eval-when (:compile-toplevel :load-toplevel :execute)
+     (setf *rpc-program* ,program)))
+
+(defmacro use-rpc-version (version)
+  `(eval-when (:compile-toplevel :load-toplevel :execute)
+     (setf *rpc-version* ,version)))
+

@@ -68,6 +68,12 @@
 	   ;; not a call
 	   (info "Bad request: not a call")
 	   (%write-rpc-msg (or output stream)
+			   (make-rpc-response :accept :garbage-args
+					      :id (rpc-msg-xid msg))))
+	  ((not (= (call-body-rpcvers (xunion-val (rpc-msg-body msg))) 2))
+	   ;; rpc version != 2
+	   (info "RPC version not = 2")
+	   (%write-rpc-msg (or output stream)
 			   (make-rpc-response :reject :rpc-mismatch
 					      :id (rpc-msg-xid msg))))
 	  (t 
@@ -96,13 +102,21 @@
 		    (error (e)
 		      (info "Error handling: ~A" e) 
 		      (%write-rpc-msg (or output stream)
-				      (make-rpc-response :accept :rpc-mismatch
+				      (make-rpc-response :accept :garbage-args
 							 :id (rpc-msg-xid msg))))))))))))
+    (end-of-file (e)
+      ;; unexpected end of file -- probably means the connection was closed 
+;;      (info "Error: ~A" e)
+;;      (write-xtype 'rpc-msg 
+;;		   (or output stream)
+;;		   (make-rpc-response :accept :garbage-args))
+      ;; rethrow the error so the connection handler knows the connection has been closed
+      (error e))
     (error (e)
       (info "Error reading msg: ~A" e)
       (write-xtype 'rpc-msg 
 		   (or output stream)
-		   (make-rpc-response :reject :rpc-mismatch))))
+		   (make-rpc-response :accept :garbage-args))))
 ;;  (info "Flushing output")
   (force-output (or output stream))
   (info "Finished request"))
@@ -127,12 +141,17 @@
 ;;		(info "Socket ready to connect")
 		(let ((conn (usocket:socket-accept socket)))
 		  (info "Connected to ~A:~A" (usocket:get-peer-address conn) (usocket:get-peer-port conn))
-		  (handler-case (handle-request (usocket:socket-stream conn) 
-						(usocket:socket-stream conn))
+		  (handler-case 
+		      (loop (handle-request (usocket:socket-stream conn) 
+					    (usocket:socket-stream conn)))
+		    (end-of-file (e)
+		      (declare (ignore e))
+		      (info "Connection closed"))
 		    (error (e)
-		      (info "Error: ~A" e)))
+		      (info "Error: ~A" e)
+		      nil))
 		  (usocket:socket-close conn)))))
-      (usocket:socket-close socket))))
+      (ignore-errors (usocket:socket-close socket)))))
 
 (defun start-rpc-server (port)
   (unless *server-thread*

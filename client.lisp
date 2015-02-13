@@ -37,33 +37,55 @@
     ;; discard the response msg since we don't need it any more 
     (values msg
 	    (read-xtype res-type stream))))
+
+;; ---------------------------------------
+
+(defparameter *rpc-port* 111)
+
+(defun rpc-connect (host &optional port)
+  "Establish a connection to the rpc server."
+  (usocket:socket-connect host (or port *rpc-port*)
+			  :element-type '(unsigned-byte 8)))
+
+(defun rpc-close (conn)
+  "Close the connection to the server."
+  (usocket:socket-close conn))
 	    
-  
+(defmacro with-rpc-connection ((var host &optional port) &body body)
+  "Execute the body in the context of a connection."
+  `(let ((,var (rpc-connect ,host ,port)))
+     (unwind-protect (progn ,@body)
+       (rpc-close ,var))))
+
+(defun call-rpc-server (conn arg-type arg result-type
+			&key (program 0) (version 0) (proc 0)
+			  auth verf (request-id 0))
+  "Send a request to the RPC server, await a response."
+  (let ((stream (usocket:socket-stream conn)))
+    ;; write the request message
+    (write-request stream 
+		   (make-rpc-request program proc 
+				     :version version
+				     :auth auth
+				     :verf verf
+				     :id request-id)
+		   arg-type
+		   arg)
+    ;; read the response (throws error if failed)
+    (nth-value 1 (read-response stream result-type))))
 
 (defun call-rpc (host arg-type arg result-type 
-		 &key (port 111) (program 0) (version 0) 
-		   auth verf (request-id 0) (proc 0) timeout)
-  "Execute an RPC to a remote machine."
-  (let ((socket 
-	 (usocket:socket-connect 
-	  host port 
-	  :element-type '(unsigned-byte 8)
-	  :timeout timeout)))
-    (unwind-protect 
-	 (let ((stream (usocket:socket-stream socket)))
-	   ;; write the request message
-	   (write-request stream 
-			  (make-rpc-request program proc 
-					    :version version
-					    :auth auth
-					    :verf verf
-					    :id request-id)
-			  arg-type
-			  arg)
-	   ;; read the response (throws error if failed)
-	   (nth-value 1 (read-response stream result-type)))
-      (usocket:socket-close socket))))
-
+		 &key (port *rpc-port*) (program 0) (version 0) 
+		   auth verf (request-id 0) (proc 0))
+  "Establish a connection and execute an RPC to a remote machine."
+  (with-rpc-connection (conn host port)
+    (call-rpc-server conn arg-type arg result-type 
+		     :request-id request-id
+		     :program program
+		     :version version
+		     :proc proc
+		     :auth auth
+		     :verf verf)))
 
 (defmacro defrpc (name (arg-type result-type &key (program '*rpc-program*) (version '*rpc-version*)) proc)
   "Declare an RPC interface."
@@ -71,7 +93,8 @@
     `(let ((,gprogram ,program)
 	   (,gversion ,version)
 	   (,gproc ,proc))
-       (defun ,name (host arg &key (port 111) auth verf (request-id 0) timeout)
+       ;; define a function to call it
+       (defun ,name (host arg &key (port *rpc-port*) auth verf (request-id 0))
 	 (call-rpc host ',arg-type arg ',result-type
 		   :port port
 		   :program ,gprogram
@@ -79,12 +102,7 @@
 		   :auth auth
 		   :verf verf
 		   :request-id request-id
-		   :proc ,gproc
-		   :timeout timeout))
+		   :proc ,gproc))
+       ;; store the metadata away somewhere, so that we can define a handler later 
        (%defhandler ,gprogram ,gversion ,gproc ',arg-type ',result-type nil))))
-
-
-
-
-
 

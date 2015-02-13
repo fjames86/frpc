@@ -6,6 +6,8 @@
   (:use #:cl)
   (:export #:with-rpc-program
 	   #:with-rpc-version
+	   #:use-rpc-program
+	   #:use-rpc-version
 	   #:defrpc
 	   #:defhandler
 
@@ -39,7 +41,12 @@
 ;;	   #:with-local-server
 
 	   ;; client
+	   #:rpc-connect
+	   #:rpc-close
+	   #:with-rpc-connection
+	   #:call-rpc-server
 	   #:call-rpc
+	   #:*rpc-port*
 
 	   ;; server
 	   #:start-rpc-server

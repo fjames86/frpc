@@ -1,5 +1,8 @@
 
-(cl:in-package #:frpc)
+(defpackage #:port-mapper 
+  (:use #:cl #:frpc))
+
+(in-package #:port-mapper)
 
 ;; ------- port mapper ----------
 
