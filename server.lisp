@@ -40,6 +40,8 @@
 	(cdr p))))
 				     
 (defmacro defhandler (name (var &key (program '*rpc-program*) (version '*rpc-version*)) proc &body body)
+  "Define a server handler for the program specified. You MUST have defined the RPC signature with a
+previous call to DEFRPC. This is needed so the system knows the argument/result types." 
   (alexandria:with-gensyms (gprogram gversion gproc gh gha garg-type gres-type)
     `(let* ((,gprogram ,program)
 	    (,gversion ,version)
@@ -57,7 +59,8 @@
 ;; ------------------------- handle a request from the stream --------------
 
 
-(defun handle-request (stream &optional output)
+(defun handle-request (stream &optional output allowed-programs)
+  "Read an RPC request from the STREAM and write the output to the OUTPUT stream (or STREAM if not provided)."
 ;;  (info "Handling request")
   (handler-case 
       (let ((msg (%read-rpc-msg stream)))
@@ -82,6 +85,14 @@
 				   (call-body-vers call)
 				   (call-body-proc call))))
 	     (cond
+	       ((and allowed-programs 
+		     (not (member (call-body-prog call) 
+				  allowed-programs)))
+		;; program not in the list of permissible programs
+		(info "Program ~A not in program list" (call-body-prog call))
+		(%write-rpc-msg (or output stream)
+				(make-rpc-response :accept :prog-mismatch
+						   :id (rpc-msg-xid msg))))
 	       ((not h)
 		;; no handler registered
 		(info "No handler registered")
@@ -117,33 +128,37 @@
       (write-xtype 'rpc-msg 
 		   (or output stream)
 		   (make-rpc-response :accept :garbage-args))))
-;;  (info "Flushing output")
+  (info "Flushing output")
   (force-output (or output stream))
   (info "Finished request"))
 
-;; ------------- socket server ----------
+;; ------------- rpc server ----------
 
-(defparameter *server-thread* nil)
-(defparameter *server-exiting* nil)
+(defstruct rpc-server
+  thread exiting programs)
 
-(defun run-rpc-server (port &key (timeout 1))
+(defun run-rpc-server (server port &key (timeout 1))
+  "Run the RPC server, listening for requests on PORT."
+  (declare (type rpc-server server)
+	   (type integer port))
   (let ((socket (usocket:socket-listen usocket:*wildcard-host* port
 				       :reuse-address t  
 				       :element-type '(unsigned-byte 8))))
     (unwind-protect 
 	 (loop 
 	    (progn
-	      (when *server-exiting* (return-from run-rpc-server))
+	      (when (rpc-server-exiting server) (return-from run-rpc-server))
 	      ;; wait for connection
 ;;	      (info "Waiting for connection")
 	      (when (usocket:wait-for-input socket :timeout timeout :ready-only t)
-		(when *server-exiting* (return-from run-rpc-server))
-;;		(info "Socket ready to connect")
+		(when (rpc-server-exiting server) (return-from run-rpc-server))
+		(info "Socket ready to connect")
 		(let ((conn (usocket:socket-accept socket)))
 		  (info "Connected to ~A:~A" (usocket:get-peer-address conn) (usocket:get-peer-port conn))
 		  (handler-case 
 		      (loop (handle-request (usocket:socket-stream conn) 
-					    (usocket:socket-stream conn)))
+					    (usocket:socket-stream conn)
+					    (rpc-server-programs server)))
 		    (end-of-file (e)
 		      (declare (ignore e))
 		      (info "Connection closed"))
@@ -153,25 +168,29 @@
 		  (usocket:socket-close conn)))))
       (ignore-errors (usocket:socket-close socket)))))
 
-(defun start-rpc-server (port)
-  (unless *server-thread*
-    (setf *server-exiting* nil
-	  *server-thread*
+(defun start-rpc-server (port &optional programs)
+  "Start the RPC server in its own thread.
+
+PORT should be the port to listen on.
+
+PROGRAMS, if supplied, lists the program numbers which should be accepted by this server. This allows multiple RPC servers to be run from the same Lisp image, but serve different program sets."
+  (let ((server (make-rpc-server :programs programs)))
+    (setf (rpc-server-thread server)
 	  (bt:make-thread (lambda () 
-			    (catch 'terminate-server (run-rpc-server port))
+			    (catch 'terminate-server (run-rpc-server server port))
 			    (info "Server thread terminated."))
-			  :name "RPC-SERVER"))))
+			  :name (format nil "rpc-server-thread port ~A" port)))
+    server))
 
-
-(defun stop-rpc-server ()
-  (when *server-thread*
-    (setf *server-exiting* t)
-    (bt:interrupt-thread *server-thread*
-			 (lambda () 
-			   (info "Terminating server thread")
-			   (throw 'terminate-server nil)))
-    (bt:join-thread *server-thread*)
-    (setf *server-thread* nil)))
+(defun stop-rpc-server (server)
+  "Terminate the RPC server. This call will block until the server shuts down."
+  (declare (type rpc-server server))
+  (setf (rpc-server-exiting server) t)
+  (bt:interrupt-thread (rpc-server-thread server)
+		       (lambda () 
+			 (info "Terminating server thread")
+			 (throw 'terminate-server nil)))
+  (bt:join-thread (rpc-server-thread server)))
 
 
 ;; ---------------------
@@ -179,6 +198,8 @@
 ;; for testing/experimenting purposes
 
 (defmacro with-local-stream (&rest type-forms)
+  "Write (ARG-TYPE RES-TYPE) forms to a local stream read the results back. This 
+can be useful to test handler functions in isolation."
   `(flexi-streams:with-input-from-sequence 
        (input (flexi-streams:with-output-to-sequence (output)
 		,@(mapcar (lambda (type-form)
@@ -189,6 +210,7 @@
 		     type-forms))))
 
 (defmacro with-local-server ((arg-type res-type &key (program 0) (version 0) (proc 0)) &body body)
+  "Emulates a socket server using local streams."
   `(flexi-streams:with-input-from-sequence 
        (input (flexi-streams:with-output-to-sequence (output)
 		(write-request output
