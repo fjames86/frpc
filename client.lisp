@@ -57,11 +57,11 @@
      (unwind-protect (progn ,@body)
        (rpc-close ,var))))
 
-(defun call-rpc-server (conn arg-type arg result-type
+(defun call-rpc-server (connection arg-type arg result-type
 			&key (program 0) (version 0) (proc 0)
 			  auth verf (request-id 0))
   "Send a request to the RPC server, await a response."
-  (let ((stream (usocket:socket-stream conn)))
+  (let ((stream (usocket:socket-stream connection)))
     ;; write the request message
     (write-request stream 
 		   (make-rpc-request program proc 
@@ -107,3 +107,24 @@
 		       :proc ,gproc))))
        ;; store the metadata away somewhere, so that we can define a handler later 
        (%defhandler ,gprogram ,gversion ,gproc ',arg-type ',result-type nil))))
+
+
+
+
+;; -------- udp -----------------
+
+
+(defun send-rpc-request-udp (send-socket arg-type arg
+			     &key (program 0) (version 0) (proc 0)
+			       auth verf (request-id 0))
+  (let ((buffer (flexi-streams:with-output-to-sequence (v)
+		  (write-request v 
+				 (make-rpc-request program proc
+						   :version version
+						   :auth auth
+						   :verf verf
+						   :id request-id)
+				 arg-type
+				 arg))))
+    (usocket:socket-send send-socket buffer (length buffer))))
+

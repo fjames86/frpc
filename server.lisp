@@ -208,3 +208,51 @@ can be useful to test handler functions in isolation."
 
 ;; e.g. 
 ;; (with-local-server (:string :string :program 1 :proc 3) "frank")
+
+
+;; ------------ udp ---------
+
+(defun run-udp-server (server port)
+  (let ((socket (usocket:socket-connect nil 0
+					:protocol :datagram
+					:element-type '(unsigned-byte 8)
+					:timeout 1
+					:local-port port)))
+    (unwind-protect
+	 (do ()
+	     ((rpc-server-exiting server))
+	   
+	   (multiple-value-bind (buffer length remote-host remote-port) (usocket:socket-receive socket nil nil)	    
+	     (declare (ignore length))
+	     (when buffer 
+	       (info "Remote: ~A:~A" remote-host remote-port)
+	       (flexi-streams:with-input-from-sequence (v buffer)
+		 (let ((msg (%read-rpc-msg v)))
+		   (ecase (xunion-tag (rpc-msg-body msg))
+		     (:call
+		      (let ((body (xunion-val (rpc-msg-body msg))))
+			(declare (ignore body))
+			nil))
+		     (:reply
+		      (let ((reply (xunion-val (rpc-msg-body msg))))
+			(declare (ignore reply))
+			nil)))
+		   ;; FIXME do something here
+		   nil)))))
+      (usocket:socket-close socket))))
+
+;; server framework
+(defun start-udp-server (port &key programs)
+  "Start example UDP server"
+  (let ((server (make-rpc-server :programs programs)))
+    (setf (rpc-server-thread server)
+	  (bt:make-thread (lambda ()
+			    (run-udp-server server port))
+			  :name (format nil "rpc-server-thread UDP port ~A" port)))
+    server))
+
+(defun stop-udp-server (server)
+  "Stop example UDP server"
+  (setf (rpc-server-exiting server) t)
+  (bt:join-thread (rpc-server-thread server)))
+
