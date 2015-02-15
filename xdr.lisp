@@ -54,9 +54,18 @@
        
 
 (defun read-xtype (type stream)
-  (funcall (xtype-reader type) stream))
+  (cond
+    ((functionp type)
+     (funcall type stream))
+    (t 
+     (funcall (xtype-reader type) stream))))
+
 (defun write-xtype (type stream obj)
-  (funcall (xtype-writer type) stream obj))
+  (cond
+    ((functionp type)
+     (funcall type stream obj))
+    (t 
+     (funcall (xtype-writer type) stream obj))))
 
 (defun pad-index (index)
   (let ((m (mod index 4)))

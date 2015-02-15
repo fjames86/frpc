@@ -26,6 +26,10 @@
 (defhandler handle-hello2 (name) 2
   (make-array 3 :initial-contents (list "hello" name "!!!!")))
 
+(defrpc call-goodbye2 ((:varray :string) (:list :string)) 3)
+(defhandler handle-goodbye2 (strings) 3
+  (map 'list #'string-upcase strings))
+
 ;; a different program
 (use-rpc-program 2)
 (use-rpc-version 1)
@@ -60,3 +64,41 @@
 
 
 
+(defun test ()
+  (unwind-protect 
+       (return-from test 'hello)
+    (print "hello!!!!~%")))
+
+(defun start-test2 ()
+  (flet ((run ()
+	   (catch 'terminate 
+	     (unwind-protect (progn
+			       (print 'start)
+			       (loop (sleep 1)
+				  (print 'waiting)))
+	       (print 'stop)))))
+    (bt:make-thread #'run)))
+
+(defun stop-test2 (thread)
+  (bt:interrupt-thread thread 
+		       (lambda ()
+			 (throw 'terminate nil))))
+
+(defvar *test-thread* nil)
+
+(defun start-test3 ()
+  (flet ((run ()
+	   (catch 'foo
+	     (format t "The catch returns ~s.~%"
+		     (catch 'foo
+		       (unwind-protect 
+			    (loop (sleep 1))
+			 (format t "protected form~%")))))))
+    (setf *test-thread*
+	  (bt:make-thread #'run))))
+
+(defun stop-test3 ()
+  (bt:interrupt-thread *test-thread*
+		       (lambda ()
+			 (throw 'foo 'throw-val))))
+    

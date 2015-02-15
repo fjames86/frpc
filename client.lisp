@@ -4,13 +4,13 @@
 (in-package #:frpc)
 
 (defun write-request (stream msg arg-type arg)
-  (write-xtype 'rpc-msg stream msg)
+  (%write-rpc-msg stream msg)
   (write-xtype arg-type stream arg)
   (force-output stream)
   nil)
 
 (defun read-response (stream res-type)
-  (let ((msg (read-xtype 'rpc-msg stream)))
+  (let ((msg (%read-rpc-msg stream)))
     (unless (eq (xunion-tag (rpc-msg-body msg)) :reply)
       (error "Expected REPLY recieved ~S" (xunion-tag (rpc-msg-body msg))))
     ;; validate the message. if there was rejected or a prog mismatch then raise
@@ -89,20 +89,21 @@
 
 (defmacro defrpc (name (arg-type result-type &key (program '*rpc-program*) (version '*rpc-version*)) proc)
   "Declare an RPC interface."
-  (alexandria:with-gensyms (gprogram gversion gproc)
+  (alexandria:with-gensyms (gprogram gversion gproc greader gwriter)
     `(let ((,gprogram ,program)
 	   (,gversion ,version)
 	   (,gproc ,proc))
        ;; define a function to call it
        (defun ,name (host arg &key (port *rpc-port*) auth verf (request-id 0))
-	 (call-rpc host ',arg-type arg ',result-type
-		   :port port
-		   :program ,gprogram
-		   :version ,gversion
-		   :auth auth
-		   :verf verf
-		   :request-id request-id
-		   :proc ,gproc))
+	 (with-writer (,gwriter ,arg-type)
+	   (with-reader (,greader ,result-type)	     
+	     (call-rpc host #',gwriter arg #',greader ;; 'arg-type arg 'result-type
+		       :port port
+		       :program ,gprogram
+		       :version ,gversion
+		       :auth auth
+		       :verf verf
+		       :request-id request-id
+		       :proc ,gproc))))
        ;; store the metadata away somewhere, so that we can define a handler later 
        (%defhandler ,gprogram ,gversion ,gproc ',arg-type ',result-type nil))))
-

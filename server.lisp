@@ -135,63 +135,46 @@ previous call to DEFRPC. This is needed so the system knows the argument/result 
 ;; ------------- rpc server ----------
 
 (defstruct rpc-server
-  thread exiting programs)
+  thread programs exiting)
 
-(defun run-rpc-server (server port &key (timeout 1))
-  "Run the RPC server, listening for requests on PORT."
-  (declare (type rpc-server server)
-	   (type integer port))
-  (let ((socket (usocket:socket-listen usocket:*wildcard-host* port
-				       :reuse-address t  
+(defun run-rpc-server (server port)
+  (let ((socket (usocket:socket-listen usocket:*wildcard-host* port 
 				       :element-type '(unsigned-byte 8))))
     (unwind-protect 
-	 (loop 
-	    (progn
-	      (when (rpc-server-exiting server) (return-from run-rpc-server))
-	      ;; wait for connection
-;;	      (info "Waiting for connection")
-	      (when (usocket:wait-for-input socket :timeout timeout :ready-only t)
-		(when (rpc-server-exiting server) (return-from run-rpc-server))
-		(info "Socket ready to connect")
-		(let ((conn (usocket:socket-accept socket)))
-		  (info "Connected to ~A:~A" (usocket:get-peer-address conn) (usocket:get-peer-port conn))
-		  (handler-case 
-		      (loop (handle-request (usocket:socket-stream conn) 
-					    (usocket:socket-stream conn)
-					    (rpc-server-programs server)))
-		    (end-of-file (e)
-		      (declare (ignore e))
-		      (info "Connection closed"))
-		    (error (e)
-		      (info "Error: ~A" e)
-		      nil))
-		  (usocket:socket-close conn)))))
-      (ignore-errors (usocket:socket-close socket)))))
-
+	 (flet ((maybe-accept ()
+		  ;; wait for a connection and accept, or timeout
+		  (when (usocket:wait-for-input socket :timeout 1 :ready-only t)
+		    (usocket:socket-accept socket))))
+	   (do ((conn (maybe-accept) (maybe-accept)))
+	       ((rpc-server-exiting server))	   
+	     (when conn
+	       ;; a connection has been accepted -- process it 
+	       (info "Connected to ~A:~A" (usocket:get-peer-address conn) (usocket:get-peer-port conn))
+	       (handler-case 
+		   (loop (handle-request (usocket:socket-stream conn) 
+					 (usocket:socket-stream conn)
+					 (rpc-server-programs server)))
+		 (end-of-file (e)
+		   (declare (ignore e))
+		   (info "Connection closed"))
+		 (error (e)
+		   (info "Error: ~A" e)
+		   nil))
+	       (usocket:socket-close conn))))
+      (usocket:socket-close socket))))
+    
 (defun start-rpc-server (port &optional programs)
-  "Start the RPC server in its own thread.
-
-PORT should be the port to listen on.
-
-PROGRAMS, if supplied, lists the program numbers which should be accepted by this server. This allows multiple RPC servers to be run from the same Lisp image, but serve different program sets."
   (let ((server (make-rpc-server :programs programs)))
     (setf (rpc-server-thread server)
-	  (bt:make-thread (lambda () 
-			    (catch 'terminate-server (run-rpc-server server port))
-			    (info "Server thread terminated."))
+	  (bt:make-thread (lambda ()
+			    (run-rpc-server server port))
 			  :name (format nil "rpc-server-thread port ~A" port)))
     server))
 
 (defun stop-rpc-server (server)
-  "Terminate the RPC server. This call will block until the server shuts down."
-  (declare (type rpc-server server))
   (setf (rpc-server-exiting server) t)
-  (bt:interrupt-thread (rpc-server-thread server)
-		       (lambda () 
-			 (info "Terminating server thread")
-			 (throw 'terminate-server nil)))
-  (bt:join-thread (rpc-server-thread server)))
-
+  (bt:join-thread (rpc-server-thread server))
+  nil)
 
 ;; ---------------------
 
