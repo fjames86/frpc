@@ -16,9 +16,56 @@
    (prot mapping-prot :tcp)
    (port :uint32)))
 
+
+
+(use-rpc-program 100000 2)
+
+;; ----------------------
+
+(defrpc portmapper-null 0 :void :void)
+
+(defhandler %handle-null (void 0)
+  (declare (ignore void))
+  nil)
+
+;; ---------------
+
+(defrpc portmapper-set 1 mapping :boolean)
+
+(defhandler %handle-set (mapping 1)
+  (declare (ignore mapping))
+  nil)
+
+;; -------------------
+
+(defrpc portmapper-unset 2 mapping :boolean)
+
+(defhandler %handle-unset (mapping 2)
+  (declare (ignore mapping))
+  nil)
+
+;; ----------------------
+
+(defrpc portmapper-get-port 3 mapping :uint32)
+
+(defhandler %handle-get-port (mapping 3)
+  (declare (ignore mapping))
+  0)
+
+;; ------------------------
+
 (defxstruct mapping-list ()
   ((map mapping)
    (next (:optional mapping-list))))
+
+(defrpc portmapper-dump 4 :void (:optional mapping-list))
+    
+(defhandler %handle-dump (void 4)
+  (declare (ignore void))
+  nil)
+
+
+;; ---------------------
 
 (defxstruct mapping-call-args ()
   ((prog :uint32)
@@ -30,38 +77,13 @@
   ((port :uint32)
    (res (:varray :octet))))
 
+(defrpc portmapper-call 5 mapping-call-args mapping-call-result)
 
-(with-rpc-program (100000)
-  (with-rpc-version (2)
-    (defrpc portmapper-null (:void :void) 0)
-    (defhandler portmapper-null-handler (void) 0
-      (declare (ignore void))
-      nil)
+(defhandler %handle-call (args 5)
+  (declare (ignore args))
+  (make-mapping-call-result))
 
-    (defrpc portmapper-set (mapping :boolean) 1)
-    (defhandler portmapper-set-handler (mapping) 1
-      (declare (ignore mapping))
-      nil)
 
-    (defrpc portmapper-unset (mapping :boolean) 2)
-    (defhandler portmapper-unset-handler (mapping) 2
-      (declare (ignore mapping))
-      nil)
-
-    (defrpc portmapper-get-port (mapping :uint32) 3)
-    (defhandler portmapper-get-port-handler (mapping) 3
-      (declare (ignore mapping))
-      0)
-
-    (defrpc portmapper-dump (:void mapping-list) 4)
-    (defhandler portmapper-dump-handler (void) 4
-      (declare (ignore void))
-      nil)
-
-    (defrpc portmapper-call (mapping-call-args mapping-call-result) 5)
-    (defhandler portmapper-call-handler (args) 5
-      (declare (ignore args))
-      (make-mapping-call-result))))
 
 	
 

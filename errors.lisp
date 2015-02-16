@@ -2,7 +2,7 @@
 ;;;; This code is licensed under the MIT license.
 
 
-(cl:in-package #:frpc)
+(in-package #:frpc)
 
 ;; general error
 (define-condition rpc-error (error)
@@ -17,6 +17,9 @@
 	     (format stream "ACCEPT ERROR ~A: ~A" 
 		     (rpc-accept-error-stat condition)
 		     (rpc-error-description condition)))))
+
+(define-condition rpc-prog-mismatch-error (rpc-accept-error)
+  ())
 
 ;; reply errors 
 (define-condition auth-error (rpc-error)

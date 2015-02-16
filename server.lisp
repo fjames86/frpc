@@ -39,22 +39,24 @@
 	      (cdr v)))
 	(cdr p))))
 				     
-(defmacro defhandler (name (var &key (program '*rpc-program*) (version '*rpc-version*)) proc &body body)
+(defmacro defhandler (name (var proc) &body body)
   "Define a server handler for the program specified. You MUST have defined the RPC signature with a
 previous call to DEFRPC. This is needed so the system knows the argument/result types." 
   (alexandria:with-gensyms (gprogram gversion gproc gh gha garg-type gres-type)
-    `(let* ((,gprogram ,program)
-	    (,gversion ,version)
+    `(let* ((,gprogram ,*rpc-program*)
+	    (,gversion ,*rpc-version*)
 	    (,gproc ,proc)
-	    (,gh (find-handler ,gprogram ,version ,gproc)))
+	    (,gh (find-handler ,gprogram ,gversion ,gproc)))
        (unless ,gh
 	 (error "RPC ~A:~A:~A not yet declared. DEFRPC first!" 
-		,gprogram ,version ,gproc))
+		,gprogram ,gversion ,gproc))
        (destructuring-bind (,garg-type ,gres-type ,gha) ,gh
 	 (declare (ignore ,gha))
 	 (defun ,name (,var)
 	   ,@body)
-	 (%defhandler ,gprogram ,gversion ,gproc ,garg-type ,gres-type (function ,name))))))
+	 (%defhandler ,gprogram ,gversion ,gproc 
+		      ,garg-type ,gres-type 
+		      (function ,name))))))
 
 ;; ------------------------- handle a request from the stream --------------
 
@@ -212,33 +214,36 @@ can be useful to test handler functions in isolation."
 
 ;; ------------ udp ---------
 
-(defun run-udp-server (server port)
+(defun run-udp-server (server listen-port &optional reply-port)
   (let ((socket (usocket:socket-connect nil 0
 					:protocol :datagram
 					:element-type '(unsigned-byte 8)
-					:timeout 1
-					:local-port port)))
+					:timeout 1 ;; put a read timeout on the socket so that we effectively poll
+					:local-port listen-port)))
     (unwind-protect
 	 (do ()
 	     ((rpc-server-exiting server))
-	   
+	   (info "Polling UDP")
 	   (multiple-value-bind (buffer length remote-host remote-port) (usocket:socket-receive socket nil nil)	    
 	     (declare (ignore length))
 	     (when buffer 
 	       (info "Remote: ~A:~A" remote-host remote-port)
-	       (flexi-streams:with-input-from-sequence (v buffer)
-		 (let ((msg (%read-rpc-msg v)))
-		   (ecase (xunion-tag (rpc-msg-body msg))
-		     (:call
-		      (let ((body (xunion-val (rpc-msg-body msg))))
-			(declare (ignore body))
-			nil))
-		     (:reply
-		      (let ((reply (xunion-val (rpc-msg-body msg))))
-			(declare (ignore reply))
-			nil)))
-		   ;; FIXME do something here
-		   nil)))))
+	       (handler-case 
+		   (let ((return-buffer 
+			  (flexi-streams:with-output-to-sequence (output)
+			    (flexi-streams:with-input-from-sequence (input buffer)
+			      (handle-request input output (rpc-server-programs server))))))
+		     ;; send the return buffer back to the host 
+		     ;; FIXME: what to do if we recieve a :REPLY message instead of a :CALL?
+		     ;; we need to get the reply value and put it away somewhere
+		     (info "Replying to ~A:~A" remote-host (or reply-port listen-port))
+		     (let ((rsock (usocket:socket-connect remote-host (or reply-port listen-port) ;;remote-port)
+							  :protocol :datagram
+							  :element-type '(unsigned-byte 8))))		   
+		       (unwind-protect (usocket:socket-send rsock return-buffer (length return-buffer))		     
+			 (usocket:socket-close rsock))))
+		 (error (e)
+		   (info "Error handling: ~A" e))))))
       (usocket:socket-close socket))))
 
 ;; server framework

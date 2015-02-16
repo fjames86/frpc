@@ -5,9 +5,7 @@
 (defpackage #:frpc
   (:use #:cl)
   (:export #:with-rpc-program
-	   #:with-rpc-version
 	   #:use-rpc-program
-	   #:use-rpc-version
 	   #:defrpc
 	   #:defhandler
 

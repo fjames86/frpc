@@ -87,19 +87,18 @@
 		     :auth auth
 		     :verf verf)))
 
-(defmacro defrpc (name (arg-type result-type &key (program '*rpc-program*) (version '*rpc-version*)) proc)
-  "Declare an RPC interface."
+(defmacro defrpc (name proc arg-type result-type)
+  "Declare an RPC interface and define a calling function."
   (alexandria:with-gensyms (gprogram gversion gproc greader gwriter)
-    `(let ((,gprogram ,program)
-	   (,gversion ,version)
-	   (,gproc ,proc))       
+    `(let ((,gprogram ,*rpc-program*)
+	   (,gversion ,*rpc-version*)
+	   (,gproc ,proc))
        
        ;; define a function to call it
-       (defun ,name (host arg &key (port *rpc-port*) auth verf (request-id 0))
-	 ;; this doesn't work -- better to forbid it?
+       (defun ,name (host arg &key (port ,*rpc-port*) auth verf (request-id 0))
 	 (with-writer (,gwriter ,arg-type)
 	   (with-reader (,greader ,result-type)
-	     (call-rpc host #',gwriter arg #',greader ;; 'arg-type arg 'result-type
+	     (call-rpc host #',gwriter arg #',greader
 		       :port port
 		       :program ,gprogram
 		       :version ,gversion
@@ -108,14 +107,13 @@
 		       :verf verf
 		       :request-id request-id))))
 
-       ;; store the metadata away somewhere, so that we can define a handler later 
+       ;; define a server handler
        (with-reader (,greader ,arg-type)
 	 (with-writer (,gwriter ,result-type)
 	   (%defhandler ,gprogram ,gversion ,gproc 
-			(function ,greader) (function ,gwriter) nil))))))
-;;',arg-type ',result-type nil))))))
-
-
+			(function ,greader) 
+			(function ,gwriter) 
+			nil))))))
 
 
 

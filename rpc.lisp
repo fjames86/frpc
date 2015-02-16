@@ -178,19 +178,16 @@
 (defparameter *rpc-program* 0)
 (defparameter *rpc-version* 0)
 
-(defmacro with-rpc-program ((program) &body body)
-  `(let ((*rpc-program* ,program))
+(defmacro with-rpc-program ((program &optional version) &body body)
+  `(let ((*rpc-program* ,program)
+	 ,@(when version
+	     `((*rpc-version* ,version))))
      ,@body))
 
-(defmacro with-rpc-version ((version) &body body)
-  `(let ((*rpc-version* ,version))
-     ,@body))
-
-(defmacro use-rpc-program (program)
-  `(eval-when (:compile-toplevel :load-toplevel :execute)
-     (setf *rpc-program* ,program)))
-
-(defmacro use-rpc-version (version)
-  `(eval-when (:compile-toplevel :load-toplevel :execute)
-     (setf *rpc-version* ,version)))
-
+(defmacro use-rpc-program (program &optional version)
+  `(progn
+     (eval-when (:compile-toplevel :load-toplevel :execute)
+       (setf *rpc-program* ,program))
+     ,@(when version
+         `((eval-when (:compile-toplevel :load-toplevel :execute)
+	     (setf *rpc-version* ,version))))))
