@@ -115,7 +115,7 @@
 	    (:prog-mismatch (make-xunion :prog-mismatch `((high . ,high) (low . ,low))))
 	    (otherwise (make-xunion accept nil)))))
 	(make-xunion 
-	 :msg-rejected
+	 :msg-denied
 	 (ecase reject
 	   (:rpc-mismatch (make-xunion :rpc-mismatch `((high . ,high) (low . ,low))))
 	   (:auth-error (make-xunion :auth-error auth-stat))))))))

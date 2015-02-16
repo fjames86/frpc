@@ -1,19 +1,19 @@
 
 
-(defpackage #:hello-rpc
+(defpackage #:hello
   (:use #:cl #:frpc))
 
-(in-package #:hello-rpc)
+(in-package #:hello)
 
 ;; define an interface and server handlers
 (use-rpc-program 1)
 (use-rpc-version 1)
 
-(defrpc call-hello (:string :string) 0)
+(defrpc %call-hello (:string :string) 0)
 (defhandler handle-hello (msg) 0
   (format nil "Hello ~A!" msg))
 
-(defrpc call-goodbye (:int32 :uint32) 1)
+(defrpc %call-goodbye (:int32 :uint32) 1)
 (defhandler handle-goodbye (i) 1
   (1+ (abs i)))
 
@@ -22,13 +22,28 @@
 
 (defxtype* name-list () (:varray :string))
 
-(defrpc call-hello2 (:string name-list) 2)
+(defrpc %call-hello2 (:string name-list) 2)
 (defhandler handle-hello2 (name) 2
   (make-array 3 :initial-contents (list "hello" name "!!!!")))
 
-(defrpc call-goodbye2 ((:varray :string) (:list :string)) 3)
+(defrpc %call-goodbye2 (name-list name-list) 3)
 (defhandler handle-goodbye2 (strings) 3
   (map 'list #'string-upcase strings))
+
+(defun call-hello (host string &key (version 1))
+  (ecase version
+    (1 (%call-hello host string :port 8000))
+    (2 (%call-hello2 host string :port 8000))))
+
+(defun call-goodbye (host strings &key (version 1))
+  (ecase version
+    (1 (%call-goodbye host strings :port 8000))
+    (2 (%call-goodbye2 host strings :port 8000))))
+
+
+(defrpc %call-ustrings ((:varray :string) (:varray :string)) 4)
+(defhandler handle-ustrings (strings) 4
+  (mapcar #'string-upcase strings))
 
 ;; a different program
 (use-rpc-program 2)

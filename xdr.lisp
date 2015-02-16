@@ -157,6 +157,7 @@
   ((stream obj)
    (write-byte obj stream)))
 
+;; read fixed arrays into vectors
 (defun read-fixed-array (reader stream length)
   (let ((arr (make-array length)))
     (dotimes (i length)
@@ -168,21 +169,20 @@
     (funcall writer stream (aref array i)))
   nil)
 
+;; read variable arrys into lists
 (defun read-variable-array (reader stream)
-  (let* ((length (read-uint32 stream))
-	 (buff (make-array length)))
-    (dotimes (i length)
-      (setf (aref buff i) 
-	    (funcall reader stream)))
-    buff))
+  (let ((length (read-uint32 stream)))
+    (loop :for i :below length 
+       :collect (funcall reader stream))))
 
-(defun write-variable-array (writer stream sequence)
-  (let ((length (length sequence)))
-    (write-uint32 stream length)
-    (dotimes (i length)
-      (funcall writer stream (aref sequence i))))
+(defun write-variable-array (writer stream list)
+  (declare (type list list))
+  (write-uint32 stream (length list))
+  (dolist (item list)
+    (funcall writer stream item))
   nil)
 
+;; read optional or return nil
 (defun read-optional (reader stream)
   (let ((present (read-boolean stream)))
     (when present 
@@ -332,16 +332,18 @@
 	 (:varray 
 	  ;; (:varray form &optional max-length)
 	  (destructuring-bind (form &optional max-length) (cdr forms)
-	    (alexandria:with-gensyms (garr glen gi)
+	    (alexandria:with-gensyms (glen)
 	      `(let ((,glen (read-uint32 ,stream-sym)))
 		 ,@(when max-length 
 		     `((when (> ,glen ,max-length) 
 			 (error "Length ~S exceeds maximum length ~S" ,glen ,max-length))))
-		 (let ((,garr (make-array ,glen)))
-		   (dotimes (,gi ,glen)
-		     (setf (aref ,garr ,gi)
-			   ,(compile-reader form stream-sym)))
-		   ,garr))))))))))
+		 (loop for i below ,glen collect 
+		      ,(compile-reader form stream-sym)))))))))))
+;;		 (let ((,garr (make-array ,glen)))
+;;		   (dotimes (,gi ,glen)
+;;		     (setf (aref ,garr ,gi)
+;;			   ,(compile-reader form stream-sym)))
+;;		   ,garr))))))))))
 		    
  
 (defun compile-writer (forms stream-sym obj-form)
@@ -438,8 +440,10 @@
 			 `((when (> ,glen ,max-length)
 			     (error "Length ~S exceeds max length ~S" ,glen ,max-length))))
 		 (write-uint32 ,stream-sym ,glen)
-		 (dotimes (,gi ,glen)
-		   ,(compile-writer form stream-sym `(aref ,gobj ,gi))))))))))))
+		 (dolist (,gi ,gobj)
+		   ,(compile-writer form stream-sym gi))
+		 nil)))))))))
+;;`(aref ,gobj ,gi))))))))))))
   
 ) ;; eval-when
 

@@ -75,8 +75,8 @@
     (nth-value 1 (read-response stream result-type))))
 
 (defun call-rpc (host arg-type arg result-type 
-		 &key (port *rpc-port*) (program 0) (version 0) 
-		   auth verf (request-id 0) (proc 0))
+		 &key (port *rpc-port*) (program 0) (version 0) (proc 0) 
+		   auth verf (request-id 0))
   "Establish a connection and execute an RPC to a remote machine."
   (with-rpc-connection (conn host port)
     (call-rpc-server conn arg-type arg result-type 
@@ -92,21 +92,29 @@
   (alexandria:with-gensyms (gprogram gversion gproc greader gwriter)
     `(let ((,gprogram ,program)
 	   (,gversion ,version)
-	   (,gproc ,proc))
+	   (,gproc ,proc))       
+       
        ;; define a function to call it
        (defun ,name (host arg &key (port *rpc-port*) auth verf (request-id 0))
+	 ;; this doesn't work -- better to forbid it?
 	 (with-writer (,gwriter ,arg-type)
-	   (with-reader (,greader ,result-type)	     
+	   (with-reader (,greader ,result-type)
 	     (call-rpc host #',gwriter arg #',greader ;; 'arg-type arg 'result-type
 		       :port port
 		       :program ,gprogram
 		       :version ,gversion
+		       :proc ,gproc
 		       :auth auth
 		       :verf verf
-		       :request-id request-id
-		       :proc ,gproc))))
+		       :request-id request-id))))
+
        ;; store the metadata away somewhere, so that we can define a handler later 
-       (%defhandler ,gprogram ,gversion ,gproc ',arg-type ',result-type nil))))
+       (with-reader (,greader ,arg-type)
+	 (with-writer (,gwriter ,result-type)
+	   (%defhandler ,gprogram ,gversion ,gproc 
+			(function ,greader) (function ,gwriter) nil))))))
+;;',arg-type ',result-type nil))))))
+
 
 
 
