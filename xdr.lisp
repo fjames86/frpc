@@ -425,11 +425,15 @@
 	 (:array 
 	  ;; (:array form length)
 	  (destructuring-bind (form length) (cdr forms)
-	    (declare (ignore length))
-	    (alexandria:with-gensyms (gobj gi)
-	      `(let ((,gobj ,obj-form))
-		 (dotimes (,gi (length ,gobj))
-		   ,(compile-writer form stream-sym `(aref ,gobj ,gi)))))))
+	    (alexandria:with-gensyms (gobj gi glen)
+	      `(let* ((,gobj ,obj-form)
+		      (,glen (length ,gobj)))
+		 (unless (= ,glen ,length) 
+		   (error "Fixed array length doesn't match declaration."))
+		 (dotimes (,gi ,glen)
+		   ,(compile-writer form 
+				    stream-sym 
+				    `(aref ,gobj ,gi)))))))
 	 (:varray
 	  ;; (:varray form &optional max-length)
 	  (destructuring-bind (form &optional max-length) (cdr forms)
