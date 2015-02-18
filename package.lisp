@@ -44,6 +44,7 @@
 	   #:with-rpc-connection
 	   #:call-rpc-server
 	   #:call-rpc
+	   #:*rpc-host*
 	   #:*rpc-port*
 
 	   ;; server

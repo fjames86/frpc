@@ -40,6 +40,7 @@
 
 ;; ---------------------------------------
 
+(defparameter *rpc-host* "localhost")
 (defparameter *rpc-port* 111)
 
 (defun rpc-connect (host &optional port)
