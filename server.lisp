@@ -112,31 +112,33 @@ previous call to DEFRPC. This is needed so the system knows the argument/result 
 					  (make-rpc-response :accept :success
 							     :id (rpc-msg-xid msg)))
 			  (write-xtype res-type (or output stream) res)))
+		    (undefined-function (e)
+		      ;; no such function -- probably means we didn't register a handler
+		      (info "No handler: ~S" e)
+		      (%write-rpc-msg (or output stream)
+				      (make-rpc-response :accept :proc-unavail
+							 :id (rpc-msg-xid msg))))
 		    (error (e)
-		      (info "Error handling: ~A" e) 
+		      ;; FIXME: should we just terminate the connection at this point?
+		      (info "Error handling: ~S" e) 
 		      (%write-rpc-msg (or output stream)
 				      (make-rpc-response :accept :garbage-args
 							 :id (rpc-msg-xid msg))))))))))))
     (end-of-file (e)
       ;; unexpected end of file -- probably means the connection was closed 
-;;      (info "Error: ~A" e)
-;;      (write-xtype 'rpc-msg 
-;;		   (or output stream)
-;;		   (make-rpc-response :accept :garbage-args))
       ;; rethrow the error so the connection handler knows the connection has been closed
       (error e))
     (error (e)
       (info "Error reading msg: ~A" e)
-      (write-xtype 'rpc-msg 
-		   (or output stream)
-		   (make-rpc-response :accept :garbage-args))))
+      (%write-rpc-msg (or output stream)
+		      (make-rpc-response :accept :garbage-args))))
   (info "Flushing output")
   (force-output (or output stream))
   (info "Finished request"))
 
 ;; ------------- rpc server ----------
 
-(defstruct rpc-server
+(defstruct (rpc-server (:constructor %make-rpc-server))
   thread programs exiting)
 
 (defun run-rpc-server (server port)
@@ -165,13 +167,15 @@ previous call to DEFRPC. This is needed so the system knows the argument/result 
 	       (usocket:socket-close conn))))
       (usocket:socket-close socket))))
     
-(defun start-rpc-server (port &optional programs)
-  (let ((server (make-rpc-server :programs programs)))
-    (setf (rpc-server-thread server)
-	  (bt:make-thread (lambda ()
-			    (run-rpc-server server port))
-			  :name (format nil "rpc-server-thread port ~A" port)))
-    server))
+(defun make-rpc-server (&optional programs)
+  (%make-rpc-server :programs programs))
+
+(defun start-rpc-server (server &key (port *rpc-port*))
+  (setf (rpc-server-thread server)
+	(bt:make-thread (lambda ()
+			  (run-rpc-server server port))
+			:name (format nil "rpc-server-thread port ~A" port)))
+  server)
 
 (defun stop-rpc-server (server)
   (setf (rpc-server-exiting server) t)

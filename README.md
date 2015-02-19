@@ -1,6 +1,6 @@
 # FRPC
-Frank's XDR/RPC library is an implementation of the ONCRPC ("SunRPC") protocol. The library is composed of two
-halves: implementing the eXtensible Data Representation (XDR), which is the method of serializing the messages, 
+Frank's XDR/RPC library is an implementation of the ONC-RPC ("SunRPC") protocol. The library is composed of two
+components: implementing the eXtensible Data Representation (XDR), which is the method of serializing the messages, 
 and the Remote Procedure Call (RPC) system itself, which uses XDR to exchange messages.
 
 1. XDR serializer
@@ -17,10 +17,10 @@ All types must have a reader and writer defined. The base function and macro sug
 (%defxtype 'mynewtype 
            (lambda (stream) 
              "A function which reads octets from the stream and returns the object"
-             )
+             body)
            (lambda (stream obj)
              "A function which writes bytes to the stream which represent the object."
-             ))
+             body))
 
 (defxtype mynewtype
   ((stream)
@@ -61,8 +61,8 @@ where val is either an integer or a symbol.
 Define union types using
 ```
 (defxunion union-type (enum-type)
-  (enum-symbol type-name)
-  ...)
+  ((enum-symbol type-name)
+  ...))
 ```
 
 1.4 structures
@@ -72,8 +72,8 @@ Define structures using
 
 ```
 (defxstruct struct-name ()
-  (slot-name type-name &optional initial-value)
-  ...)
+  ((slot-name type-name &optional initial-value)
+  ...))
 ```
 
 1.5 Internals/advanced 
@@ -95,7 +95,8 @@ These rules can be defined recursively.
 (defxtype* mynewtype ()
   (:alist 
     (a :uint32)
-    (b :uint32)))
+    (b :uint32)
+    (c (:optional mynewtype))))
 ```
 
 
@@ -112,10 +113,9 @@ for each of the procedures.
 
 For instance, a client should write
 ```
-(with-rpc-program (1001)
-  (with-rpc-version (1)
-    (defrpc call-hello (:string :string) 0)
-    (defrpc call-goodbye (:uint32 :string) 1)))
+(with-rpc-program (10001 1)
+  (defrpc call-hello (:string :string) 0)
+  (defrpc call-g    oodbye (:uint32 :string) 1)))
 ```
 This defines 2 Lisp functions to call out to an RPC server to execute the procedures.
 

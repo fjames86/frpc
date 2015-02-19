@@ -8,6 +8,7 @@
 	   #:use-rpc-program
 	   #:defrpc
 	   #:defhandler
+	   #:find-handler
 
 	   ;; type definitions
 	   #:defxtype
@@ -48,6 +49,8 @@
 	   #:*rpc-port*
 
 	   ;; server
+	   #:make-rpc-server
+	   #:run-rpc-server
 	   #:start-rpc-server
 	   #:stop-rpc-server
 	   ))

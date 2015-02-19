@@ -54,7 +54,8 @@
 (defvar *server* nil)
 
 (defun start ()
-  (setf *server* (start-rpc-server 8000)))
+  (setf *server* (make-rpc-server))
+  (start-rpc-server server :port 8000))
 
 (defun stop ()
   (stop-rpc-server *server*))
