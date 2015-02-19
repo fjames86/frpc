@@ -12,7 +12,8 @@
    (:file "errors" :depends-on ("rpc"))
    (:file "log" :depends-on ("package"))
    (:file "server" :depends-on ("errors" "log"))
-   (:file "client" :depends-on ("server")))
+   (:file "client" :depends-on ("server"))
+   (:file "udp-server" :depends-on ("client")))
   :depends-on (:alexandria :nibbles :flexi-streams 
 	       :babel :usocket :bordeaux-threads
 	       :log4cl))

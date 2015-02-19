@@ -55,7 +55,7 @@
 
 (defun start ()
   (setf *server* (make-rpc-server))
-  (start-rpc-server server :port 8000))
+  (start-rpc-server *server* :port 8000))
 
 (defun stop ()
   (stop-rpc-server *server*))

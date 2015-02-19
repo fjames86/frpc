@@ -170,14 +170,20 @@ previous call to DEFRPC. This is needed so the system knows the argument/result 
 (defun make-rpc-server (&optional programs)
   (%make-rpc-server :programs programs))
 
-(defun start-rpc-server (server &key (port *rpc-port*))
+
+
+(defgeneric start-rpc-server (server &key port))
+
+(defmethod start-rpc-server ((server rpc-server) &key (port *rpc-port*))
   (setf (rpc-server-thread server)
 	(bt:make-thread (lambda ()
 			  (run-rpc-server server port))
 			:name (format nil "rpc-server-thread port ~A" port)))
   server)
 
-(defun stop-rpc-server (server)
+(defgeneric stop-rpc-server (server))
+
+(defmethod stop-rpc-server ((server rpc-server))
   (setf (rpc-server-exiting server) t)
   (bt:join-thread (rpc-server-thread server))
   nil)

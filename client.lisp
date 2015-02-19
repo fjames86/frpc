@@ -77,16 +77,41 @@
 
 (defun call-rpc (host arg-type arg result-type 
 		 &key (port *rpc-port*) (program 0) (version 0) (proc 0) 
-		   auth verf (request-id 0))
+		   auth verf (request-id 0) protocol)
   "Establish a connection and execute an RPC to a remote machine."
-  (with-rpc-connection (conn host port)
-    (call-rpc-server conn arg-type arg result-type 
-		     :request-id request-id
-		     :program program
-		     :version version
-		     :proc proc
-		     :auth auth
-		     :verf verf)))
+  (ecase protocol
+    ((:tcp nil)
+     (with-rpc-connection (conn host port)
+       (call-rpc-server conn arg-type arg result-type 
+			:request-id request-id
+			:program program
+			:version version
+			:proc proc
+			:auth auth
+			:verf verf)))
+    (:udp
+     ;; we have a little problem here... 
+     ;; we can send the udp request, but we don't know whether to 
+     ;; wait for the reply or not. in any case, we'd need acceess
+     ;; to the udp-rpc-server instance in order to get the reply.
+     ;; therefore any code which wishes to get the reply 
+     ;; needs to be external to this
+     (let ((socket (usocket:socket-connect host port
+					   :protocol :datagram
+					   :element-type '(unsigned-byte 8))))
+       (let ((buffer 
+	      (flexi-streams:with-output-to-sequence (stream)
+		(write-request stream 
+			       (make-rpc-request program proc 
+						 :version version
+						 :auth auth
+						 :verf verf
+						 :id request-id)
+			       arg-type
+			       arg))))
+	 (usocket:socket-send socket buffer (length buffer)))
+       (usocket:socket-close socket)))))
+			    
 
 (defmacro defrpc (name proc arg-type result-type)
   "Declare an RPC interface and define a calling function."
@@ -96,7 +121,7 @@
 	   (,gproc ,proc))
        
        ;; define a function to call it
-       (defun ,name (host arg &key (port ,*rpc-port*) auth verf (request-id 0))
+       (defun ,name (host arg &key (port ,*rpc-port*) auth verf (request-id 0) protocol)
 	 (with-writer (,gwriter ,arg-type)
 	   (with-reader (,greader ,result-type)
 	     (call-rpc host #',gwriter arg #',greader
@@ -106,7 +131,8 @@
 		       :proc ,gproc
 		       :auth auth
 		       :verf verf
-		       :request-id request-id))))
+		       :request-id request-id
+		       :protocol protocol))))
 
        ;; define a server handler
        (with-reader (,greader ,arg-type)
@@ -115,23 +141,4 @@
 			(function ,greader) 
 			(function ,gwriter) 
 			nil))))))
-
-
-
-;; -------- udp -----------------
-
-
-(defun send-rpc-request-udp (send-socket arg-type arg
-			     &key (program 0) (version 0) (proc 0)
-			       auth verf (request-id 0))
-  (let ((buffer (flexi-streams:with-output-to-sequence (v)
-		  (write-request v 
-				 (make-rpc-request program proc
-						   :version version
-						   :auth auth
-						   :verf verf
-						   :id request-id)
-				 arg-type
-				 arg))))
-    (usocket:socket-send send-socket buffer (length buffer))))
 

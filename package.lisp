@@ -53,6 +53,8 @@
 	   #:run-rpc-server
 	   #:start-rpc-server
 	   #:stop-rpc-server
+	   #:make-udp-rpc-server
+	   #:wait-for-reply	   
 	   ))
 
    
