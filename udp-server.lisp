@@ -62,10 +62,11 @@ You MUST hold the server lock when calling this function."
       (done res)
     (bt:with-lock-held ((udp-rpc-server-lock server))
       (multiple-value-bind (reply found) (%get-reply server id)
-	(when found 
-	  (setf res reply
-		done t)))
-      (bt:condition-wait (udp-rpc-server-condv server) (udp-rpc-server-lock server)))))
+	(if found 
+	    (setf res reply
+		  done t)
+	    (bt:condition-wait (udp-rpc-server-condv server) 
+			       (udp-rpc-server-lock server)))))))
 
 ;; FIXME: there must be a better way of doing this
 (defun %read-until-eof (stream)
