@@ -18,6 +18,8 @@
 	   #:defreader
 	   #:defwriter
 	   #:defxtype*
+	   #:read-xtype
+	   #:write-xtype
 
 	   ;; enums/unions
 	   #:enum
@@ -47,10 +49,11 @@
 	   #:call-rpc
 	   #:*rpc-host*
 	   #:*rpc-port*
+	   #:*rpc-msgid*
+	   #:make-msgid
 
 	   ;; server
 	   #:make-rpc-server
-	   #:run-rpc-server
 	   #:start-rpc-server
 	   #:stop-rpc-server
 	   #:make-udp-rpc-server

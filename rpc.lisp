@@ -84,11 +84,17 @@
       (:call call-body)
       (:reply reply-body)))))
 
-(defun make-rpc-request (program proc &key (version 0) auth verf (id 0))
+(defparameter *rpc-msgid* 0)
+
+(defun make-msgid ()
+  (prog1 *rpc-msgid*
+    (incf *rpc-msgid*)))
+
+(defun make-rpc-request (program proc &key (version 0) auth verf id)
   (unless auth (setf auth *default-opaque-auth*))
   (unless verf (setf verf *default-opaque-auth*))
 
-  (make-rpc-msg :xid id
+  (make-rpc-msg :xid (or id (make-msgid))
 		:body (make-xunion :call
 				   (make-call-body :prog program
 						   :vers version

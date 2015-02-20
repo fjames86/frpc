@@ -60,7 +60,7 @@
 
 (defun call-rpc-server (connection arg-type arg result-type
 			&key (program 0) (version 0) (proc 0)
-			  auth verf (request-id 0))
+			  auth verf request-id)
   "Send a request to the RPC server, await a response."
   (let ((stream (usocket:socket-stream connection)))
     ;; write the request message
@@ -77,7 +77,7 @@
 
 (defun call-rpc (host arg-type arg result-type 
 		 &key (port *rpc-port*) (program 0) (version 0) (proc 0) 
-		   auth verf (request-id 0) protocol)
+		   auth verf request-id protocol)
   "Establish a connection and execute an RPC to a remote machine."
   (ecase protocol
     ((:tcp nil)
@@ -121,7 +121,7 @@
 	   (,gproc ,proc))
        
        ;; define a function to call it
-       (defun ,name (host arg &key (port ,*rpc-port*) auth verf (request-id 0) protocol)
+       (defun ,name (host arg &key (port ,*rpc-port*) auth verf request-id protocol)
 	 (with-writer (,gwriter ,arg-type)
 	   (with-reader (,greader ,result-type)
 	     (call-rpc host #',gwriter arg #',greader

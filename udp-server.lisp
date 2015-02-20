@@ -40,20 +40,32 @@ message to recieve. The reply should be an array of octets."
 	  (udp-rpc-server-replies server))
     (bt:condition-notify (udp-rpc-server-condv server))))
 
-(defun %get-reply (server id &optional (dispose t))
+(defun %get-reply (server id dispose)
   "Finds the message with ID, but leaves it in the queue. Removes from the queue if DISPOSE is T.
 You MUST hold the server lock when calling this function." 
   (declare (type udp-rpc-server server)
 	   (type integer id))
-  (let ((reply (assoc id (udp-rpc-server-replies server) :test #'=)))
-    (cond
-      ((not reply) (values nil nil))
-      (dispose (setf (udp-rpc-server-replies server)
-		     (remove reply (udp-rpc-server-replies server)))
-	       (values (cdr reply) t))
-      (t (values (cdr reply) t)))))
+  (cond
+    (id 
+     (let ((reply (assoc id (udp-rpc-server-replies server) :test #'=)))
+       (cond
+	 ((not reply) (values nil nil))
+	 (dispose (setf (udp-rpc-server-replies server)
+			(remove reply (udp-rpc-server-replies server)))
+		  (values (cdr reply) t))
+	 (t (values (cdr reply) t)))))
+    (dispose
+     (let ((reply (pop (udp-rpc-server-replies server))))
+       (if reply
+	   (values (cdr reply) t)
+	   (values nil nil))))
+    (t 
+     (let ((reply (car udp-rpc-server-replies server)))
+       (if reply
+	   (values (cdr reply) t)
+	   (values nil nil))))))
 
-(defun wait-for-reply (server id)
+(defun wait-for-reply (server &optional id)
   "Blocks until a reply for message ID is recieved."
   (declare (type udp-rpc-server server)
 	   (type integer id))	   
@@ -61,7 +73,7 @@ You MUST hold the server lock when calling this function."
        (done nil))
       (done res)
     (bt:with-lock-held ((udp-rpc-server-lock server))
-      (multiple-value-bind (reply found) (%get-reply server id)
+      (multiple-value-bind (reply found) (%get-reply server id t)
 	(if found 
 	    (setf res reply
 		  done t)
