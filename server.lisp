@@ -60,6 +60,18 @@ previous call to DEFRPC. This is needed so the system knows the argument/result 
 
 ;; ------------------------- handle a request from the stream --------------
 
+(defun read-fragmented-message (stream)
+  (flexi-streams:with-output-to-sequence (output)
+    (do ((done nil))
+	(done)
+      (let ((length (read-uint32 stream)))
+	;; when the terminating bit is set we are done
+	(unless (zerop (logand length #x80000000))
+	  (setf done t
+		length (logand length (lognot #x80000000))))
+	(let ((buff (make-array length)))
+	  (read-sequence buff stream)
+	  (write-sequence buff output))))))
 
 (defun handle-request (stream &optional output allowed-programs)
   "Read an RPC request from the STREAM and write the output to the OUTPUT stream (or STREAM if not provided)."
@@ -155,9 +167,21 @@ previous call to DEFRPC. This is needed so the system knows the argument/result 
 	       ;; a connection has been accepted -- process it 
 	       (info "Connected to ~A:~A" (usocket:get-peer-address conn) (usocket:get-peer-port conn))
 	       (handler-case 
-		   (loop (handle-request (usocket:socket-stream conn) 
-					 (usocket:socket-stream conn)
-					 (rpc-server-programs server)))
+		   (loop 
+		      (let ((stream (usocket:socket-stream conn)))
+			(flexi-streams:with-input-from-sequence (input (read-fragmented-message stream))
+			  (info "read request")
+			  (let ((buff (flexi-streams:with-output-to-sequence (output)
+					(handle-request input
+							output
+							(rpc-server-programs server)))))
+			    (info "writing response")
+			    ;; write the fragment header (with terminating bit set)
+			    (write-uint32 stream (logior #x80000000 (length buff)))
+			    ;; write the buffer itself
+			    (write-sequence buff stream)
+			    ;; flush output
+			    (force-output stream)))))
 		 (end-of-file (e)
 		   (declare (ignore e))
 		   (info "Connection closed"))

@@ -64,16 +64,27 @@
   "Send a request to the RPC server, await a response."
   (let ((stream (usocket:socket-stream connection)))
     ;; write the request message
-    (write-request stream 
-		   (make-rpc-request program proc 
-				     :version version
-				     :auth auth
-				     :verf verf
-				     :id request-id)
-		   arg-type
-		   arg)
-    ;; read the response (throws error if failed)
-    (nth-value 1 (read-response stream result-type))))
+    ;; When using TCP (as we are here) you must prepend the message with 
+    ;; the length of the message as a Big-endian uint32 (see section 10 of the rfc)
+    ;; therefore we need to write the request through to a local stream first 
+    ;; so we know the total length. the final fragment needs to set the high bit
+    (let ((buffer (flexi-streams:with-output-to-sequence (output)
+		    (write-request output 
+				   (make-rpc-request program proc 
+						     :version version
+						     :auth auth
+						     :verf verf
+						     :id request-id)
+				   arg-type
+				   arg))))
+      ;; write as a single fragment to the socket
+      (write-uint32 stream (logior #x80000000 (length buffer)))
+      (write-sequence buffer stream)
+      (force-output stream))
+    ;; need to read the response back to a local stream, to account for the fragmenting
+    (flexi-streams:with-input-from-sequence (input (read-fragmented-message stream))
+      ;; read the response (throws error if failed)
+      (nth-value 1 (read-response input result-type)))))
 
 (defun call-rpc (host arg-type arg result-type 
 		 &key (port *rpc-port*) (program 0) (version 0) (proc 0) 

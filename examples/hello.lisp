@@ -10,9 +10,7 @@
 
 ;; --------------
 
-(defrpc call-null 0
-  :string
-  :string)
+(defrpc call-null 0 :void :void)
 
 (defhandler handle-null (void 0) 
   (declare (ignore void))
