@@ -61,6 +61,8 @@ previous call to DEFRPC. This is needed so the system knows the argument/result 
 ;; ------------------------- handle a request from the stream --------------
 
 (defun read-fragmented-message (stream)
+  "Read a sequence of message fragements until the terminal bit is set. Returns a sequence containing 
+the resulting bytes."
   (flexi-streams:with-output-to-sequence (output)
     (do ((done nil))
 	(done)
@@ -69,7 +71,7 @@ previous call to DEFRPC. This is needed so the system knows the argument/result 
 	(unless (zerop (logand length #x80000000))
 	  (setf done t
 		length (logand length (lognot #x80000000))))
-	(let ((buff (make-array length)))
+	(let ((buff (nibbles:make-octet-vector length)))
 	  (read-sequence buff stream)
 	  (write-sequence buff output))))))
 
@@ -165,12 +167,13 @@ previous call to DEFRPC. This is needed so the system knows the argument/result 
 	       ((rpc-server-exiting server))	   
 	     (when conn
 	       ;; a connection has been accepted -- process it 
-	       (info "Connected to ~A:~A" (usocket:get-peer-address conn) (usocket:get-peer-port conn))
+	       (info "Accepted connection from ~A:~A" (usocket:get-peer-address conn) (usocket:get-peer-port conn))
 	       (handler-case 
 		   (loop 
 		      (let ((stream (usocket:socket-stream conn)))
+			(info "reading request")
 			(flexi-streams:with-input-from-sequence (input (read-fragmented-message stream))
-			  (info "read request")
+			  (info "successfully read request")
 			  (let ((buff (flexi-streams:with-output-to-sequence (output)
 					(handle-request input
 							output
