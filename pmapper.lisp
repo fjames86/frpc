@@ -16,9 +16,13 @@
 	   #:call-unset
 	   #:call-get-port
 	   #:call-dump
-	   #:call-callit))
+	   #:call-callit
+	   #:add-mapping
+	   #:rem-mapping))
 
 (in-package #:pmapper)
+
+(defparameter *pmap-port* 111)
 
 ;; ------- port mapper structs ----------
 
@@ -72,13 +76,12 @@
 		:key #'cdr)))
 		     
 
-
 ;; ----------------------
 
 ;; NULL -- test communication to the port mapper 
 
 (defrpc %portmapper-null 0 :void :void)
-(defun call-null (&key (host *rpc-host*) (port *rpc-port*))
+(defun call-null (&key (host *rpc-host*) (port *pmap-port*))
   (%portmapper-null host nil :port port))
 
 (defhandler %handle-null (void 0)
@@ -91,7 +94,7 @@
 
 (defrpc %portmapper-set 1 mapping :boolean)
 
-(defun call-set (mapping &key (host *rpc-host*) (port *rpc-port*))
+(defun call-set (mapping &key (host *rpc-host*) (port *pmap-port*))
   (%portmapper-set host mapping :port port))
 
 (defhandler %handle-set (mapping 1)
@@ -104,7 +107,7 @@
 
 (defrpc %portmapper-unset 2 mapping :boolean)
 
-(defun call-unset (mapping &key (host *rpc-host*) (port *rpc-port*))
+(defun call-unset (mapping &key (host *rpc-host*) (port *pmap-port*))
   (%portmapper-unset host mapping :port port))
 
 (defhandler %handle-unset (mapping 2)
@@ -120,7 +123,7 @@
 
 (defrpc %portmapper-get-port 3 mapping :uint32)
 
-(defun call-get-port (mapping &key (host *rpc-host*) (port *rpc-port*))
+(defun call-get-port (mapping &key (host *rpc-host*) (port *pmap-port*))
   (%portmapper-get-port host mapping :port port))
 
 (defhandler %handle-get-port (mapping 3)
@@ -141,7 +144,7 @@
 
 (defrpc %portmapper-dump 4 :void (:optional mapping-list))
     
-(defun call-dump (&key (host *rpc-host*) (port *rpc-port*))
+(defun call-dump (&key (host *rpc-host*) (port *pmap-port*))
   (do ((mlist (%portmapper-dump host nil :port port) 
 	      (mapping-list-next mlist))
        (ms nil))
@@ -167,9 +170,13 @@
   (:list :uint32 :uint32 :uint32 (:varray* :octet)) ;;prog version proc args)
   (:list :uint32 (:varray* :octet)))
 
-(defun call-callit (proc packed-args &key (host *rpc-host*) (port *rpc-port*) (program 0) (version 0))
+(defun call-callit (proc packed-args &key (host *rpc-host*) (port *pmap-port*) (program 0) (version 0))
+  "Execute an RPC via the remote port mapper proxy. Returns (PORT ARGS) where ARGS is an opaque array
+of the packed result. The result needs to be extracted using FRPC:UNPACK. The result type is 
+recommended to be a well-defined type, i.e. represented by a symbol, so that it has an easy reader
+function available."
   (%portmapper-callit host (list program version proc packed-args)
-		    :port port))
+		      :port port))
 
 ;; In the spec it says we should be able to call any (mapped) rpc on the local machine communicating
 ;; only via UDP. We run all RPC programs from within the same Lisp image so we can directly 

@@ -17,8 +17,11 @@
     ;; the condition
     (let ((body (xunion-val (rpc-msg-body msg))))
       (cond
-	((eq (xunion-tag body) :rpc-rejected)
-	 (error 'rpc-error :description "Message rejected"))
+	((eq (xunion-tag body) :msg-denied)
+	 (let ((denied (xunion-val body)))
+	   (ecase (xunion-tag denied)
+	     (:auth-error (error 'rpc-error :description (format nil "Auth error: ~A" (xunion-val denied))))
+	     (:rpc-mismatch (error 'rpc-error :description "RPC mismatch")))))
 	(t 
 	 (case (xunion-tag (accepted-reply-reply-data (xunion-val body)))
 	   (:prog-mismatch

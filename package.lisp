@@ -31,7 +31,7 @@
 	   ;; local type definitions
 	   #:with-reader
 	   #:with-writer
-	   #:with-reader/writer
+;;	   #:with-reader/writer
 
 	   ;; serializing to/from buffer 
 	   #:pack
