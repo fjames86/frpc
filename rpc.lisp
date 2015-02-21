@@ -46,7 +46,7 @@
 
 (defxstruct opaque-auth ()
   ((flavour auth-flavour :auth-null)
-   (data (:varray :octet 400))))
+   (data (:varray* :octet 400))))
 
 (defparameter *default-opaque-auth* (make-opaque-auth :flavour :auth-null))
 

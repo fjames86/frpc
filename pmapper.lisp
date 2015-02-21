@@ -6,9 +6,10 @@
 ;;; with local RPC programs. Can also be used as a proxy to directly 
 ;;; execute RPCs via the CALLIT procedure.
 
-(defpackage #:frpc.pmap
+(defpackage #:pmapper
   (:use #:cl #:frpc)
   (:export #:mapping
+	   #:make-mapping
 	   #:mapping-protocol
 	   #:call-null
 	   #:call-set
@@ -17,7 +18,7 @@
 	   #:call-dump
 	   #:call-callit))
 
-(in-package #:frpc.pmap)
+(in-package #:pmapper)
 
 ;; ------- port mapper structs ----------
 
@@ -61,14 +62,14 @@
 
 (defun find-mapping-by-program (program version &optional (protocol :tcp))
   "Lookup a mapping given its program/version and optionally communication protocol."
-  (find-if (lambda (mapping)
-	     (and (= (mapping-prog mapping) program)
-		  (= (mapping-version mapping) version)
-		  (if protocol 
-		      (eq (mapping-protocol mapping) protocol)
-		      t)))
-	   *mappings*
-	   :key #'cdr))
+  (cdr (find-if (lambda (mapping)
+		  (and (= (mapping-prog mapping) program)
+		       (= (mapping-version mapping) version)
+		       (if protocol 
+			   (eq (mapping-protocol mapping) protocol)
+			   t)))
+		*mappings*
+		:key #'cdr)))
 		     
 
 
@@ -163,11 +164,11 @@
 ;;   (res (:varray :octet))))
 
 (defrpc %portmapper-callit 5 
-  (:list prog version proc args)
-  (:list :uint32 (:varray :octet)))
+  (:list :uint32 :uint32 :uint32 (:varray* :octet)) ;;prog version proc args)
+  (:list :uint32 (:varray* :octet)))
 
-(defun call-callit (proc args &key (host *rpc-host*) (port *rpc-port*) (program 0) (version 0))
-  (%portmapper-callit host (list program version proc args)
+(defun call-callit (proc packed-args &key (host *rpc-host*) (port *rpc-port*) (program 0) (version 0))
+  (%portmapper-callit host (list program version proc packed-args)
 		    :port port))
 
 ;; In the spec it says we should be able to call any (mapped) rpc on the local machine communicating
