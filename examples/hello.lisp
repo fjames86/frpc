@@ -49,6 +49,13 @@
 
 ;; --------------------
 
+(defrpc call-plist 3
+  :string
+  (:plist :name :string :age :uint32))
+
+(defhandler handle-plist (string 3)
+  (list :name string :age 123))
+
 
 ;; the server 
 (defvar *server* nil)

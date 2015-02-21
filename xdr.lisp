@@ -253,6 +253,7 @@
 ;; ----------------------
 
 ;; compilers for the reader/writer 
+;; we need to eval-when it so we can use it in our type definition macros
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
 
@@ -261,7 +262,7 @@
 	   (let ((gobj (gensym "OBJ")))
 	     `(let ((,gobj (,(alexandria:symbolicate 'make- struct-type))))
 		,@(mapcar (lambda (slot)
-			    (destructuring-bind (slot-name form &optional init) slot 
+			    (destructuring-bind (slot-name form &rest init) slot 
 			      (declare (ignore init))
 			      (let ((accessor (alexandria:symbolicate struct-type '- slot-name)))
 				`(setf (,accessor ,gobj) ,(compile-reader form stream-sym)))))
@@ -282,6 +283,18 @@
 	   `(list ,@(mapcar (lambda (form)
 			      (compile-reader form stream-sym))
 			    forms)))
+	 (compile-plist (forms)
+	   (alexandria:with-gensyms (gplist)
+	     `(let ((,gplist nil))
+		,@(do ((%forms forms (cddr %forms))
+		       (rlist nil))
+		      ((null %forms) (reverse rlist))
+		     (let ((tag (car %forms))
+			   (form (cadr %forms)))
+		       (push `(setf (getf ,gplist ',tag)
+				    ,(compile-reader form stream-sym))
+			     rlist)))
+		,gplist)))
 	 (compile-alist (forms)
 	   `(list ,@(mapcar (lambda (pair)
 			      (destructuring-bind (tag &rest forms) pair
@@ -317,6 +330,9 @@
 	 (:alist 
 	  ;; like a structure but generates alists instead
 	  (compile-alist (cdr forms)))
+	 (:plist 
+	  ;; list a structurebut generates a plist instead
+	  (compile-plist (cdr forms)))
 	 (:list 
 	  ;; a list of values (essentially unnamed strucuture)
 	  (compile-list (cdr forms)))
@@ -329,21 +345,29 @@
 		   (setf (aref ,garr ,gi)
 			 ,(compile-reader form stream-sym)))
 		 ,garr))))
+	 (:varray*
+	  ;; (:varray* form &optional max-length)
+	  (destructuring-bind (form &optional max-length) (cdr forms)
+	    (alexandria:with-gensyms (garr gi glen)
+	      `(let* ((,glen (read-uint32 ,stream-sym))
+		      (,garr (make-array ,glen)))
+		 ,@(when max-length 
+		     `((when (> ,glen ,max-length) 
+			 (error "Length ~S exceeds maximum length ~S" ,glen ,max-length))))
+		 (dotimes (,gi ,glen)
+		   (setf (aref ,garr ,gi)
+			 ,(compile-reader form stream-sym)))
+		 ,garr))))
 	 (:varray 
 	  ;; (:varray form &optional max-length)
 	  (destructuring-bind (form &optional max-length) (cdr forms)
-	    (alexandria:with-gensyms (glen)
+	    (alexandria:with-gensyms (glen gi)
 	      `(let ((,glen (read-uint32 ,stream-sym)))
 		 ,@(when max-length 
 		     `((when (> ,glen ,max-length) 
 			 (error "Length ~S exceeds maximum length ~S" ,glen ,max-length))))
-		 (loop for i below ,glen collect 
+		 (loop for ,gi below ,glen collect 
 		      ,(compile-reader form stream-sym)))))))))))
-;;		 (let ((,garr (make-array ,glen)))
-;;		   (dotimes (,gi ,glen)
-;;		     (setf (aref ,garr ,gi)
-;;			   ,(compile-reader form stream-sym)))
-;;		   ,garr))))))))))
 		    
  
 (defun compile-writer (forms stream-sym obj-form)
@@ -351,7 +375,7 @@
 	   (let ((gobj (gensym "OBJ")))
 	     `(let ((,gobj ,obj-form))
 		,@(mapcar (lambda (slot)
-			    (destructuring-bind (slot-name form &optional init) slot 
+			    (destructuring-bind (slot-name form &rest init) slot 
 			      (declare (ignore init))
 			      (let ((accessor (alexandria:symbolicate struct-type '- slot-name)))
 				(compile-writer form stream-sym `(,accessor ,gobj)))))
@@ -376,6 +400,16 @@
 			       ,(compile-writer form stream-sym `(car ,glist))
 			       (setf ,glist (cdr ,glist))))
 			  forms))))
+	 (compile-plist (forms)
+	   (let ((glist (gensym "LIST")))
+	     `(let ((,glist ,obj-form))
+		,@(do ((%forms forms (cddr %forms))
+		       (rlist nil))
+		      ((null %forms) (reverse rlist))
+		    (let ((tag (car %forms))
+			  (form (cadr %forms)))
+		      (push (compile-writer form stream-sym `(getf ,glist ',tag))
+			    rlist))))))
 	 (compile-alist (forms)
 	   (let ((glist (gensym "LIST")))
 	     `(do ((,glist ,obj-form (cdr ,glist)))
@@ -409,7 +443,9 @@
 	    (compile-union enum-type arms)))
 	 (:optional 
 	  ;; (:optional form)
-	  ;; FIXME: there is a bug if the form is :boolean and the value is NIL because we can't tell the difference between it being provided (and false) and not provided. who uses optional booleans anyway? 
+	  ;; FIXME: there is a bug if the form is :boolean and the value is NIL because 
+	  ;; we can't tell the difference between it being provided (and false) 
+	  ;; and not provided. but who uses optional booleans anyway? 
 	  (let ((gobj (gensym "OBJ")))
 	    `(let ((,gobj ,obj-form))
 	       (cond
@@ -422,6 +458,8 @@
 	  (compile-alist (cdr forms)))
 	 (:list 
 	  (compile-list (cdr forms)))
+	 (:plist 
+	  (compile-plist (cdr forms)))
 	 (:array 
 	  ;; (:array form length)
 	  (destructuring-bind (form length) (cdr forms)
@@ -434,6 +472,19 @@
 		   ,(compile-writer form 
 				    stream-sym 
 				    `(aref ,gobj ,gi)))))))
+	 (:varray*
+	  ;; (:varray form &optional max-length)
+	  (destructuring-bind (form &optional max-length) (cdr forms)
+	    (alexandria:with-gensyms (gobj glen gi)
+	      `(let* ((,gobj ,obj-form)
+		      (,glen (length ,gobj)))
+		 ,@(when max-length
+		     `((when (> ,glen ,max-length)
+			 (error "Length ~S exceeds max length ~S" ,glen ,max-length))))
+		 (write-uint32 ,stream-sym ,glen)
+		 (dotimes (,gi ,glen)
+		   ,(compile-writer form stream-sym `(aref ,gobj ,gi)))
+		 nil))))
 	 (:varray
 	  ;; (:varray form &optional max-length)
 	  (destructuring-bind (form &optional max-length) (cdr forms)
@@ -447,7 +498,6 @@
 		 (dolist (,gi ,gobj)
 		   ,(compile-writer form stream-sym gi))
 		 nil)))))))))
-;;`(aref ,gobj ,gi))))))))))))
   
 ) ;; eval-when
 
@@ -468,7 +518,7 @@
 
 ;; -------------
 
-;; structgures 
+;; structures 
 
 (defmacro defxstruct (name-and-options options slots)
   (let ((name (if (symbolp name-and-options)
@@ -478,10 +528,10 @@
      ;; define the structure
      (defstruct ,name-and-options
        ,@(mapcar (lambda (slot)
-		   (destructuring-bind (slot-name slot-form &optional slot-init) slot
+		   (destructuring-bind (slot-name slot-form &rest slot-options) slot
 		     (cond
-		       (slot-init 
-			`(,slot-name ,slot-init))
+		       (slot-options
+			`(,slot-name ,@slot-options))
 		       ((enump slot-form)
 			`(,slot-name 0))
 		       ((symbolp slot-form)
@@ -560,6 +610,5 @@
 	   (eval-when (:compile-toplevel :load-toplevel :execute)
 	     (%defxtype ',name nil nil))
 	   (%defxtype ',name (function ,reader) (function ,writer)))))))
-
 
 
