@@ -57,6 +57,18 @@
   (list :name string :age 123))
 
 
+;; ------------------
+
+(defrpc call-varray* 4
+  (:varray :string)
+  (:varray* :string))
+
+(defhandler handle-varray* (strings 4)
+  (make-array (length strings) :initial-contents strings))
+
+;; ---------------------
+
+
 ;; the server 
 (defvar *server* nil)
 
