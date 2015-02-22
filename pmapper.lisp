@@ -10,13 +10,18 @@
   (:use #:cl #:frpc)
   (:export #:mapping
 	   #:make-mapping
+	   #:mapping-program
+	   #:mapping-version
 	   #:mapping-protocol
+	   #:mapping-port
+	   ;; the rpc functions
 	   #:call-null
 	   #:call-set
 	   #:call-unset
 	   #:call-get-port
 	   #:call-dump
 	   #:call-callit
+	   ;; underlying API
 	   #:add-mapping
 	   #:rem-mapping))
 
@@ -36,7 +41,7 @@
    (:udp 17)))
 
 (defxstruct mapping ()
-  ((prog :uint32)
+  ((program :uint32)
    (version :uint32)
    (protocol mapping-protocol :tcp)
    (port :uint32)))
@@ -67,7 +72,7 @@
 (defun find-mapping-by-program (program version &optional (protocol :tcp))
   "Lookup a mapping given its program/version and optionally communication protocol."
   (cdr (find-if (lambda (mapping)
-		  (and (= (mapping-prog mapping) program)
+		  (and (= (mapping-program mapping) program)
 		       (= (mapping-version mapping) version)
 		       (if protocol 
 			   (eq (mapping-protocol mapping) protocol)
@@ -127,7 +132,7 @@
   (%portmapper-get-port host mapping :port port))
 
 (defhandler %handle-get-port (mapping 3)
-  (let ((mapping (find-mapping-by-program (mapping-prog mapping)
+  (let ((mapping (find-mapping-by-program (mapping-program mapping)
 					  (mapping-version mapping)
 					  (mapping-protocol mapping))))
     (if mapping

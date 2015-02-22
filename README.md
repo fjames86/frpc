@@ -177,7 +177,19 @@ I have typed in some simple example programs, see e.g. examples/hello.lisp.
 Have a look at the portmappter, pmapper.lisp and also FRPC's sister project, 
 NEFARIOUS, an attempt at an NFS implementation.
 
-6. License
+6. Aims
+---------
+
+* Write a reasonably versatile/general purpose RPC lib
+* Both UDP and TCP servers
+* Multi-threading server
+* Singly-threaded server listening on multiple ports/protocols. We need this because many RPC systems
+require listening on a particular port, although with a portmapper (which MUST listen on 111)
+this is mitigated somewhat. However, since all RPC servers would be running from within
+the same Lisp image there is no actual need to listen on more than one port. All the 
+* UDP broadcast 
+
+7. License
 ------------
 
 Released under the terms of the MIT license.
