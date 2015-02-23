@@ -16,6 +16,7 @@
 	   #:mapping-protocol
 	   #:mapping-port
 	   ;; the rpc functions
+	   #:*pmap-port*
 	   #:call-null
 	   #:call-set
 	   #:call-unset
@@ -24,7 +25,8 @@
 	   #:call-callit
 	   ;; underlying API
 	   #:add-mapping
-	   #:rem-mapping))
+	   #:rem-mapping
+	   #:find-mapping))
 
 (in-package #:port-mapper)
 
@@ -47,6 +49,12 @@
    (protocol mapping-protocol :tcp)
    (port :uint32)))
 
+(defun mapping-eql (m1 m2)
+  (and (= (mapping-program m1) (mapping-program m2))
+       (= (mapping-version m1) (mapping-version m2))
+       (eq (mapping-protocol m1) (mapping-protocol m2))))
+;;       (= (mapping-port m1) (mapping-port m2))))
+
 ;; ----------------------------------
 
 ;; Port mapper:
@@ -55,32 +63,25 @@
 
 (defparameter *mappings* nil)
 
-(defun add-mapping (port mapping)
+(defun add-mapping (mapping)
   "Add a port mapping."
-  (let ((pair (assoc port *mappings*)))
-    (if pair
-	(setf (cdr pair) mapping)
-	(push (cons port mapping) *mappings*))))
+  (let ((m (find-mapping mapping)))
+    (if m
+	(setf (mapping-port m) (mapping-port mapping))
+	(push mapping *mappings*))))
 
-(defun rem-mapping (port)
+(defun rem-mapping (mapping)
   "Remove a port mapping."
-  (setf *mappings* (remove port *mappings* :key #'car)))
+  (setf *mappings* 
+	(remove-if (lambda (m)
+		     (mapping-eql m mapping))
+		   *mappings*)))
 
-(defun find-mapping-by-port (port)
-  "Lookup a mapping given its port."
-  (cdr (assoc port *mappings*)))
-
-(defun find-mapping-by-program (program version &optional (protocol :tcp))
-  "Lookup a mapping given its program/version and optionally communication protocol."
-  (cdr (find-if (lambda (mapping)
-		  (and (= (mapping-program mapping) program)
-		       (= (mapping-version mapping) version)
-		       (if protocol 
-			   (eq (mapping-protocol mapping) protocol)
-			   t)))
-		*mappings*
-		:key #'cdr)))
-		     
+(defun find-mapping (mapping)
+  (with-slots (program version protocol) mapping
+    (find-if (lambda (m)
+	       (mapping-eql m mapping))
+	     *mappings*)))
 
 ;; ----------------------
 
@@ -104,7 +105,7 @@
   (%portmapper-set host mapping :port port))
 
 (defhandler %handle-set (mapping 1)
-  (add-mapping (mapping-port mapping) mapping)
+  (add-mapping mapping)
   t)
 
 ;; -------------------
@@ -117,12 +118,10 @@
   (%portmapper-unset host mapping :port port))
 
 (defhandler %handle-unset (mapping 2)
-  (cond
-    ((find-mapping-by-port (mapping-port mapping))
-     (rem-mapping (mapping-port mapping))
-     t)
-    (t nil)))
-    
+  (when (find-mapping mapping)
+    (rem-mapping mapping)
+    t))
+
 ;; ----------------------
 
 ;; GET-PORT -- lookup a port mapping for a given program/version
@@ -133,11 +132,9 @@
   (%portmapper-get-port host mapping :port port))
 
 (defhandler %handle-get-port (mapping 3)
-  (let ((mapping (find-mapping-by-program (mapping-program mapping)
-					  (mapping-version mapping)
-					  (mapping-protocol mapping))))
-    (if mapping
-	(mapping-port mapping)
+  (let ((m (find-mapping mapping)))
+    (if m
+	(mapping-port m)
 	0)))
 
 ;; ------------------------
@@ -162,7 +159,7 @@
   (do ((mappings *mappings* (cdr mappings))
        (mlist nil))
       ((null mappings) mlist)
-    (let ((map (cdr (car mappings))))
+    (let ((map (car mappings)))
       (setf mlist 
 	    (make-mapping-list :map map :next mlist)))))
 
@@ -190,11 +187,13 @@ function available."
 (defhandler %handle-callit (args 5)
   (destructuring-bind (program version proc arg-buffer) args
     ;; find the handler and port mapping 
-    (let ((mapping (find-mapping-by-program program version))
+    (let ((mapping (find-mapping (make-mapping :program program
+					       :version version
+					       :protocol :udp)))
 	  (h (find-handler program version proc)))
       (cond
 	((or (not mapping) (not h))
-	 ;; error: no handler
+	 ;; error: no mapping or no handler
 	 (list 0 nil))
 	(t 
 	 ;; found the handler, run it
