@@ -1,9 +1,9 @@
 
 
-(defpackage #:hello
+(defpackage #:frpc.test.hello
   (:use #:cl #:frpc))
 
-(in-package #:hello)
+(in-package #:frpc.test.hello)
 
 ;; define the RPC interface 
 (use-rpc-program 1 1)
@@ -72,7 +72,7 @@
 
 (defun start ()
   (setf *server* (make-rpc-server))
-  (start-rpc-server *server* :port 8000))
+  (start-rpc-server *server* :tcp-ports '(8000)))
 
 (defun stop ()
   (stop-rpc-server *server*))

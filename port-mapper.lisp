@@ -6,8 +6,9 @@
 ;;; with local RPC programs. Can also be used as a proxy to directly 
 ;;; execute RPCs via the CALLIT procedure.
 
-(defpackage #:pmapper
+(defpackage #:port-mapper
   (:use #:cl #:frpc)
+  (:nicknames #:pmap)
   (:export #:mapping
 	   #:make-mapping
 	   #:mapping-program
@@ -25,7 +26,7 @@
 	   #:add-mapping
 	   #:rem-mapping))
 
-(in-package #:pmapper)
+(in-package #:port-mapper)
 
 (defparameter *pmap-port* 111)
 

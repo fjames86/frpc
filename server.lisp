@@ -152,65 +152,219 @@ the resulting bytes."
 
 ;; ------------- rpc server ----------
 
-(defstruct (rpc-server (:constructor %make-rpc-server))
-  thread programs exiting)
 
-(defun run-rpc-server (server port)
-  (let ((socket (usocket:socket-listen usocket:*wildcard-host* port 
-				       :element-type '(unsigned-byte 8))))
-    (unwind-protect 
-	 (flet ((maybe-accept ()
-		  ;; wait for a connection and accept, or timeout
-		  (when (usocket:wait-for-input socket :timeout 1 :ready-only t)
-		    (usocket:socket-accept socket))))
-	   (do ((conn (maybe-accept) (maybe-accept)))
-	       ((rpc-server-exiting server))	   
-	     (when conn
-	       ;; a connection has been accepted -- process it 
-	       (info "Accepted connection from ~A:~A" (usocket:get-peer-address conn) (usocket:get-peer-port conn))
-	       (handler-case 
-		   (loop 
-		      (let ((stream (usocket:socket-stream conn)))
-			(info "reading request")
-			(flexi-streams:with-input-from-sequence (input (read-fragmented-message stream))
-			  (info "successfully read request")
-			  (let ((buff (flexi-streams:with-output-to-sequence (output)
-					(handle-request input
-							output
-							(rpc-server-programs server)))))
-			    (info "writing response")
-			    ;; write the fragment header (with terminating bit set)
-			    (write-uint32 stream (logior #x80000000 (length buff)))
-			    ;; write the buffer itself
-			    (write-sequence buff stream)
-			    ;; flush output
-			    (force-output stream)))))
-		 (end-of-file (e)
-		   (declare (ignore e))
-		   (info "Connection closed"))
-		 (error (e)
-		   (info "Error: ~A" e)
-		   nil))
-	       (usocket:socket-close conn))))
-      (usocket:socket-close socket))))
-    
+(defun accept-rpc-connection (server socket)
+  ;; a connection has been accepted -- process it 
+  (let ((conn (usocket:socket-accept socket)))
+    (info "Accepted connection from ~A:~A" (usocket:get-peer-address conn) (usocket:get-peer-port conn))
+    (handler-case 
+	(loop 
+	   (let ((stream (usocket:socket-stream conn)))
+	     (info "reading request")
+	     (flexi-streams:with-input-from-sequence (input (read-fragmented-message stream))
+	       (info "successfully read request")
+	       (let ((buff (flexi-streams:with-output-to-sequence (output)
+			     (handle-request input
+					     output
+					     (rpc-server-programs server)))))
+		 (info "writing response")
+		 ;; write the fragment header (with terminating bit set)
+		 (write-uint32 stream (logior #x80000000 (length buff)))
+		 ;; write the buffer itself
+		 (write-sequence buff stream)
+		 ;; flush output
+		 (force-output stream)))))
+      (end-of-file (e)
+	(declare (ignore e))
+	(info "Connection closed"))
+      (error (e)
+	(info "Error: ~A" e)
+	nil))
+    (usocket:socket-close conn)))
+
+;; -------------------- udp rpc server -------------
+
+(defun enqueue-reply (server id reply)
+  "Enqueue a reply and signal to any waiting threads that there is a new 
+message to recieve. The reply should be an array of octets."
+  (bt:with-lock-held ((rpc-server-lock server))
+    (push (cons id reply) 
+	  (rpc-server-replies server))
+    (bt:condition-notify (rpc-server-condv server))))
+
+(defun %get-reply (server id dispose)
+  "Finds the message with ID, but leaves it in the queue. Removes from the queue if DISPOSE is T.
+You MUST hold the server lock when calling this function." 
+  (cond
+    (id 
+     (let ((reply (assoc id (rpc-server-replies server) :test #'=)))
+       (cond
+	 ((not reply) (values nil nil))
+	 (dispose (setf (rpc-server-replies server)
+			(remove reply (rpc-server-replies server)))
+		  (values (cdr reply) t))
+	 (t (values (cdr reply) t)))))
+    (dispose
+     (let ((reply (pop (rpc-server-replies server))))
+       (if reply
+	   (values (cdr reply) t)
+	   (values nil nil))))
+    (t 
+     (let ((reply (car (rpc-server-replies server))))
+       (if reply
+	   (values (cdr reply) t)
+	   (values nil nil))))))
+
+(defun wait-for-reply (server &optional id)
+  "Blocks until a reply for message ID is recieved."
+  (do ((res nil)
+       (done nil))
+      (done res)
+    (bt:with-lock-held ((rpc-server-lock server))
+      (multiple-value-bind (reply found) (%get-reply server id t)
+	(if found 
+	    (setf res reply
+		  done t)
+	    (bt:condition-wait (rpc-server-condv server) 
+			       (rpc-server-lock server)))))))
+
+;; FIXME: there must be a better way of doing this
+(defun %read-until-eof (stream)
+  "Read the rest of the stream."
+  (flexi-streams:with-output-to-sequence (output)
+    (do ((done nil))
+	(done)
+      (let ((byte (read-byte stream nil nil)))
+	(if byte
+	    (write-byte byte output)
+	    (setf done t))))))
+
+(defun process-udp-request (server input-stream &key program version proc id)
+  "Returns a packed buffer containing the response to send back to the caller."
+  (let ((h (find-handler program version proc)))
+    (cond
+      ((and (rpc-server-programs server)
+	    (not (member program (rpc-server-programs server))))
+       ;; not in allowed programs list
+       (info "Program ~A not in program list" program)
+       (pack #'%write-rpc-msg 
+	     (make-rpc-response :accept :prog-mismatch
+			      :id id)))
+      ((not h)
+       ;; no handler
+       (info "No handler registered for ~A:~A:~A" program version proc)
+       (pack #'%write-rpc-msg
+	     (make-rpc-response :accept :prog-mismatch
+				:id id)))
+      (t
+       (destructuring-bind (reader writer handler) h
+	 ;; read the argument
+	 (let ((arg (read-xtype reader input-stream)))
+	   ;; run the handler
+	   (let ((res (funcall handler arg)))
+	     ;; package the reply and send
+	     (flexi-streams:with-output-to-sequence (output)
+	       (%write-rpc-msg output
+			       (make-rpc-response :accept :success
+						  :id id))
+	       (write-xtype writer output res)))))))))
+
+(defun handle-udp-request (server buffer &key remote-host reply-port)
+  (info "Buffer ~S" buffer)
+  (flexi-streams:with-input-from-sequence (input buffer)
+    (let ((msg (%read-rpc-msg input)))
+      (ecase (xunion-tag (rpc-msg-body msg))
+	(:reply
+	 ;; is a reply -- read the rest of the stream and enqueue 
+	 ;; to the replies list
+	 (info "Recieved reply from ~A:~A" remote-host reply-port)
+	 (enqueue-reply server (rpc-msg-xid msg) (%read-until-eof input)))
+	(:call 
+	 ;; is a call -- lookup the proc handler and send a reply 
+	 (info "Recived call from ~A:~A" remote-host reply-port)
+	 (let ((call (xunion-val (rpc-msg-body msg))))
+	   (let ((return-buffer (process-udp-request server input
+						 :program (call-body-prog call) 
+						 :version (call-body-vers call) 
+						 :proc (call-body-proc call)
+						 :id (rpc-msg-xid msg))))
+	     (let ((socket (usocket:socket-connect remote-host reply-port
+						   :protocol :datagram
+						   :element-type '(unsigned-byte 8))))
+	       (info "Sending reply")
+	       (usocket:socket-send socket return-buffer (length return-buffer))
+	       (usocket:socket-close socket)))))))))
+
+
+(defun accept-udp-rpc-request (server socket reply-port)
+  (multiple-value-bind (buffer length remote-host remote-port) (usocket:socket-receive socket nil 65507)	    
+    (when buffer 
+      (info "Recieved msg from ~A:~A" remote-host remote-port)
+      (handler-case 
+	  (handle-udp-request server (subseq buffer 0 length)
+			      :remote-host remote-host
+			      :reply-port reply-port)
+	(error (e)
+	  (info "Error handling: ~S" e))))))
+
+
+
+;; --------------------------------------
+
+(defstruct (rpc-server (:constructor %make-rpc-server))
+  thread 
+  programs 
+  exiting
+  (lock (bt:make-lock))
+  (condv (bt:make-condition-variable))
+  replies)
+
 (defun make-rpc-server (&optional programs)
   (%make-rpc-server :programs programs))
 
+(defun run-rpc-server (server tcp-ports udp-ports)
+  (let ((tcp-sockets (mapcar (lambda (port)
+			       (usocket:socket-listen usocket:*wildcard-host* port
+						      :reuse-address t
+						      :element-type '(unsigned-byte 8)))
+			     tcp-ports))
+	(udp-sockets (mapcar (lambda (port)
+			       (usocket:socket-connect nil nil 
+						       :protocol :datagram
+						       :element-type '(unsigned-byte 8)
+						       :local-port port))
+			     udp-ports)))
+    (flet ((find-udp-port (udp-sock)
+	     (do ((uports udp-ports (cdr uports))
+		  (usocks udp-sockets (cdr usocks)))
+		 ((null uports))
+	       (when (eq (car usocks) udp-sock)
+		 (return-from find-udp-port (car uports))))))
+      (unwind-protect 
+	   (do ()
+	       ((rpc-server-exiting server))
+	     (let ((ready (usocket:wait-for-input (append tcp-sockets udp-sockets) :ready-only t :timeout 1)))
+	       (dolist (socket ready)
+		 (etypecase socket
+		   (usocket:stream-server-usocket
+		    ;; a tcp socket to accept
+		    (accept-rpc-connection server socket))
+		   (usocket:datagram-usocket
+		    ;; a udp socket is ready to read from
+		    (accept-udp-rpc-request server socket (find-udp-port socket)))))))
+	(dolist (tcp tcp-sockets)
+	  (usocket:socket-close tcp))
+	(dolist (udp udp-sockets)
+	  (usocket:socket-close udp))))))
 
-
-(defgeneric start-rpc-server (server &key port))
-
-(defmethod start-rpc-server ((server rpc-server) &key (port *rpc-port*))
+(defun start-rpc-server (server &key tcp-ports udp-ports)
   (setf (rpc-server-thread server)
 	(bt:make-thread (lambda ()
-			  (run-rpc-server server port))
-			:name (format nil "rpc-server-thread port ~A" port)))
+			  (run-rpc-server server tcp-ports udp-ports))
+			:name "rpc-server-thread"))
   server)
 
-(defgeneric stop-rpc-server (server))
-
-(defmethod stop-rpc-server ((server rpc-server))
+(defun stop-rpc-server (server)
   (setf (rpc-server-exiting server) t)
   (bt:join-thread (rpc-server-thread server))
   nil)
@@ -248,3 +402,4 @@ can be useful to test handler functions in isolation."
 ;; e.g. 
 ;; (with-local-server (:string :string :program 1 :proc 3) "frank")
 
+;; --------------------------------------------

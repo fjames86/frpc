@@ -55,8 +55,8 @@
 
 
 (defun start ()
-  (setf *server* (make-udp-rpc-server))
-  (start-rpc-server *server* :port 8000))
+  (setf *server* (make-rpc-server))
+  (start-rpc-server *server* :udp-ports '(8000)))
 
 (defun stop ()
   (stop-rpc-server *server*))
