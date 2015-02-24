@@ -20,8 +20,7 @@
    (:prog-unavail 1)
    (:prog-mismatch 2)
    (:proc-unavail 3)
-   (:garbage-args 4)
-   (:failed 5))) ;; FJ
+   (:garbage-args 4)))
 
 (defxenum reject-stat
   ((:rpc-mismatch 0)

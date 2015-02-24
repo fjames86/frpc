@@ -150,6 +150,7 @@ in the mapping structure. if MAP-PORT is provided, will also match this port."
 (defrpc %portmapper-dump 4 :void (:optional mapping-list))
     
 (defun call-dump (&key (host *rpc-host*) (port *pmap-port*) protocol)
+  "FIXME: this is broken with UDP."
   (do ((mlist (%portmapper-dump host nil :port port :protocol protocol) 
 	      (mapping-list-next mlist))
        (ms nil))
@@ -201,8 +202,10 @@ function available."
 	(t 
 	 ;; found the handler, run it
 	 (destructuring-bind (reader writer handler) h
-	   (let ((res (funcall handler (unpack reader arg-buffer))))
-	     (list (mapping-port mapping)
-		   (pack writer res)))))))))
+	   (if handler 
+	       (let ((res (funcall handler (unpack reader arg-buffer))))
+		 (list (mapping-port mapping)
+		       (pack writer res)))
+	       (list 0 nil))))))))
 
 

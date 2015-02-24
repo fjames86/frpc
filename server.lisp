@@ -119,11 +119,11 @@ TCP requests only."
 		(%write-rpc-msg (or output stream)
 				(make-rpc-response :accept :prog-mismatch
 						   :id (rpc-msg-xid msg))))
-	       ((not h)
+	       ((or (not h) (null (third h)))
 		;; no handler registered
 		(log:warn "No handler registered")
 		(%write-rpc-msg (or output stream)
-				(make-rpc-response :accept :prog-mismatch
+				(make-rpc-response :accept :proc-unavail
 						   :id (rpc-msg-xid msg))))
 	       (t 
 		(destructuring-bind (arg-type res-type handler) h
@@ -190,7 +190,7 @@ until the client terminates or some other error occurs."
 	(declare (ignore e))
 	(log:debug "Connection closed"))
       (error (e)
-	(log:error "Error: ~A" e)
+	(log:error "Error processing: ~A" e)
 	nil))
     (usocket:socket-close conn)))
 
@@ -263,11 +263,11 @@ matching ID is resived, otherwise returns the first reply."
        (pack #'%write-rpc-msg 
 	     (make-rpc-response :accept :prog-mismatch
 			      :id id)))
-      ((not h)
+      ((or (not h) (null (third h)))
        ;; no handler
        (log:warn "No handler registered for ~A:~A:~A" program version proc)
        (pack #'%write-rpc-msg
-	     (make-rpc-response :accept :prog-mismatch
+	     (make-rpc-response :accept :proc-unavail
 				:id id)))
       (t
        (destructuring-bind (reader writer handler) h
@@ -307,7 +307,6 @@ matching ID is resived, otherwise returns the first reply."
 	       (log:debug "Sending reply")
 	       (usocket:socket-send socket return-buffer (length return-buffer))
 	       (usocket:socket-close socket)))))))))
-
 
 (defun accept-udp-rpc-request (server socket reply-port)
   (multiple-value-bind (buffer length remote-host remote-port) (usocket:socket-receive socket nil 65507)	    
@@ -353,7 +352,7 @@ on the TCP-PORTS list and UDP sockets listening on the UDP-PORTS list."
 						       :local-port port))
 			     udp-ports)))
     (flet ((find-udp-port (udp-sock)
-	     "A little helper function to determine the port we should send UDP replies to."
+	     "Determine the port we should send UDP replies to."
 	     (do ((uports udp-ports (cdr uports))
 		  (usocks udp-sockets (cdr usocks)))
 		 ((null uports))
