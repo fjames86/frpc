@@ -58,4 +58,28 @@
 	   #:wait-for-reply	   
 	   ))
 
-   
+;; package for the port mapper program. we define it here so that we have access to the 
+;; external symbols in frpc itself. this is needed in server.lisp to add the port mappings
+;; when starting a server   
+(defpackage #:port-mapper
+  (:use #:cl #:frpc)
+  (:nicknames #:pmap)
+  (:export #:mapping
+	   #:make-mapping
+	   #:mapping-program
+	   #:mapping-version
+	   #:mapping-protocol
+	   #:mapping-port
+	   ;; the rpc functions
+	   #:*pmap-port*
+	   #:call-null
+	   #:call-set
+	   #:call-unset
+	   #:call-get-port
+	   #:call-dump
+	   #:call-callit
+	   ;; underlying API
+	   #:add-mapping
+	   #:add-all-mappings
+	   #:rem-mapping
+	   #:find-mapping))

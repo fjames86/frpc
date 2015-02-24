@@ -88,21 +88,20 @@ the bytes read."
 (defun handle-request (stream &optional output allowed-programs)
   "Read an RPC request from the STREAM and write the output to the OUTPUT stream (or STREAM if not provided). This is for
 TCP requests only."
-;;  (info "Handling request")
   (handler-case 
       (let ((msg (%read-rpc-msg stream)))
-	(info "Recieved message ID ~A" (rpc-msg-xid msg))
+	(log:debug "Recieved message ID ~A" (rpc-msg-xid msg))
 	;; validate the message
 	(cond
 	  ((not (eq (xunion-tag (rpc-msg-body msg)) :call))
 	   ;; not a call
-	   (info "Bad request: not a call")
+	   (log:info "Bad request: not a call")
 	   (%write-rpc-msg (or output stream)
 			   (make-rpc-response :accept :garbage-args
 					      :id (rpc-msg-xid msg))))
 	  ((not (= (call-body-rpcvers (xunion-val (rpc-msg-body msg))) 2))
 	   ;; rpc version != 2
-	   (info "RPC version not = 2")
+	   (log:info "RPC version not = 2")
 	   (%write-rpc-msg (or output stream)
 			   (make-rpc-response :reject :rpc-mismatch
 					      :id (rpc-msg-xid msg))))
@@ -116,13 +115,13 @@ TCP requests only."
 		     (not (member (call-body-prog call) 
 				  allowed-programs)))
 		;; program not in the list of permissible programs
-		(info "Program ~A not in program list" (call-body-prog call))
+		(log:info "Program ~A not in program list" (call-body-prog call))
 		(%write-rpc-msg (or output stream)
 				(make-rpc-response :accept :prog-mismatch
 						   :id (rpc-msg-xid msg))))
 	       ((not h)
 		;; no handler registered
-		(info "No handler registered")
+		(log:warn "No handler registered")
 		(%write-rpc-msg (or output stream)
 				(make-rpc-response :accept :prog-mismatch
 						   :id (rpc-msg-xid msg))))
@@ -130,22 +129,22 @@ TCP requests only."
 		(destructuring-bind (arg-type res-type handler) h
 		  (handler-case 
 		      (let ((arg (read-xtype arg-type stream)))
-			(info "Passing arg to handler")
+			(log:debug "Passing arg to handler")
 			(let ((res (funcall handler arg)))
-			  (info "Call successful")
+			  (log:debug "Call successful")
 			  (%write-rpc-msg (or output stream)
 					  (make-rpc-response :accept :success
 							     :id (rpc-msg-xid msg)))
 			  (write-xtype res-type (or output stream) res)))
 		    (undefined-function (e)
 		      ;; no such function -- probably means we didn't register a handler
-		      (info "No handler: ~S" e)
+		      (log:warn "No handler: ~S" e)
 		      (%write-rpc-msg (or output stream)
 				      (make-rpc-response :accept :proc-unavail
 							 :id (rpc-msg-xid msg))))
 		    (error (e)
 		      ;; FIXME: should we just terminate the connection at this point?
-		      (info "Error handling: ~S" e) 
+		      (log:error "Error handling: ~S" e) 
 		      (%write-rpc-msg (or output stream)
 				      (make-rpc-response :accept :garbage-args
 							 :id (rpc-msg-xid msg))))))))))))
@@ -154,12 +153,12 @@ TCP requests only."
       ;; rethrow the error so the connection handler knows the connection has been closed
       (error e))
     (error (e)
-      (info "Error reading msg: ~A" e)
+      (log:error "Error reading msg: ~A" e)
       (%write-rpc-msg (or output stream)
 		      (make-rpc-response :accept :garbage-args))))
-  (info "Flushing output")
+  (log:debug "Flushing output")
   (force-output (or output stream))
-  (info "Finished request"))
+  (log:debug "Finished request"))
 
 ;; ------------- rpc server ----------
 
@@ -169,18 +168,18 @@ TCP requests only."
 until the client terminates or some other error occurs."
   ;; a connection has been accepted -- process it 
   (let ((conn (usocket:socket-accept socket)))
-    (info "Accepted connection from ~A:~A" (usocket:get-peer-address conn) (usocket:get-peer-port conn))
+    (log:info "Accepted connection from ~A:~A" (usocket:get-peer-address conn) (usocket:get-peer-port conn))
     (handler-case 
 	(loop 
 	   (let ((stream (usocket:socket-stream conn)))
-	     (info "reading request")
+	     (log:debug "reading request")
 	     (flexi-streams:with-input-from-sequence (input (read-fragmented-message stream))
-	       (info "successfully read request")
+	       (log:debug "successfully read request")
 	       (let ((buff (flexi-streams:with-output-to-sequence (output)
 			     (handle-request input
 					     output
 					     (rpc-server-programs server)))))
-		 (info "writing response")
+		 (log:debug "writing response")
 		 ;; write the fragment header (with terminating bit set)
 		 (write-uint32 stream (logior #x80000000 (length buff)))
 		 ;; write the buffer itself
@@ -189,9 +188,9 @@ until the client terminates or some other error occurs."
 		 (force-output stream)))))
       (end-of-file (e)
 	(declare (ignore e))
-	(info "Connection closed"))
+	(log:debug "Connection closed"))
       (error (e)
-	(info "Error: ~A" e)
+	(log:error "Error: ~A" e)
 	nil))
     (usocket:socket-close conn)))
 
@@ -260,13 +259,13 @@ matching ID is resived, otherwise returns the first reply."
       ((and (rpc-server-programs server)
 	    (not (member program (rpc-server-programs server))))
        ;; not in allowed programs list
-       (info "Program ~A not in program list" program)
+       (log:warn "Program ~A not in program list" program)
        (pack #'%write-rpc-msg 
 	     (make-rpc-response :accept :prog-mismatch
 			      :id id)))
       ((not h)
        ;; no handler
-       (info "No handler registered for ~A:~A:~A" program version proc)
+       (log:warn "No handler registered for ~A:~A:~A" program version proc)
        (pack #'%write-rpc-msg
 	     (make-rpc-response :accept :prog-mismatch
 				:id id)))
@@ -284,18 +283,18 @@ matching ID is resived, otherwise returns the first reply."
 	       (write-xtype writer output res)))))))))
 
 (defun handle-udp-request (server buffer &key remote-host reply-port)
-  (info "Buffer ~S" buffer)
+  (log:debug "Buffer ~S" buffer)
   (flexi-streams:with-input-from-sequence (input buffer)
     (let ((msg (%read-rpc-msg input)))
       (ecase (xunion-tag (rpc-msg-body msg))
 	(:reply
 	 ;; is a reply -- read the rest of the stream and enqueue 
 	 ;; to the replies list
-	 (info "Recieved reply from ~A:~A" remote-host reply-port)
+	 (log:info "Recieved reply from ~A:~A" remote-host reply-port)
 	 (enqueue-reply server (rpc-msg-xid msg) (%read-until-eof input)))
 	(:call 
 	 ;; is a call -- lookup the proc handler and send a reply 
-	 (info "Recived call from ~A:~A" remote-host reply-port)
+	 (log:info "Recived call from ~A:~A" remote-host reply-port)
 	 (let ((call (xunion-val (rpc-msg-body msg))))
 	   (let ((return-buffer (process-udp-request server input
 						 :program (call-body-prog call) 
@@ -305,7 +304,7 @@ matching ID is resived, otherwise returns the first reply."
 	     (let ((socket (usocket:socket-connect remote-host reply-port
 						   :protocol :datagram
 						   :element-type '(unsigned-byte 8))))
-	       (info "Sending reply")
+	       (log:debug "Sending reply")
 	       (usocket:socket-send socket return-buffer (length return-buffer))
 	       (usocket:socket-close socket)))))))))
 
@@ -313,13 +312,13 @@ matching ID is resived, otherwise returns the first reply."
 (defun accept-udp-rpc-request (server socket reply-port)
   (multiple-value-bind (buffer length remote-host remote-port) (usocket:socket-receive socket nil 65507)	    
     (when buffer 
-      (info "Recieved msg from ~A:~A" remote-host remote-port)
+      (log:info "Recieved msg from ~A:~A" remote-host remote-port)
       (handler-case 
 	  (handle-udp-request server (subseq buffer 0 length)
 			      :remote-host remote-host
 			      :reply-port reply-port)
 	(error (e)
-	  (info "Error handling: ~S" e))))))
+	  (log:error "Error handling: ~S" e))))))
 
 
 
@@ -371,6 +370,10 @@ on the TCP-PORTS list and UDP sockets listening on the UDP-PORTS list."
 		    (accept-rpc-connection server socket))
 		   (usocket:datagram-usocket
 		    ;; a udp socket is ready to read from
+		    ;; FIXME: we always reply back on the same port we're listening on
+		    ;; this probably isn't the right thing to do
+		    ;; but replying back to the port we recieved the request from 
+		    ;; doesn't seem right either.
 		    (accept-udp-rpc-request server socket (find-udp-port socket)))))))
 	;; close the server sockets
 	(dolist (tcp tcp-sockets)
@@ -378,9 +381,12 @@ on the TCP-PORTS list and UDP sockets listening on the UDP-PORTS list."
 	(dolist (udp udp-sockets)
 	  (usocket:socket-close udp))))))
 
-(defun start-rpc-server (server &key tcp-ports udp-ports)
+(defun start-rpc-server (server &key tcp-ports udp-ports (add-port-mappings t))
   "Start the RPC server in a new thread. The server will listen for requests
 on the TCP and UDP ports specified."
+  ;; add all the port mappings
+  (when add-port-mappings
+    (port-mapper:add-all-mappings tcp-ports udp-ports))
   (setf (rpc-server-thread server)
 	(bt:make-thread (lambda ()
 			  (run-rpc-server server tcp-ports udp-ports))

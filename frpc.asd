@@ -10,10 +10,9 @@
    (:file "xdr" :depends-on ("package"))
    (:file "rpc" :depends-on ("xdr"))
    (:file "errors" :depends-on ("rpc"))
-   (:file "log" :depends-on ("package"))
-   (:file "server" :depends-on ("errors" "log"))
+   (:file "server" :depends-on ("errors"))
    (:file "client" :depends-on ("server"))
-   (:file "port-mapper" :depends-on ("server")))
+   (:file "port-mapper" :depends-on ("client")))
   :depends-on (:alexandria :nibbles :flexi-streams 
 	       :babel :usocket :bordeaux-threads
 	       :log4cl))
