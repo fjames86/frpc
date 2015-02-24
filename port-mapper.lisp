@@ -25,6 +25,7 @@
 	   #:call-callit
 	   ;; underlying API
 	   #:add-mapping
+	   #:add-all-mappings
 	   #:rem-mapping
 	   #:find-mapping))
 
@@ -65,10 +66,9 @@
 
 (defun add-mapping (mapping)
   "Add a port mapping."
-  (let ((m (find-mapping mapping)))
-    (if m
-	(setf (mapping-port m) (mapping-port mapping))
-	(push mapping *mappings*))))
+  (let ((m (find-mapping mapping (mapping-port mapping))))
+    (unless m
+      (push mapping *mappings*))))
 
 (defun rem-mapping (mapping)
   "Remove a port mapping."
@@ -77,11 +77,31 @@
 		     (mapping-eql m mapping))
 		   *mappings*)))
 
-(defun find-mapping (mapping)
-  (with-slots (program version protocol) mapping
+(defun find-mapping (mapping &optional map-port)
+  (with-slots (program version protocol port) mapping
     (find-if (lambda (m)
-	       (mapping-eql m mapping))
+	       (and (mapping-eql m mapping)
+		    (if map-port
+			(= map-port port)
+			t)))
 	     *mappings*)))
+
+(defun add-all-mappings (tcp-ports udp-ports)
+  "Add mappings for all defined RPCs to the TCP and UDP ports specified."
+  (dolist (ppair frpc::*handlers*)
+    (destructuring-bind (program . versions) ppair
+      (dolist (vpair versions)
+	(let ((version (car vpair)))
+	  (dolist (port tcp-ports)
+	    (add-mapping (make-mapping :program program
+				       :version version
+				       :port port)))
+	  (dolist (port udp-ports)
+	    (add-mapping (make-mapping :program program
+				       :version version
+				       :protocol :udp
+				       :port port)))))))
+  nil)
 
 ;; ----------------------
 

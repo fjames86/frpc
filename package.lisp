@@ -31,7 +31,6 @@
 	   ;; local type definitions
 	   #:with-reader
 	   #:with-writer
-;;	   #:with-reader/writer
 
 	   ;; serializing to/from buffer 
 	   #:pack
@@ -56,7 +55,6 @@
 	   #:make-rpc-server
 	   #:start-rpc-server
 	   #:stop-rpc-server
-	   #:make-udp-rpc-server
 	   #:wait-for-reply	   
 	   ))
 

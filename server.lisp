@@ -8,7 +8,8 @@
 
 ;; stores an assoc list for each program id
 ;; each program id stores an alist of version ids
-;; each version id stores an aslist of handlers
+;; each version id stores an aslist of handler lists
+;; a handler list is (ARG-READER RES-WRITER HANDLER)
 (defparameter *handlers* nil)
 
 (defun %defhandler (program version proc arg-type res-type handler)
@@ -31,6 +32,7 @@
   nil)
 
 (defun find-handler (program &optional version proc)
+  "Look up the handler(s) for the given PROGRAM, VERSION and PROC IDs."
   (let ((p (assoc program *handlers*)))
     (if (and p version)
 	(let ((v (assoc version (cdr p))))
@@ -40,8 +42,16 @@
 	(cdr p))))
 				     
 (defmacro defhandler (name (var proc) &body body)
-  "Define a server handler for the program specified. You MUST have defined the RPC signature with a
-previous call to DEFRPC. This is needed so the system knows the argument/result types." 
+  "Define a server handler for the procedure specified. You MUST have defined the RPC signature with a
+previous call to DEFRPC. This is needed so the system knows the argument/result types.
+
+A function named NAME will be defined and will accept a single argument named VAR, which will be bound
+to a value of type specified by the ARG-TYPE in the partner DEFRPC form. The function should return 
+a value of type specified in the RESULT-TYPE of the DEFRPC.
+
+The BODY should NEVER signal any errors, any incorrect behaviour (such as bad arg values etc) 
+should be returned to the sender in a way specified by the RPC program itself, typically 
+with enum status return values." 
   (alexandria:with-gensyms (gprogram gversion gproc gh gha garg-type gres-type)
     `(let* ((,gprogram ,*rpc-program*)
 	    (,gversion ,*rpc-version*)
@@ -62,7 +72,7 @@ previous call to DEFRPC. This is needed so the system knows the argument/result 
 
 (defun read-fragmented-message (stream)
   "Read a sequence of message fragements until the terminal bit is set. Returns a sequence containing 
-the resulting bytes."
+the bytes read."
   (flexi-streams:with-output-to-sequence (output)
     (do ((done nil))
 	(done)
@@ -76,7 +86,8 @@ the resulting bytes."
 	  (write-sequence buff output))))))
 
 (defun handle-request (stream &optional output allowed-programs)
-  "Read an RPC request from the STREAM and write the output to the OUTPUT stream (or STREAM if not provided)."
+  "Read an RPC request from the STREAM and write the output to the OUTPUT stream (or STREAM if not provided). This is for
+TCP requests only."
 ;;  (info "Handling request")
   (handler-case 
       (let ((msg (%read-rpc-msg stream)))
@@ -154,6 +165,8 @@ the resulting bytes."
 
 
 (defun accept-rpc-connection (server socket)
+  "Accept a TCP connection and process the request(s). Will keep processing requests from the connection
+until the client terminates or some other error occurs."
   ;; a connection has been accepted -- process it 
   (let ((conn (usocket:socket-accept socket)))
     (info "Accepted connection from ~A:~A" (usocket:get-peer-address conn) (usocket:get-peer-port conn))
@@ -192,7 +205,7 @@ message to recieve. The reply should be an array of octets."
 	  (rpc-server-replies server))
     (bt:condition-notify (rpc-server-condv server))))
 
-(defun %get-reply (server id dispose)
+(defun get-reply (server id dispose)
   "Finds the message with ID, but leaves it in the queue. Removes from the queue if DISPOSE is T.
 You MUST hold the server lock when calling this function." 
   (cond
@@ -216,12 +229,13 @@ You MUST hold the server lock when calling this function."
 	   (values nil nil))))))
 
 (defun wait-for-reply (server &optional id)
-  "Blocks until a reply for message ID is recieved."
+  "Blocks until a reply is recieved. If ID is supplied, will block until a message for a 
+matching ID is resived, otherwise returns the first reply."
   (do ((res nil)
        (done nil))
       (done res)
     (bt:with-lock-held ((rpc-server-lock server))
-      (multiple-value-bind (reply found) (%get-reply server id t)
+      (multiple-value-bind (reply found) (get-reply server id t)
 	(if found 
 	    (setf res reply
 		  done t)
@@ -320,9 +334,14 @@ You MUST hold the server lock when calling this function."
   replies)
 
 (defun make-rpc-server (&optional programs)
+  "Make an RPC server instance. PROGRAMS should be a list of program numbers 
+to be accepted by the server, all RPC requests for programs not in this list will
+be rejected. If not supplied all program requests are accepted."
   (%make-rpc-server :programs programs))
 
 (defun run-rpc-server (server tcp-ports udp-ports)
+  "Run the RPC server until the SERVER-EXITING flag is set. Will open TCP sockets listening
+on the TCP-PORTS list and UDP sockets listening on the UDP-PORTS list."
   (let ((tcp-sockets (mapcar (lambda (port)
 			       (usocket:socket-listen usocket:*wildcard-host* port
 						      :reuse-address t
@@ -335,6 +354,7 @@ You MUST hold the server lock when calling this function."
 						       :local-port port))
 			     udp-ports)))
     (flet ((find-udp-port (udp-sock)
+	     "A little helper function to determine the port we should send UDP replies to."
 	     (do ((uports udp-ports (cdr uports))
 		  (usocks udp-sockets (cdr usocks)))
 		 ((null uports))
@@ -352,12 +372,15 @@ You MUST hold the server lock when calling this function."
 		   (usocket:datagram-usocket
 		    ;; a udp socket is ready to read from
 		    (accept-udp-rpc-request server socket (find-udp-port socket)))))))
+	;; close the server sockets
 	(dolist (tcp tcp-sockets)
 	  (usocket:socket-close tcp))
 	(dolist (udp udp-sockets)
 	  (usocket:socket-close udp))))))
 
 (defun start-rpc-server (server &key tcp-ports udp-ports)
+  "Start the RPC server in a new thread. The server will listen for requests
+on the TCP and UDP ports specified."
   (setf (rpc-server-thread server)
 	(bt:make-thread (lambda ()
 			  (run-rpc-server server tcp-ports udp-ports))
@@ -365,6 +388,7 @@ You MUST hold the server lock when calling this function."
   server)
 
 (defun stop-rpc-server (server)
+  "Stop the RPC server and wait until its thread exits."
   (setf (rpc-server-exiting server) t)
   (bt:join-thread (rpc-server-thread server))
   nil)
