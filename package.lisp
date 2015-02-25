@@ -55,7 +55,6 @@
 	   #:make-rpc-server
 	   #:start-rpc-server
 	   #:stop-rpc-server
-	   #:wait-for-reply	   
 	   ))
 
 ;; package for the port mapper program. we define it here so that we have access to the 

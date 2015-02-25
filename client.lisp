@@ -92,14 +92,43 @@
       ;; read the response (throws error if failed)
       (nth-value 1 (read-response input result-type)))))
 
+(defun call-rpc-udp (host arg-type arg result-type 
+		     &key port program version proc auth verf request-id timeout)
+  (let ((socket (usocket:socket-connect host port
+					:protocol :datagram
+					:element-type '(unsigned-byte 8))))
+    (unwind-protect 
+	 (progn 
+	   (let ((buffer 
+		  (flexi-streams:with-output-to-sequence (stream)
+		    (write-request stream 
+				   (make-rpc-request program proc 
+						     :version version
+						     :auth auth
+						     :verf verf
+						     :id request-id)
+				   arg-type
+				   arg))))
+	     (log:debug "Sending to ~A:~A" host port)
+	     (usocket:socket-send socket buffer (length buffer)))
+	   ;; now wait for a 	   
+	   (log:debug "Waiting for reply")
+	   (if (usocket:wait-for-input socket :timeout timeout :ready-only t)
+	       (multiple-value-bind (buffer count remote-host remote-port) (usocket:socket-receive socket nil 65507)
+		 (log:debug "Received response from ~A:~A" remote-host remote-port)
+		 (flexi-streams:with-input-from-sequence (input (subseq buffer 0 count))
+		   (let ((msg (%read-rpc-msg input)))
+		     (log:debug "MSG ID ~A" (rpc-msg-xid msg))
+		     ;; FIXME: shouild really check the reply's id
+		     (read-xtype result-type input))))
+	       (error "Request timed out")))
+      (usocket:socket-close socket))))
+
 (defun call-rpc (host arg-type arg result-type 
 		 &key (port *rpc-port*) (program 0) (version 0) (proc 0) 
-		   auth verf request-id protocol)
+		   auth verf request-id protocol (timeout 1))
   "Establish a connection and execute an RPC to a remote machine. By default a TCP connection
-is established and this function will block until a reply is received.
-
-If PROTOCOL is :UDP, the RPC will be sent via UDP and this function returns immediately.
-So it will not wait for a response. See the WAIT-FOR-REPLY and GET-REPLY functions to get reply messages."
+is established and this function will block until a reply is received."
   (ecase protocol
     ((:tcp nil)
      (with-rpc-connection (conn host port)
@@ -111,30 +140,15 @@ So it will not wait for a response. See the WAIT-FOR-REPLY and GET-REPLY functio
 			:auth auth
 			:verf verf)))
     (:udp
-     ;; we have a little problem here... 
-     ;; we can send the udp request, but we don't know whether to 
-     ;; wait for the reply or not. in any case, we'd need access
-     ;; to the local udp rpc-server instance in order to get the reply.
-     ;; therefore any code which wishes to get the reply 
-     ;; needs to be external to this function. that's a little bit annoying 
-     ;; for users though, because it means the result-type is ignored here
-     ;; and they need to provide it elsewhere. I don't see a simple alternative
-     ;; yet.
-     (let ((socket (usocket:socket-connect host port
-					   :protocol :datagram
-					   :element-type '(unsigned-byte 8))))
-       (let ((buffer 
-	      (flexi-streams:with-output-to-sequence (stream)
-		(write-request stream 
-			       (make-rpc-request program proc 
-						 :version version
-						 :auth auth
-						 :verf verf
-						 :id request-id)
-			       arg-type
-			       arg))))
-	 (usocket:socket-send socket buffer (length buffer)))
-       (usocket:socket-close socket)))))
+     (call-rpc-udp host arg-type arg result-type
+		   :port port
+		   :request-id request-id
+		   :program program
+		   :version version
+		   :proc proc
+		   :auth auth
+		   :verf verf
+		   :timeout (or timeout 1)))))
 			    
 (defmacro defrpc (name proc arg-type result-type)
   "Declare an RPC interface and define a calling function. This MUST be defined before a partner DEFHANDLER form.
@@ -150,7 +164,7 @@ ARG-TYPE and RESULT-TYPE should be XDR type specification forms."
 	   (,gproc ,proc))
        
        ;; define a function to call it
-       (defun ,name (host arg &key (port ,*rpc-port*) auth verf request-id protocol)
+       (defun ,name (host arg &key (port ,*rpc-port*) auth verf request-id protocol timeout)
 	 (with-writer (,gwriter ,arg-type)
 	   (with-reader (,greader ,result-type)
 	     (call-rpc host #',gwriter arg #',greader
@@ -161,7 +175,8 @@ ARG-TYPE and RESULT-TYPE should be XDR type specification forms."
 		       :auth auth
 		       :verf verf
 		       :request-id request-id
-		       :protocol protocol))))
+		       :protocol protocol
+		       :timeout timeout))))
 
        ;; define a server handler
        (with-reader (,greader ,arg-type)

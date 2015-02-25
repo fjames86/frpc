@@ -24,9 +24,6 @@
 
 ;; -----------------------------
 
-(pmap:add-mapping *port* (pmap:make-mapping :program 100012 :version 3 :port *port*))
-(pmap:add-mapping *port* (pmap:make-mapping :program 100012 :version 3 :protocol :udp :port *port*))
-
 (defvar *server* (make-rpc-server))
 
 (defun start ()

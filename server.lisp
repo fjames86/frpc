@@ -196,51 +196,6 @@ until the client terminates or some other error occurs."
 
 ;; -------------------- udp rpc server -------------
 
-(defun enqueue-reply (server id reply)
-  "Enqueue a reply and signal to any waiting threads that there is a new 
-message to recieve. The reply should be an array of octets."
-  (bt:with-lock-held ((rpc-server-lock server))
-    (push (cons id reply) 
-	  (rpc-server-replies server))
-    (bt:condition-notify (rpc-server-condv server))))
-
-(defun get-reply (server id dispose)
-  "Finds the message with ID, but leaves it in the queue. Removes from the queue if DISPOSE is T.
-You MUST hold the server lock when calling this function." 
-  (cond
-    (id 
-     (let ((reply (assoc id (rpc-server-replies server) :test #'=)))
-       (cond
-	 ((not reply) (values nil nil))
-	 (dispose (setf (rpc-server-replies server)
-			(remove reply (rpc-server-replies server)))
-		  (values (cdr reply) t))
-	 (t (values (cdr reply) t)))))
-    (dispose
-     (let ((reply (pop (rpc-server-replies server))))
-       (if reply
-	   (values (cdr reply) t)
-	   (values nil nil))))
-    (t 
-     (let ((reply (car (rpc-server-replies server))))
-       (if reply
-	   (values (cdr reply) t)
-	   (values nil nil))))))
-
-(defun wait-for-reply (server &optional id)
-  "Blocks until a reply is recieved. If ID is supplied, will block until a message for a 
-matching ID is resived, otherwise returns the first reply."
-  (do ((res nil)
-       (done nil))
-      (done res)
-    (bt:with-lock-held ((rpc-server-lock server))
-      (multiple-value-bind (reply found) (get-reply server id t)
-	(if found 
-	    (setf res reply
-		  done t)
-	    (bt:condition-wait (rpc-server-condv server) 
-			       (rpc-server-lock server)))))))
-
 ;; FIXME: there must be a better way of doing this
 (defun %read-until-eof (stream)
   "Read the rest of the stream."
@@ -282,40 +237,36 @@ matching ID is resived, otherwise returns the first reply."
 						  :id id))
 	       (write-xtype writer output res)))))))))
 
-(defun handle-udp-request (server buffer &key remote-host reply-port)
-  (log:debug "Buffer ~S" buffer)
+(defun handle-udp-request (server socket buffer &key remote-host remote-port)
+;;  (log:debug "Buffer ~S" buffer)
   (flexi-streams:with-input-from-sequence (input buffer)
     (let ((msg (%read-rpc-msg input)))
       (ecase (xunion-tag (rpc-msg-body msg))
 	(:reply
-	 ;; is a reply -- read the rest of the stream and enqueue 
-	 ;; to the replies list
-	 (log:info "Recieved reply from ~A:~A" remote-host reply-port)
-	 (enqueue-reply server (rpc-msg-xid msg) (%read-until-eof input)))
+	 ;; received a reply to the server port --- is a bit odd since we never 
+	 ;; initiate rpcs from the server. let's just discard it 
+	 (log:warn "Recieved reply from ~A:~A" remote-host remote-port))
 	(:call 
 	 ;; is a call -- lookup the proc handler and send a reply 
-	 (log:info "Recived call from ~A:~A" remote-host reply-port)
+	 (log:info "Recived call from ~A:~A" remote-host remote-port)
 	 (let ((call (xunion-val (rpc-msg-body msg))))
 	   (let ((return-buffer (process-udp-request server input
-						 :program (call-body-prog call) 
-						 :version (call-body-vers call) 
-						 :proc (call-body-proc call)
-						 :id (rpc-msg-xid msg))))
-	     (let ((socket (usocket:socket-connect remote-host reply-port
-						   :protocol :datagram
-						   :element-type '(unsigned-byte 8))))
-	       (log:debug "Sending reply")
-	       (usocket:socket-send socket return-buffer (length return-buffer))
-	       (usocket:socket-close socket)))))))))
+						     :program (call-body-prog call) 
+						     :version (call-body-vers call) 
+						     :proc (call-body-proc call)
+						     :id (rpc-msg-xid msg))))
+	     (log:debug "Sending reply to ~A:~A" remote-host remote-port)
+	     (usocket:socket-send socket return-buffer (length return-buffer) 
+				  :host remote-host :port remote-port))))))))
 
-(defun accept-udp-rpc-request (server socket reply-port)
+(defun accept-udp-rpc-request (server socket)
   (multiple-value-bind (buffer length remote-host remote-port) (usocket:socket-receive socket nil 65507)	    
     (when buffer 
       (log:info "Recieved msg from ~A:~A" remote-host remote-port)
       (handler-case 
-	  (handle-udp-request server (subseq buffer 0 length)
+	  (handle-udp-request server socket (subseq buffer 0 length)
 			      :remote-host remote-host
-			      :reply-port reply-port)
+			      :remote-port remote-port)
 	(error (e)
 	  (log:error "Error handling: ~S" e))))))
 
@@ -326,10 +277,7 @@ matching ID is resived, otherwise returns the first reply."
 (defstruct (rpc-server (:constructor %make-rpc-server))
   thread 
   programs 
-  exiting
-  (lock (bt:make-lock))
-  (condv (bt:make-condition-variable))
-  replies)
+  exiting)
 
 (defun make-rpc-server (&optional programs)
   "Make an RPC server instance. PROGRAMS should be a list of program numbers 
@@ -351,34 +299,23 @@ on the TCP-PORTS list and UDP sockets listening on the UDP-PORTS list."
 						       :element-type '(unsigned-byte 8)
 						       :local-port port))
 			     udp-ports)))
-    (flet ((find-udp-port (udp-sock)
-	     "Determine the port we should send UDP replies to."
-	     (do ((uports udp-ports (cdr uports))
-		  (usocks udp-sockets (cdr usocks)))
-		 ((null uports))
-	       (when (eq (car usocks) udp-sock)
-		 (return-from find-udp-port (car uports))))))
-      (unwind-protect 
-	   (do ()
-	       ((rpc-server-exiting server))
-	     (let ((ready (usocket:wait-for-input (append tcp-sockets udp-sockets) :ready-only t :timeout 1)))
-	       (dolist (socket ready)
-		 (etypecase socket
-		   (usocket:stream-server-usocket
-		    ;; a tcp socket to accept
-		    (accept-rpc-connection server socket))
-		   (usocket:datagram-usocket
-		    ;; a udp socket is ready to read from
-		    ;; FIXME: we always reply back on the same port we're listening on
-		    ;; this probably isn't the right thing to do
-		    ;; but replying back to the port we recieved the request from 
-		    ;; doesn't seem right either.
-		    (accept-udp-rpc-request server socket (find-udp-port socket)))))))
-	;; close the server sockets
-	(dolist (tcp tcp-sockets)
-	  (usocket:socket-close tcp))
-	(dolist (udp udp-sockets)
-	  (usocket:socket-close udp))))))
+    (unwind-protect 
+	 (do ()
+	     ((rpc-server-exiting server))
+	   (let ((ready (usocket:wait-for-input (append tcp-sockets udp-sockets) :ready-only t :timeout 1)))
+	     (dolist (socket ready)
+	       (etypecase socket
+		 (usocket:stream-server-usocket
+		  ;; a tcp socket to accept
+		  (accept-rpc-connection server socket))
+		 (usocket:datagram-usocket
+		  ;; a udp socket is ready to read from
+		  (accept-udp-rpc-request server socket))))))
+      ;; close the server sockets
+      (dolist (tcp tcp-sockets)
+	(usocket:socket-close tcp))
+      (dolist (udp udp-sockets)
+	(usocket:socket-close udp)))))
 
 (defun start-rpc-server (server &key tcp-ports udp-ports (add-port-mappings t))
   "Start the RPC server in a new thread. The server will listen for requests
