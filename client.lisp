@@ -124,8 +124,8 @@
 	       (error "Request timed out")))
       (usocket:socket-close socket))))
 
-(defun call-rpc (host arg-type arg result-type 
-		 &key (port *rpc-port*) (program 0) (version 0) (proc 0) 
+(defun call-rpc (arg-type arg result-type 
+		 &key (host *rpc-host*) (port *rpc-port*) (program 0) (version 0) (proc 0) 
 		   auth verf request-id protocol (timeout 1))
   "Establish a connection and execute an RPC to a remote machine. By default a TCP connection
 is established and this function will block until a reply is received."
@@ -164,10 +164,11 @@ ARG-TYPE and RESULT-TYPE should be XDR type specification forms."
 	   (,gproc ,proc))
        
        ;; define a function to call it
-       (defun ,name (host arg &key (port ,*rpc-port*) auth verf request-id protocol timeout)
+       (defun ,name (arg &key (host *rpc-host*) (port *rpc-port*) auth verf request-id protocol timeout)
 	 (with-writer (,gwriter ,arg-type)
 	   (with-reader (,greader ,result-type)
-	     (call-rpc host #',gwriter arg #',greader
+	     (call-rpc #',gwriter arg #',greader
+		       :host host
 		       :port port
 		       :program ,gprogram
 		       :version ,gversion

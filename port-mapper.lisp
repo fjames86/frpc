@@ -46,9 +46,7 @@
 
 (defun add-mapping (mapping)
   "Add a port mapping."
-  (let ((m (find-mapping mapping (mapping-port mapping))))
-    (unless m
-      (push mapping *mappings*))))
+  (push mapping *mappings*))
 
 (defun rem-mapping (mapping)
   "Remove a port mapping."
@@ -70,6 +68,7 @@ in the mapping structure. if MAP-PORT is provided, will also match this port."
 
 (defun add-all-mappings (tcp-ports udp-ports)
   "Add mappings for all defined RPCs to the TCP and UDP ports specified."
+  (setf *mappings* nil)
   (dolist (ppair frpc::*handlers*)
     (destructuring-bind (program . versions) ppair
       (dolist (vpair versions)
@@ -91,7 +90,7 @@ in the mapping structure. if MAP-PORT is provided, will also match this port."
 
 (defrpc %portmapper-null 0 :void :void)
 (defun call-null (&key (host *rpc-host*) (port *pmap-port*) protocol)
-  (%portmapper-null host nil :port port :protocol protocol))
+  (%portmapper-null nil :host host :port port :protocol protocol))
 
 (defhandler %handle-null (void 0)
   (declare (ignore void))
@@ -104,7 +103,7 @@ in the mapping structure. if MAP-PORT is provided, will also match this port."
 (defrpc %portmapper-set 1 mapping :boolean)
 
 (defun call-set (mapping &key (host *rpc-host*) (port *pmap-port*) protocol)
-  (%portmapper-set host mapping :port port :protocol protocol))
+  (%portmapper-set mapping :host host :port port :protocol protocol))
 
 (defhandler %handle-set (mapping 1)
   (add-mapping mapping)
@@ -117,7 +116,7 @@ in the mapping structure. if MAP-PORT is provided, will also match this port."
 (defrpc %portmapper-unset 2 mapping :boolean)
 
 (defun call-unset (mapping &key (host *rpc-host*) (port *pmap-port*) protocol)
-  (%portmapper-unset host mapping :port port :protocol protocol))
+  (%portmapper-unset mapping :host host :port port :protocol protocol))
 
 (defhandler %handle-unset (mapping 2)
   (when (find-mapping mapping)
@@ -131,7 +130,7 @@ in the mapping structure. if MAP-PORT is provided, will also match this port."
 (defrpc %portmapper-get-port 3 mapping :uint32)
 
 (defun call-get-port (mapping &key (host *rpc-host*) (port *pmap-port*) protocol)
-  (%portmapper-get-port host mapping :port port :protocol protocol))
+  (%portmapper-get-port mapping :host host :port port :protocol protocol))
 
 (defhandler %handle-get-port (mapping 3)
   (let ((m (find-mapping mapping)))
@@ -150,8 +149,7 @@ in the mapping structure. if MAP-PORT is provided, will also match this port."
 (defrpc %portmapper-dump 4 :void (:optional mapping-list))
     
 (defun call-dump (&key (host *rpc-host*) (port *pmap-port*) protocol)
-  "FIXME: this is broken with UDP."
-  (do ((mlist (%portmapper-dump host nil :port port :protocol protocol) 
+  (do ((mlist (%portmapper-dump nil :host host :port port :protocol protocol) 
 	      (mapping-list-next mlist))
        (ms nil))
       ((null mlist) ms)
@@ -181,7 +179,8 @@ in the mapping structure. if MAP-PORT is provided, will also match this port."
 of the packed result. The result needs to be extracted using FRPC:UNPACK. The result type is 
 recommended to be a well-defined type, i.e. represented by a symbol, so that it has an easy reader
 function available."
-  (%portmapper-callit host (list program version proc packed-args)
+  (%portmapper-callit (list program version proc packed-args)
+		      :host host
 		      :port port
 		      :protocol protocol))
 
