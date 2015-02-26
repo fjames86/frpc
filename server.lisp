@@ -181,7 +181,7 @@ TCP requests only."
 until the client terminates or some other error occurs."
   ;; a connection has been accepted -- process it 
   (let ((conn (usocket:socket-accept socket)))
-    (log:info "Accepted connection from ~A:~A" (usocket:get-peer-address conn) (usocket:get-peer-port conn))
+    (log:debug "Accepted connection from ~A:~A" (usocket:get-peer-address conn) (usocket:get-peer-port conn))
     ;; set the receive timeout
     (when timeout 
       (setf (usocket:socket-option conn :receive-timeout) timeout))
@@ -267,7 +267,7 @@ until the client terminates or some other error occurs."
 	 (log:warn "Recieved reply from ~A:~A" remote-host remote-port))
 	(:call 
 	 ;; is a call -- lookup the proc handler and send a reply 
-	 (log:info "Recived call from ~A:~A" remote-host remote-port)
+	 (log:debug "Recived call from ~A:~A" remote-host remote-port)
 	 (let ((call (xunion-val (rpc-msg-body msg))))
 	   (let ((return-buffer (process-udp-request server input
 						     :program (call-body-prog call) 
@@ -281,7 +281,7 @@ until the client terminates or some other error occurs."
 (defun accept-udp-rpc-request (server socket buffer)
   (multiple-value-bind (%buffer length remote-host remote-port) (usocket:socket-receive socket buffer (length buffer))
     (declare (ignore %buffer))
-    (log:info "Recieved msg from ~A:~A" remote-host remote-port)
+    (log:debug "Recieved msg from ~A:~A" remote-host remote-port)
     (handler-case 
 	(with-caller-binded (remote-host remote-port :udp)
 	  (handle-udp-request server socket (subseq buffer 0 length)
@@ -331,7 +331,12 @@ on the TCP-PORTS list and UDP sockets listening on the UDP-PORTS list. "
 		  (accept-rpc-connection server socket timeout))
 		 (usocket:datagram-usocket
 		  ;; a udp socket is ready to read from
-		  (accept-udp-rpc-request server socket udp-buffer))))))
+		  (handler-case (accept-udp-rpc-request server socket udp-buffer)
+		    (error (e)
+		      ;; windows is known to throw an error on receive if there was no-one 
+		      ;; listening on the port the previous UDP packet was sent to.
+		      ;; catching the error here and ignore it then we can overcome this
+		      (log:debug "~A" e))))))))
       ;; close the server sockets
       (dolist (tcp tcp-sockets)
 	(usocket:socket-close tcp))
