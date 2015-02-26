@@ -163,12 +163,15 @@ TCP requests only."
 ;; ------------- rpc server ----------
 
 
-(defun accept-rpc-connection (server socket)
+(defun accept-rpc-connection (server socket timeout)
   "Accept a TCP connection and process the request(s). Will keep processing requests from the connection
 until the client terminates or some other error occurs."
   ;; a connection has been accepted -- process it 
   (let ((conn (usocket:socket-accept socket)))
     (log:info "Accepted connection from ~A:~A" (usocket:get-peer-address conn) (usocket:get-peer-port conn))
+    ;; set the receive timeout
+    (when timeout 
+      (setf (usocket:socket-option conn :receive-timeout) timeout))
     (handler-case 
 	(loop 
 	   (let ((stream (usocket:socket-stream conn)))
@@ -197,15 +200,15 @@ until the client terminates or some other error occurs."
 ;; -------------------- udp rpc server -------------
 
 ;; FIXME: there must be a better way of doing this
-(defun %read-until-eof (stream)
-  "Read the rest of the stream."
-  (flexi-streams:with-output-to-sequence (output)
-    (do ((done nil))
-	(done)
-      (let ((byte (read-byte stream nil nil)))
-	(if byte
-	    (write-byte byte output)
-	    (setf done t))))))
+;;(defun %read-until-eof (stream)
+;;  "Read the rest of the stream."
+;;  (flexi-streams:with-output-to-sequence (output)
+;;    (do ((done nil))
+;;	(done)
+;;      (let ((byte (read-byte stream nil nil)))
+;;	(if byte
+;;	    (write-byte byte output)
+;;	    (setf done t))))))
 
 (defun process-udp-request (server input-stream &key program version proc id)
   "Returns a packed buffer containing the response to send back to the caller."
@@ -285,20 +288,21 @@ to be accepted by the server, all RPC requests for programs not in this list wil
 be rejected. If not supplied all program requests are accepted."
   (%make-rpc-server :programs programs))
 
-(defun run-rpc-server (server tcp-ports udp-ports)
+(defun run-rpc-server (server tcp-ports udp-ports &key timeout)
   "Run the RPC server until the SERVER-EXITING flag is set. Will open TCP sockets listening
-on the TCP-PORTS list and UDP sockets listening on the UDP-PORTS list."
-  (let ((tcp-sockets (mapcar (lambda (port)
-			       (usocket:socket-listen usocket:*wildcard-host* port
-						      :reuse-address t
-						      :element-type '(unsigned-byte 8)))
-			     tcp-ports))
-	(udp-sockets (mapcar (lambda (port)
-			       (usocket:socket-connect nil nil 
-						       :protocol :datagram
-						       :element-type '(unsigned-byte 8)
-						       :local-port port))
-			     udp-ports)))
+on the TCP-PORTS list and UDP sockets listening on the UDP-PORTS list. "
+  (let (tcp-sockets udp-sockets)
+    (dolist (port tcp-ports)
+      (push (usocket:socket-listen usocket:*wildcard-host* port
+				   :reuse-address t
+				   :element-type '(unsigned-byte 8))
+	    tcp-sockets))
+    (dolist (port udp-ports)
+      (push (usocket:socket-connect nil nil 
+				    :protocol :datagram
+				    :element-type '(unsigned-byte 8)
+				    :local-port port)
+	    udp-sockets))
     (unwind-protect 
 	 (do ()
 	     ((rpc-server-exiting server))
@@ -307,7 +311,7 @@ on the TCP-PORTS list and UDP sockets listening on the UDP-PORTS list."
 	       (etypecase socket
 		 (usocket:stream-server-usocket
 		  ;; a tcp socket to accept
-		  (accept-rpc-connection server socket))
+		  (accept-rpc-connection server socket timeout))
 		 (usocket:datagram-usocket
 		  ;; a udp socket is ready to read from
 		  (accept-udp-rpc-request server socket))))))
@@ -317,7 +321,7 @@ on the TCP-PORTS list and UDP sockets listening on the UDP-PORTS list."
       (dolist (udp udp-sockets)
 	(usocket:socket-close udp)))))
 
-(defun start-rpc-server (server &key tcp-ports udp-ports (add-port-mappings t))
+(defun start-rpc-server (server &key tcp-ports udp-ports (add-port-mappings t) timeout)
   "Start the RPC server in a new thread. The server will listen for requests
 on the TCP and UDP ports specified."
   ;; add all the port mappings
@@ -325,7 +329,7 @@ on the TCP and UDP ports specified."
     (port-mapper:add-all-mappings tcp-ports udp-ports))
   (setf (rpc-server-thread server)
 	(bt:make-thread (lambda ()
-			  (run-rpc-server server tcp-ports udp-ports))
+			  (run-rpc-server server tcp-ports udp-ports :timeout timeout))
 			:name "rpc-server-thread"))
   server)
 
