@@ -31,13 +31,16 @@
    (:auth-rejected 2)
    (:auth-badverf 3)
    (:auth-rejectedverf 4)
-   (:auth-tooweak 5)))
+   (:auth-tooweak 5)
+   (:gss-cred-problem 13)
+   (:gss-context-problem 14)))
 
 (defxenum auth-flavour 
   ((:auth-null 0)
    (:auth-unix 1)
    (:auth-short 2)
-   (:auth-des 3)))
+   (:auth-des 3)
+   (:gss 6)))
 
 ;; --------------
 

@@ -21,8 +21,11 @@
 (define-condition rpc-prog-mismatch-error (rpc-accept-error)
   ())
 
+(define-condition rpc-timeout-error (rpc-error)
+  ())
+
 ;; reply errors 
-(define-condition auth-error (rpc-error)
+(define-condition rpc-auth-error (rpc-error)
   ((stat :initform nil :initarg :stat :reader auth-error-stat))
   (:report (lambda (condition stream)
 	     (format stream "AUTH-ERROR ~A: ~A" (auth-error-stat condition)

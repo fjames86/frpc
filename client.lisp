@@ -22,7 +22,7 @@
 	((eq (xunion-tag body) :msg-denied)
 	 (let ((denied (xunion-val body)))
 	   (ecase (xunion-tag denied)
-	     (:auth-error (error 'rpc-error :description (format nil "Auth error: ~A" (xunion-val denied))))
+	     (:auth-error (error 'rpc-auth-error :stat (xunion-val denied)))
 	     (:rpc-mismatch (error 'rpc-error :description "RPC mismatch")))))
 	(t 
 	 (case (xunion-tag (accepted-reply-reply-data (xunion-val body)))
@@ -173,7 +173,7 @@
 		       (log:debug "MSG ID ~A" (rpc-msg-xid msg))
 		       ;; FIXME: shouild really check the reply's id
 		       (read-xtype result-type input))))
-		 (error "Request timed out"))))
+		 (error 'rpc-timeout-error))))
       (usocket:socket-close socket))))
 
 (defun call-rpc (arg-type arg result-type 
