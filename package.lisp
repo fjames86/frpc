@@ -55,6 +55,11 @@
 	   #:make-rpc-server
 	   #:start-rpc-server
 	   #:stop-rpc-server
+	   
+	   ;; specials that are binded in the context of a handler
+	   #:*rpc-remote-host*
+	   #:*rpc-remote-port*
+	   #:*rpc-remote-protocol*
 	   ))
 
 ;; package for the port mapper program. we define it here so that we have access to the 

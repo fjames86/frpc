@@ -93,6 +93,7 @@
       (nth-value 1 (read-response input result-type)))))
 
 (defun collect-udp-replies (socket timeout result-type)
+  "Wait TIMEOUT seconds, collecting as many UDP replies as arrive in that time."
   (do ((replies nil)
        (buffer (nibbles:make-octet-vector 65507))
        (start (get-universal-time))
@@ -127,6 +128,8 @@
   (let ((socket (usocket:socket-connect host port
 					:protocol :datagram
 					:element-type '(unsigned-byte 8))))
+    ;; we need to do this to prevent certain errors getting raised
+    (setf (usocket:socket-option socket :broadcast) t)
     (unwind-protect 
 	 (progn 
 	   (log:debug "Sending to ~A:~A" host port)

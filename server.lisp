@@ -6,6 +6,19 @@
 
 ;; ------------- server handlers ---------------------
 
+;; server handlers might need to know who called them
+;; bind these special variables to the remote host, port and protocol
+(defvar *rpc-remote-host* nil)
+(defvar *rpc-remote-port* nil)
+(defvar *rpc-remote-protocol* nil)
+
+(defmacro with-caller-binded ((host port protocol) &body body)
+  `(let ((*rpc-remote-host* ,host)
+	 (*rpc-remote-port* ,port)
+	 (*rpc-remote-protocol* ,protocol))
+     ,@body))
+
+
 ;; stores an assoc list for each program id
 ;; each program id stores an alist of version ids
 ;; each version id stores an aslist of handler lists
@@ -179,9 +192,12 @@ until the client terminates or some other error occurs."
 	     (flexi-streams:with-input-from-sequence (input (read-fragmented-message stream))
 	       (log:debug "successfully read request")
 	       (let ((buff (flexi-streams:with-output-to-sequence (output)
-			     (handle-request input
-					     output
-					     (rpc-server-programs server)))))
+			     (with-caller-binded ((usocket:get-peer-address conn)
+						  (usocket:get-peer-port conn)
+						  :tcp)
+			       (handle-request input
+					       output
+					       (rpc-server-programs server))))))
 		 (log:debug "writing response")
 		 ;; write the fragment header (with terminating bit set)
 		 (write-uint32 stream (logior #x80000000 (length buff)))
@@ -262,16 +278,17 @@ until the client terminates or some other error occurs."
 	     (usocket:socket-send socket return-buffer (length return-buffer) 
 				  :host remote-host :port remote-port))))))))
 
-(defun accept-udp-rpc-request (server socket)
-  (multiple-value-bind (buffer length remote-host remote-port) (usocket:socket-receive socket nil 65507)	    
-    (when buffer 
-      (log:info "Recieved msg from ~A:~A" remote-host remote-port)
-      (handler-case 
+(defun accept-udp-rpc-request (server socket buffer)
+  (multiple-value-bind (%buffer length remote-host remote-port) (usocket:socket-receive socket buffer (length buffer))
+    (declare (ignore %buffer))
+    (log:info "Recieved msg from ~A:~A" remote-host remote-port)
+    (handler-case 
+	(with-caller-binded (remote-host remote-port :udp)
 	  (handle-udp-request server socket (subseq buffer 0 length)
 			      :remote-host remote-host
-			      :remote-port remote-port)
-	(error (e)
-	  (log:error "Error handling: ~S" e))))))
+			      :remote-port remote-port))
+      (error (e)
+	(log:error "Error handling: ~S" e)))))
 
 
 
@@ -304,7 +321,7 @@ on the TCP-PORTS list and UDP sockets listening on the UDP-PORTS list. "
 				    :local-port port)
 	    udp-sockets))
     (unwind-protect 
-	 (do ()
+	 (do ((udp-buffer (nibbles:make-octet-vector 65507)))
 	     ((rpc-server-exiting server))
 	   (let ((ready (usocket:wait-for-input (append tcp-sockets udp-sockets) :ready-only t :timeout 1)))
 	     (dolist (socket ready)
@@ -314,7 +331,7 @@ on the TCP-PORTS list and UDP sockets listening on the UDP-PORTS list. "
 		  (accept-rpc-connection server socket timeout))
 		 (usocket:datagram-usocket
 		  ;; a udp socket is ready to read from
-		  (accept-udp-rpc-request server socket))))))
+		  (accept-udp-rpc-request server socket udp-buffer))))))
       ;; close the server sockets
       (dolist (tcp tcp-sockets)
 	(usocket:socket-close tcp))
