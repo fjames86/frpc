@@ -194,11 +194,37 @@ the bytes read."
 (defun call-rpc (arg-type arg result-type 
 		 &key (host *rpc-host*) (port *rpc-port*) (program 0) (version 0) (proc 0) 
 		   auth verf request-id protocol (timeout 1))
-  "Establish a connection and execute an RPC to a remote machine. By default a TCP connection
-is established and this function will block until a reply is received."
+  "Establish a connection and execute an RPC to a remote machine. Returns the value decoded by the RESULT-TYPE.
+By default a TCP connection is established and this function will block until a reply is received.
+
+ARG-TYPE should be either a reader function or a symbol naming a valid XTYPE. 
+
+ARG should be a value which can be passed to the ARG-TYPE function.
+
+RESULT-TYPE should be either a writer function or a symbol naming a valid XTYPE.
+
+HOST and PORT name the server to send the message to.
+
+PROGRAM, VERSION and PROC define the RPC procedure.
+
+If provided, AUTH and VERF should be OPAQUE-AUTH structures.
+
+If provided, REQUEST-ID should be an integer specifying the message ID to use. If not provided, the current value of *rpc-msgid* will be used,
+*rpc-msgid* will then be incremented.
+
+If TIMEOUT is specified, it will be set as the RECEIVE-TIMEOUT (is using TCP) or to control waiting for UDP responses.
+
+PROTOCOL should be :TCP, :UDP or :BROADCAST. :TCP is the default, and will block until a reply is recieved.
+:UDP will wait for up to TIMEOUT seconds for a reply and will raise an RPC-TIMEOUT-ERROR if it doesnt' receive one.
+:BROADCAST should be used for UDP broadcasts. The client will wait for up to TIMEOUT seconds and collect all the repsonses
+received in that time. It will return a list of (host port result) instead.
+"
   (ecase protocol
     ((:tcp nil)
      (with-rpc-connection (conn host port)
+       ;; if timeout specified then set the socket option
+       (when timeout
+	 (setf (usocket:socket-option conn :receive-timeout) timeout))
        (call-rpc-server conn arg-type arg result-type 
 			:request-id request-id
 			:program program

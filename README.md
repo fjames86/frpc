@@ -1,14 +1,18 @@
 # FRPC
-Frank's XDR/RPC library is an implementation of the ONC-RPC ("SunRPC") protocol. The library is composed of two
-components: implementing the eXtensible Data Representation (XDR), which is the method of serializing the messages, 
-and the Remote Procedure Call (RPC) system itself, which uses XDR to exchange messages.
+FRPC is an implementation of the ONC-RPC ("SunRPC") protocol. 
+
+The library is composed to two largely decoupled components: the eXtensible Data Representation (XDR) serializer,
+which is used to define message structures and other on-wire formats, and the RPC framework itself.
+
+FRPC makes it simple and easy to define ONC-RPC clients and servers. See the sister-project, Nefarious, which 
+uses FRPC to implement an NFSv3 client and server.
 
 1. Defining RPC interfaces
 ----------------------------
 
 RPC interfaces are given a unique integer called a program number. Each program may have multiple
 versions of its interface, with each version having a different set of functions/arguments. Each procedure
-in the interface is also given a unique number. Together these 3 integers define the procedure identifier.
+in the interface is also given a unique integer. Together these 3 integers define the procedure identifier.
 
 In FRPC, both clients and servers must define the interface. This supplies argument and result types.
 Servers must additionally implement handlers for each procedure they wish to support.
@@ -21,31 +25,38 @@ For instance, a client should write:
 
 This defines 2 Lisp functions to call out to an RPC server to execute the procedures.
 
-A servers should additionally write
+A servers should additionally implement handlers for the procedures they wish to support
 ```
-(defrpc call-hello 0 :string :string)
 (defhandler handle-hello (msg 0)
   (format nil "Hello, ~A!" msg))
 
-(defrpc call-goodbye 1 :uint32 :string)
 (defhandler handle-goodbye (u 0)
   (format nil "Goodbye ~A!" u))))
 ```
+DEFHANDLER defines a function which accepts a single argument, which will be the value decoded according
+to the rule defined for the arg-type by the DEFRPC form. The handler function should return a single value which will be 
+passed to the result-type serializer defined by the DEFRPC form. Handlers should never signal errors because 
+the RPC protocol does not have a generalized mechanism of reporting errors. Instead, your RPC interface will typically
+define a set of error statuses which will be returned as a part of the handler's return value.
 
-The types provided to DEFRPC can be a generalized type specifier, as described
-below in section 4.5.
+The types provided to DEFRPC can be a generalized type specifier, as described below in section 4.5.
 
 2. Client
 ----------
 
-The DEFRPC macro defines a wrapper around the underlying CALL-RPC function, with various 
-arguments supplied. Thus, with the example above, the client will be able to call a remote 
-RPC server using, e.g., 
+The DEFRPC macro defines a wrapper around the underlying CALL-RPC function, with default values provided 
+for the argument writer, result reader, program, version and proc arguments. 
+
+Thus, with the example above, the client will be able to call a remote RPC server using, e.g., 
 
 ```
-(call-hello #(192 168 0 2) "hello" :port 8000)
+(call-hello "hello" :host "10.1.1.1" :port 8000)
 ```
 
+2.1 CALL-RPC
+------------
+
+The low-level client functionality is provided by CALL-RPC. This function accept 
 3. RPC Server
 ----------------
 
