@@ -14,6 +14,5 @@
    (:file "server" :depends-on ("client"))
    (:file "port-mapper" :depends-on ("server")))
   :depends-on (:alexandria :nibbles :flexi-streams 
-	       :babel :usocket :bordeaux-threads
-	       :log4cl))
+	       :usocket :bordeaux-threads :log4cl))
 
