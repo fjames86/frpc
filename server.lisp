@@ -108,6 +108,7 @@ TCP requests only."
 		  (h (find-handler (call-body-prog call)
 				   (call-body-vers call)
 				   (call-body-proc call))))
+	     (log:debug "Calling ~A:~A:~A" (call-body-prog call) (call-body-vers call) (call-body-proc call))
 	     (cond
 	       ((and (rpc-server-programs server)
 		     (not (member (call-body-prog call) 
@@ -223,6 +224,7 @@ until the client terminates or some other error occurs."
     (let ((program (call-body-prog call))
 	  (version (call-body-vers call))
 	  (proc (call-body-proc call)))
+      (log:debug "Calling ~A:~A:~A" program version proc)
       (let ((h (find-handler program version proc)))
 	(cond
 	  ((and (rpc-server-programs server)
