@@ -43,6 +43,21 @@
     (values msg
 	    (read-xtype res-type stream))))
 
+(defun read-fragmented-message (stream)
+  "Read a sequence of message fragements until the terminal bit is set. Returns a sequence containing 
+the bytes read."
+  (flexi-streams:with-output-to-sequence (output)
+    (do ((done nil))
+	(done)
+      (let ((length (read-uint32 stream)))
+	;; when the terminating bit is set we are done
+	(unless (zerop (logand length #x80000000))
+	  (setf done t
+		length (logand length (lognot #x80000000))))
+	(let ((buff (nibbles:make-octet-vector length)))
+	  (read-sequence buff stream)
+	  (write-sequence buff output))))))
+
 ;; ---------------------------------------
 
 (defparameter *rpc-host* "localhost")

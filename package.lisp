@@ -36,10 +36,6 @@
 	   #:pack
 	   #:unpack
 
-	   ;; for testing/debugging
-;;	   #:with-local-stream
-;;	   #:with-local-server
-
 	   ;; client
 	   #:rpc-connect
 	   #:rpc-close

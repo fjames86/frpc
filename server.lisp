@@ -83,39 +83,24 @@ with enum status return values."
 
 ;; ------------------------- handle a request from the stream --------------
 
-(defun read-fragmented-message (stream)
-  "Read a sequence of message fragements until the terminal bit is set. Returns a sequence containing 
-the bytes read."
-  (flexi-streams:with-output-to-sequence (output)
-    (do ((done nil))
-	(done)
-      (let ((length (read-uint32 stream)))
-	;; when the terminating bit is set we are done
-	(unless (zerop (logand length #x80000000))
-	  (setf done t
-		length (logand length (lognot #x80000000))))
-	(let ((buff (nibbles:make-octet-vector length)))
-	  (read-sequence buff stream)
-	  (write-sequence buff output))))))
-
-(defun handle-request (stream &optional output allowed-programs)
+(defun handle-request (server input-stream output-stream)
   "Read an RPC request from the STREAM and write the output to the OUTPUT stream (or STREAM if not provided). This is for
 TCP requests only."
   (handler-case 
-      (let ((msg (%read-rpc-msg stream)))
+      (let ((msg (%read-rpc-msg input-stream)))
 	(log:debug "Recieved message ID ~A" (rpc-msg-xid msg))
 	;; validate the message
 	(cond
 	  ((not (eq (xunion-tag (rpc-msg-body msg)) :call))
 	   ;; not a call
 	   (log:info "Bad request: not a call")
-	   (%write-rpc-msg (or output stream)
+	   (%write-rpc-msg output-stream
 			   (make-rpc-response :accept :garbage-args
 					      :id (rpc-msg-xid msg))))
 	  ((not (= (call-body-rpcvers (xunion-val (rpc-msg-body msg))) 2))
 	   ;; rpc version != 2
 	   (log:info "RPC version not = 2")
-	   (%write-rpc-msg (or output stream)
+	   (%write-rpc-msg output-stream
 			   (make-rpc-response :reject :rpc-mismatch
 					      :id (rpc-msg-xid msg))))
 	  (t 
@@ -124,41 +109,48 @@ TCP requests only."
 				   (call-body-vers call)
 				   (call-body-proc call))))
 	     (cond
-	       ((and allowed-programs 
+	       ((and (rpc-server-programs server)
 		     (not (member (call-body-prog call) 
-				  allowed-programs)))
+				  (rpc-server-programs server))))
 		;; program not in the list of permissible programs
 		(log:info "Program ~A not in program list" (call-body-prog call))
-		(%write-rpc-msg (or output stream)
+		(%write-rpc-msg output-stream
 				(make-rpc-response :accept :prog-mismatch
 						   :id (rpc-msg-xid msg))))
+	       ((rpc-server-auth-handler server)
+		(unless (funcall (rpc-server-auth-handler server) (call-body-auth call) (call-body-verf call))
+		  (log:info "Authentication failure")
+		  (%write-rpc-msg output-stream
+				  (make-rpc-response :reject :auth-error 
+						     :auth-stat :auth-rejected
+						     :id (rpc-msg-xid msg)))))
 	       ((or (not h) (null (third h)))
 		;; no handler registered
 		(log:warn "No handler registered")
-		(%write-rpc-msg (or output stream)
+		(%write-rpc-msg output-stream
 				(make-rpc-response :accept :proc-unavail
 						   :id (rpc-msg-xid msg))))
 	       (t 
 		(destructuring-bind (arg-type res-type handler) h
 		  (handler-case 
-		      (let ((arg (read-xtype arg-type stream)))
+		      (let ((arg (read-xtype arg-type input-stream)))
 			(log:debug "Passing arg to handler")
 			(let ((res (funcall handler arg)))
 			  (log:debug "Call successful")
-			  (%write-rpc-msg (or output stream)
+			  (%write-rpc-msg output-stream
 					  (make-rpc-response :accept :success
 							     :id (rpc-msg-xid msg)))
-			  (write-xtype res-type (or output stream) res)))
+			  (write-xtype res-type output-stream res)))
 		    (undefined-function (e)
 		      ;; no such function -- probably means we didn't register a handler
 		      (log:warn "No handler: ~S" e)
-		      (%write-rpc-msg (or output stream)
+		      (%write-rpc-msg output-stream
 				      (make-rpc-response :accept :proc-unavail
 							 :id (rpc-msg-xid msg))))
 		    (error (e)
 		      ;; FIXME: should we just terminate the connection at this point?
 		      (log:error "Error handling: ~S" e) 
-		      (%write-rpc-msg (or output stream)
+		      (%write-rpc-msg output-stream
 				      (make-rpc-response :accept :garbage-args
 							 :id (rpc-msg-xid msg))))))))))))
     (end-of-file (e)
@@ -167,10 +159,10 @@ TCP requests only."
       (error e))
     (error (e)
       (log:error "Error reading msg: ~A" e)
-      (%write-rpc-msg (or output stream)
+      (%write-rpc-msg output-stream
 		      (make-rpc-response :accept :garbage-args))))
   (log:debug "Flushing output")
-  (force-output (or output stream))
+  (force-output output-stream)
   (log:debug "Finished request"))
 
 ;; ------------- rpc server ----------
@@ -195,9 +187,7 @@ until the client terminates or some other error occurs."
 			     (with-caller-binded ((usocket:get-peer-address conn)
 						  (usocket:get-peer-port conn)
 						  :tcp)
-			       (handle-request input
-					       output
-					       (rpc-server-programs server))))))
+			       (handle-request server input output)))))
 		 (log:debug "writing response")
 		 ;; write the fragment header (with terminating bit set)
 		 (write-uint32 stream (logior #x80000000 (length buff)))
@@ -226,35 +216,49 @@ until the client terminates or some other error occurs."
 ;;	    (write-byte byte output)
 ;;	    (setf done t))))))
 
-(defun process-udp-request (server input-stream &key program version proc id)
+(defun process-udp-request (server msg input-stream)
   "Returns a packed buffer containing the response to send back to the caller."
-  (let ((h (find-handler program version proc)))
-    (cond
-      ((and (rpc-server-programs server)
-	    (not (member program (rpc-server-programs server))))
-       ;; not in allowed programs list
-       (log:warn "Program ~A not in program list" program)
-       (pack #'%write-rpc-msg 
-	     (make-rpc-response :accept :prog-mismatch
-			      :id id)))
-      ((or (not h) (null (third h)))
-       ;; no handler
-       (log:warn "No handler registered for ~A:~A:~A" program version proc)
-       (pack #'%write-rpc-msg
-	     (make-rpc-response :accept :proc-unavail
-				:id id)))
-      (t
-       (destructuring-bind (reader writer handler) h
-	 ;; read the argument
-	 (let ((arg (read-xtype reader input-stream)))
-	   ;; run the handler
-	   (let ((res (funcall handler arg)))
-	     ;; package the reply and send
-	     (flexi-streams:with-output-to-sequence (output)
-	       (%write-rpc-msg output
-			       (make-rpc-response :accept :success
-						  :id id))
-	       (write-xtype writer output res)))))))))
+  (let ((id (rpc-msg-xid msg))
+	(call (xunion-val (rpc-msg-body msg))))
+    (let ((program (call-body-prog call))
+	  (version (call-body-vers call))
+	  (proc (call-body-proc call)))
+      (let ((h (find-handler program version proc)))
+	(cond
+	  ((and (rpc-server-programs server)
+		(not (member program (rpc-server-programs server))))
+	   ;; not in allowed programs list
+	   (log:warn "Program ~A not in program list" program)
+	   (pack #'%write-rpc-msg 
+		 (make-rpc-response :accept :prog-mismatch
+				    :id id)))
+	  ((and (rpc-server-auth-handler server)
+		(not (funcall (rpc-server-auth-handler server)
+			      (call-body-auth call)
+			      (call-body-verf call))))
+	   (log:debug "Authentication failure")
+	   (pack #'%write-rpc-msg 
+		 (make-rpc-response :reject :auth-error 
+				    :id id
+				    :auth-stat :auth-rejected)))
+	  ((or (not h) (null (third h)))
+	   ;; no handler
+	   (log:warn "No handler registered for ~A:~A:~A" program version proc)
+	   (pack #'%write-rpc-msg
+		 (make-rpc-response :accept :proc-unavail
+				    :id id)))
+	  (t
+	   (destructuring-bind (reader writer handler) h
+	     ;; read the argument
+	     (let ((arg (read-xtype reader input-stream)))
+	       ;; run the handler
+	       (let ((res (funcall handler arg)))
+		 ;; package the reply and send
+		 (flexi-streams:with-output-to-sequence (output)
+		   (%write-rpc-msg output
+				   (make-rpc-response :accept :success
+						      :id id))
+		   (write-xtype writer output res)))))))))))
 
 (defun handle-udp-request (server socket buffer &key remote-host remote-port)
 ;;  (log:debug "Buffer ~S" buffer)
@@ -268,15 +272,10 @@ until the client terminates or some other error occurs."
 	(:call 
 	 ;; is a call -- lookup the proc handler and send a reply 
 	 (log:debug "Recived call from ~A:~A" remote-host remote-port)
-	 (let ((call (xunion-val (rpc-msg-body msg))))
-	   (let ((return-buffer (process-udp-request server input
-						     :program (call-body-prog call) 
-						     :version (call-body-vers call) 
-						     :proc (call-body-proc call)
-						     :id (rpc-msg-xid msg))))
-	     (log:debug "Sending reply to ~A:~A" remote-host remote-port)
-	     (usocket:socket-send socket return-buffer (length return-buffer) 
-				  :host remote-host :port remote-port))))))))
+	 (let ((return-buffer (process-udp-request server msg input)))
+	   (log:debug "Sending reply to ~A:~A" remote-host remote-port)
+	   (usocket:socket-send socket return-buffer (length return-buffer) 
+				:host remote-host :port remote-port)))))))
 
 (defun accept-udp-rpc-request (server socket buffer)
   (multiple-value-bind (%buffer length remote-host remote-port) (usocket:socket-receive socket buffer (length buffer))
@@ -297,18 +296,30 @@ until the client terminates or some other error occurs."
 (defstruct (rpc-server (:constructor %make-rpc-server))
   thread 
   programs 
-  exiting)
+  exiting
+  auth-handler)
 
-(defun make-rpc-server (&optional programs)
-  "Make an RPC server instance. PROGRAMS should be a list of program numbers 
-to be accepted by the server, all RPC requests for programs not in this list will
-be rejected. If not supplied all program requests are accepted."
-  (%make-rpc-server :programs programs))
+(defun make-rpc-server (&key programs auth-handler)
+  "Make an RPC server instance. 
+
+PROGRAMS should be a list of program numbers to be accepted by the server, 
+all RPC requests for programs not in this list will be rejected. 
+If not supplied all program requests are accepted. 
+
+AUTH-HANDLER, if supplied, should be a function of signature (AUTH VERF) that returns a boolean
+indicating whether the authentication succeeded. Both AUTH and VERF are OPAQUE-AUTH structures
+as sent in the RPC request.
+"
+  (%make-rpc-server :programs programs
+		    :auth-handler auth-handler))
 
 (defun run-rpc-server (server tcp-ports udp-ports &key timeout)
   "Run the RPC server until the SERVER-EXITING flag is set. Will open TCP sockets listening
 on the TCP-PORTS list and UDP sockets listening on the UDP-PORTS list. "
   (let (tcp-sockets udp-sockets)
+    ;; collect the sockets this way so that if there is an error thrown (such as can't listen on port)
+    ;; then we can gracefully fail, and close the sockets we have opened
+    ;; if we mapcar to collect them then we lose the sockets we opened before the failure
     (dolist (port tcp-ports)
       (push (usocket:socket-listen usocket:*wildcard-host* port
 				   :reuse-address t
@@ -323,6 +334,7 @@ on the TCP-PORTS list and UDP sockets listening on the UDP-PORTS list. "
     (unwind-protect 
 	 (do ((udp-buffer (nibbles:make-octet-vector 65507)))
 	     ((rpc-server-exiting server))
+	   ;; poll and timeout each second so that we can check the exiting flag
 	   (let ((ready (usocket:wait-for-input (append tcp-sockets udp-sockets) :ready-only t :timeout 1)))
 	     (dolist (socket ready)
 	       (etypecase socket
@@ -344,9 +356,17 @@ on the TCP-PORTS list and UDP sockets listening on the UDP-PORTS list. "
 	(usocket:socket-close udp)))))
 
 (defun start-rpc-server (server &key tcp-ports udp-ports (add-port-mappings t) timeout)
-  "Start the RPC server in a new thread. The server will listen for requests
-on the TCP and UDP ports specified."
-  ;; add all the port mappings
+  "Start the RPC server in a new thread. 
+
+TCP-PORTS and UDP-PORTS should be lists of integers specifying the ports to listen on, for each 
+transport protocol respectively.
+
+If ADD-PORT-MAPPINGS is non-nil then all possible port mappings will be added to the port mapper. If 
+you only want to advertise each service on particular ports then you should set this to nil and 
+add each mapping manually (using ADD-MAPPING).
+
+When specified, TIMEOUT will be set as the TCP receive timeout (read timeout)."
+  ;; add all the port mappings  
   (when add-port-mappings
     (port-mapper:add-all-mappings tcp-ports udp-ports))
   (setf (rpc-server-thread server)
@@ -356,42 +376,7 @@ on the TCP and UDP ports specified."
   server)
 
 (defun stop-rpc-server (server)
-  "Stop the RPC server and wait until its thread exits."
+  "Stop the RPC server and wait until its thread to exit."
   (setf (rpc-server-exiting server) t)
   (bt:join-thread (rpc-server-thread server))
   nil)
-
-;; ---------------------
-
-;; for testing/experimenting purposes
-
-(defmacro with-local-stream (&rest type-forms)
-  "Write (ARG-TYPE RES-TYPE) forms to a local stream read the results back. This 
-can be useful to test handler functions in isolation."
-  `(flexi-streams:with-input-from-sequence 
-       (input (flexi-streams:with-output-to-sequence (output)
-		,@(mapcar (lambda (type-form)
-			    `(write-xtype ',(first type-form) output ,(second type-form)))
-			  type-forms)))
-     (list ,@(mapcar (lambda (type-form)
-		       `(read-xtype ',(first type-form) input))
-		     type-forms))))
-
-(defmacro with-local-server ((arg-type res-type &key (program 0) (version 0) (proc 0)) &body body)
-  "Emulates a socket server using local streams."
-  `(flexi-streams:with-input-from-sequence 
-       (input (flexi-streams:with-output-to-sequence (output)
-		(write-request output
-			       (make-rpc-request ,program ,proc :version ,version) 
-			       ',arg-type 
-			       (progn ,@body))))
-     (flexi-streams:with-input-from-sequence 
-	 (v (flexi-streams:with-output-to-sequence (output)
-	      (handle-request input output)))
-       (read-response v ',res-type))))
-
-
-;; e.g. 
-;; (with-local-server (:string :string :program 1 :proc 3) "frank")
-
-;; --------------------------------------------
