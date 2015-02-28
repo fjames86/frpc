@@ -116,15 +116,20 @@ the bytes read."
       ((> (- now start) timeout) replies)
     (when (usocket:wait-for-input socket :timeout (- timeout (- now start)) :ready-only t)
       (multiple-value-bind (%buffer count remote-host remote-port) (usocket:socket-receive socket buffer 65507)
-	(declare (ignore %buffer))	
-	(log:debug "Received response from ~A:~A" remote-host remote-port)
-	(flexi-streams:with-input-from-sequence (input (subseq buffer 0 count))
-	  (let ((msg (%read-rpc-msg input)))
-	      (log:debug "MSG ID ~A" (rpc-msg-xid msg))
-	      ;; FIXME: shouild really check the reply's id
-	      (push (list remote-host remote-port (read-xtype result-type input))
-		    replies)))))))
-
+	(declare (ignore %buffer))
+	(cond
+	  ;; workaround for sbcl bug
+	  ((= count #xffffffff)
+	   (log:error "recvfrom returned -1"))
+	  (t
+	   (log:debug "Received response from ~A:~A" remote-host remote-port)
+	   (flexi-streams:with-input-from-sequence (input (subseq buffer 0 count))
+	     (let ((msg (%read-rpc-msg input)))
+	       (log:debug "MSG ID ~A" (rpc-msg-xid msg))
+	       ;; FIXME: shouild really check the reply's id
+	       (push (list remote-host remote-port (read-xtype result-type input))
+		     replies)))))))))
+    
 (defun send-rpc-udp (socket arg-type arg &key program version proc auth verf request-id)
   (let ((buffer 
 	 (flexi-streams:with-output-to-sequence (stream)
@@ -224,9 +229,9 @@ If TIMEOUT is specified, it will be set as the RECEIVE-TIMEOUT (is using TCP) or
 If TIMEOUT-ERROR is non-nil a UDP timeout will signal an error. Returns NIL otherwise.
 
 PROTOCOL should be :TCP, :UDP or :BROADCAST. :TCP is the default, and will block until a reply is recieved.
-:UDP will wait for up to TIMEOUT seconds for a reply and will raise an RPC-TIMEOUT-ERROR if it doesnt' receive one.
+:UDP will wait for up to TIMEOUT seconds for a reply and will raise an RPC-TIMEOUT-ERROR if it doesn't receive one.
 :BROADCAST should be used for UDP broadcasts. The client will wait for up to TIMEOUT seconds and collect all the repsonses
-received in that time. It will return a list of (host port result) instead.
+received in that time. Note that it will return a list of (host port result) instead of just the result.
 "
   (ecase protocol
     ((:tcp nil)
@@ -263,9 +268,10 @@ received in that time. It will return a list of (host port result) instead.
 		    :verf verf
 		    :request-id request-id
 		    :timeout timeout))))
-			    
+
 (defmacro defrpc (name proc arg-type result-type)
-  "Declare an RPC interface and define a calling function. This MUST be defined before a partner DEFHANDLER form.
+  "Declare an RPC interface and define a client function that invokes CALL-RPC. 
+This MUST be defined before a partner DEFHANDLER form.
 
 NAME should be a symbol naming the client function to be defined.
 

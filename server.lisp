@@ -262,14 +262,15 @@ until the client terminates or some other error occurs."
 						      :id id))
 		   (write-xtype writer output res)))))))))))
 
-(defun handle-udp-request (server socket buffer &key remote-host remote-port)
+(defun handle-udp-request (server socket buffer length remote-host remote-port)
+  "Given a buffer containing an RPC message and argument, read it and take appropriate action."
 ;;  (log:debug "Buffer ~S" buffer)
-  (flexi-streams:with-input-from-sequence (input buffer)
+  (flexi-streams:with-input-from-sequence (input buffer :start 0 :end length)
     (let ((msg (%read-rpc-msg input)))
       (ecase (xunion-tag (rpc-msg-body msg))
 	(:reply
 	 ;; received a reply to the server port --- is a bit odd since we never 
-	 ;; initiate rpcs from the server. let's just discard it 
+	 ;; initiate rpcs from the server so don't expect any replies. let's just discard it 
 	 (log:warn "Recieved reply from ~A:~A" remote-host remote-port))
 	(:call 
 	 ;; is a call -- lookup the proc handler and send a reply 
@@ -280,16 +281,24 @@ until the client terminates or some other error occurs."
 				:host remote-host :port remote-port)))))))
 
 (defun accept-udp-rpc-request (server socket buffer)
+  "Wait for and read a datagram from the UDP socket. If successfully read the message then process it."
   (multiple-value-bind (%buffer length remote-host remote-port) (usocket:socket-receive socket buffer (length buffer))
     (declare (ignore %buffer))
-    (log:debug "Recieved msg from ~A:~A" remote-host remote-port)
-    (handler-case 
-	(with-caller-binded (remote-host remote-port :udp)
-	  (handle-udp-request server socket (subseq buffer 0 length)
-			      :remote-host remote-host
-			      :remote-port remote-port))
-      (error (e)
-	(log:error "Error handling: ~S" e)))))
+    (log:debug "Recieved msg from ~A:~A (length ~A)" remote-host remote-port length)
+    (cond
+      ;; there seems to be a bug in SBCL which causes it not to detect error return value (-1)
+      ;; from recvfrom -- this means socket-receive seemingly returns successfully but with a length
+      ;; of 4294967295. we shouldn't really need to be checking for it here, but this is a workaround
+      ((= length #xffffffff)
+       (log:error "recvfrom returned -1"))
+      (t 
+       (handler-case 
+	   (with-caller-binded (remote-host remote-port :udp)
+	     (handle-udp-request server socket
+				 buffer length
+				 remote-host remote-port))
+	 (error (e)
+	   (log:error "Error handling: ~S" e)))))))
 
 
 
