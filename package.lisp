@@ -4,8 +4,7 @@
 
 (defpackage #:frpc
   (:use #:cl)
-  (:export #:with-rpc-program
-	   #:use-rpc-program
+  (:export #:use-rpc-program
 	   #:defrpc
 	   #:defhandler
 	   #:find-handler

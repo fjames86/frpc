@@ -5,10 +5,9 @@
 
 (in-package #:frpc.test.hello)
 
-;; define the RPC interface 
 (use-rpc-program 1 1)
 
-;; --------------
+;; --------------------------------------------
 
 (defrpc call-null 0 :void :void)
 
@@ -16,7 +15,7 @@
   (declare (ignore void))
   nil)
 
-;; -----------------------
+;; ---------------------------------------------
 
 (defxenum hstat 
   ((:ok 0)
@@ -32,7 +31,7 @@
   (make-xunion :ok
 	       (string-upcase msg)))
 
-;; --------------------
+;; ---------------------------------------------
 
 (defrpc call-goodbye 2
   (:list :uint32 :string)

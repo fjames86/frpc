@@ -161,7 +161,7 @@ the bytes read."
       (usocket:socket-close socket))))
 	
 (defun call-rpc-udp (host arg-type arg result-type 
-		     &key port program version proc auth verf request-id timeout)
+		     &key port program version proc auth verf request-id timeout timeout-error)
   "Send a request to the server via UDP and await a response. Will timeout after TIMEOUT seconds."
   (let ((socket (usocket:socket-connect host port
 					:protocol :datagram
@@ -181,19 +181,26 @@ the bytes read."
 	   (when timeout
 	     (log:debug "Waiting for reply")
 	     (if (usocket:wait-for-input socket :timeout timeout :ready-only t)
-		 (multiple-value-bind (buffer count remote-host remote-port) (usocket:socket-receive socket nil 65507)
-		   (log:debug "Received response from ~A:~A" remote-host remote-port)
-		   (flexi-streams:with-input-from-sequence (input (subseq buffer 0 count))
+		 (multiple-value-bind (buffer count remote-host remote-port) (progn (usocket:socket-receive socket nil 65507))
+		   (log:debug "Received response from ~A:~A (count ~A)" remote-host remote-port count)
+		   ;; I just saw the count come back as 4294967295 i.e. -1 cast as uint32, this really 
+		   ;; means recvfrom returned -1 (i.e. an error occured). There seems to be a bug 
+		   ;; in sb-bsd-sockets:socket-receive. throw an error here instead 
+		   (when (= count #xffffffff)
+		     (error "Error: recvfrom returned -1"))
+		   ;; just read from the entire buffer, even though we might not need all of it
+		   (flexi-streams:with-input-from-sequence (input buffer) ;; (subseq buffer 0 count))
 		     (let ((msg (%read-rpc-msg input)))
 		       (log:debug "MSG ID ~A" (rpc-msg-xid msg))
 		       ;; FIXME: shouild really check the reply's id
 		       (read-xtype result-type input))))
-		 (error 'rpc-timeout-error))))
+		 (when timeout-error 
+		   (error 'rpc-timeout-error)))))
       (usocket:socket-close socket))))
 
 (defun call-rpc (arg-type arg result-type 
 		 &key (host *rpc-host*) (port *rpc-port*) (program 0) (version 0) (proc 0) 
-		   auth verf request-id protocol (timeout 1))
+		   auth verf request-id protocol (timeout 1) (timeout-error t))
   "Establish a connection and execute an RPC to a remote machine. Returns the value decoded by the RESULT-TYPE.
 By default a TCP connection is established and this function will block until a reply is received.
 
@@ -213,6 +220,8 @@ If provided, REQUEST-ID should be an integer specifying the message ID to use. I
 *rpc-msgid* will then be incremented.
 
 If TIMEOUT is specified, it will be set as the RECEIVE-TIMEOUT (is using TCP) or to control waiting for UDP responses.
+
+If TIMEOUT-ERROR is non-nil a UDP timeout will signal an error. Returns NIL otherwise.
 
 PROTOCOL should be :TCP, :UDP or :BROADCAST. :TCP is the default, and will block until a reply is recieved.
 :UDP will wait for up to TIMEOUT seconds for a reply and will raise an RPC-TIMEOUT-ERROR if it doesnt' receive one.
@@ -241,7 +250,8 @@ received in that time. It will return a list of (host port result) instead.
 		   :proc proc
 		   :auth auth
 		   :verf verf
-		   :timeout (or timeout 1)))
+		   :timeout (or timeout 1)
+		   :timeout-error timeout-error))
     (:broadcast
      (broadcast-rpc arg-type arg result-type
 		    :host host
@@ -268,7 +278,7 @@ ARG-TYPE and RESULT-TYPE should be XDR type specification forms."
 	   (,gproc ,proc))
        
        ;; define a function to call it
-       (defun ,name (arg &key (host *rpc-host*) (port *rpc-port*) auth verf request-id protocol (timeout 1))
+       (defun ,name (arg &key (host *rpc-host*) (port *rpc-port*) auth verf request-id protocol (timeout 1) (timeout-error t))
 	 (with-writer (,gwriter ,arg-type)
 	   (with-reader (,greader ,result-type)
 	     (call-rpc #',gwriter arg #',greader
@@ -281,7 +291,8 @@ ARG-TYPE and RESULT-TYPE should be XDR type specification forms."
 		       :verf verf
 		       :request-id request-id
 		       :protocol protocol
-		       :timeout timeout))))
+		       :timeout timeout
+		       :timeout-error timeout-error))))
 
        ;; define a server handler
        (with-reader (,greader ,arg-type)

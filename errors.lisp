@@ -22,7 +22,10 @@
   ())
 
 (define-condition rpc-timeout-error (rpc-error)
-  ())
+  ()
+  (:report (lambda (condition stream) 
+	     (declare (ignore condition))
+	     (format stream "RPC-TIMEOUT-ERROR"))))
 
 ;; reply errors 
 (define-condition rpc-auth-error (rpc-error)

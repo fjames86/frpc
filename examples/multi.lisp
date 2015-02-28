@@ -10,23 +10,24 @@
 
 (defrpc %call-null 0 :void :void)
 (defun call-null (&optional udp)
-  (%call-null "localhost" nil :port *port* :protocol (if udp :udp :tcp)))
+  (%call-null nil :port *port* :protocol (if udp :udp :tcp)))
 (defhandler %handle-null (void 0)
   (declare (ignore void))
   nil)
 
 (defrpc %call-upcase 1 :string :string)
 (defun call-upcase (string &optional udp)
-  (%call-upcase "localhost" string :port *port* :protocol (if udp :udp :tcp)))
+  (%call-upcase string :port *port* :protocol (if udp :udp :tcp)))
 (defhandler %handle-upcase (string 1)
   (string-upcase string))
 
 
 ;; -----------------------------
 
-(defvar *server* (make-rpc-server))
+(defvar *server* nil)
 
 (defun start ()
+  (setf *server* (make-rpc-server))
   (start-rpc-server *server* :tcp-ports (list *port*) :udp-ports (list *port*)))
 
 (defun stop ()
