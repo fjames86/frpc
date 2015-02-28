@@ -23,9 +23,9 @@ For instance, a client should write:
 (defrpc call-goodbye 1 :uint32 :string)
 ```
 
-This defines 2 Lisp functions to call out to an RPC server to execute the procedures.
+This defines a Lisp function for each RPC proc to call out to an RPC server to execute the procedures.
 
-A servers should additionally implement handlers for the procedures they wish to support
+Servers should additionally implement handlers for the procedures they wish to support
 ```
 (defhandler handle-hello (msg 0)
   (format nil "Hello, ~A!" msg))
@@ -56,32 +56,22 @@ Thus, with the example above, the client will be able to call a remote RPC serve
 2.1 CALL-RPC
 ------------
 
-The low-level client functionality is provided by CALL-RPC. This function accept 
+The low-level client functionality is provided by CALL-RPC. This function is used by a client to 
+send an RPC request to a remote server and blocks until a reply is received.
+
 3. RPC Server
 ----------------
 
-Singly-threaded TCP and UDP servers are currently implemented.
-
-3.1 TCP server
----------------
-
-At present only a single (singly-threaded) server may run at any one time. 
-See examples for usage.
+Singly-threaded TCP and UDP servers are currently implemented. See examples for usage.
 
 ```
+;; make a server instance
 (defvar *server* (make-rpc-server))
-(start-rpc-server *server* :port 8000)
-(stop-rpc-server *server*)
-```
 
-3.2 UDP server
-----------------
+;; start the server in a new thread, it will listen for requests on TCP and UDP ports 8000
+(start-rpc-server *server* :tcp-ports '(8000) :udp-ports '(8000))
 
-UDP servers work as above, except are implemented with UDP-RPC-SERVER instances.
-
-```
-(defvar *server* (make-udp-rpc-server))
-(start-rpc-server *server* :port 8000)
+;; stop the server thread
 (stop-rpc-server *server*)
 ```
 
@@ -126,9 +116,9 @@ Use PACK/UNPACK to store/extract instances from buffers rather than streams.
 
 Define enum types using
 ```
-(defxenum enum-type
-  (symbol integer)
-  ...)
+(defxenum enum-name
+  ((symbol integer)
+  ...))
 ```
 
 Lookup a corresponding integer or symbol using
@@ -168,13 +158,13 @@ Define structures using
 
 Where the FORM is:
 * a symbol, naming another xtype
-* (:list &rest forms)
+* (:list &rest forms) 
 * (:alist &rest (tag form))
-* (:plist &rest (tag form))
+* (:plist &rest key form)
 * (:struct struct-name &rest (slot-name form))
 * (:union enum-name &rest (enum-keys form))
-* (:array form length)
-* (:varray form &optional length)
+* (:array form length) 
+* (:varray form &optional length) 
 * (:varray* form &optional length)
 
 These rules can be applied recursively. 
@@ -184,33 +174,14 @@ You may define local readers and writers using WITH-READER and WITH-WRITER macro
 5. Examples
 -------------
 
-I have typed in some simple example programs, see e.g. examples/hello.lisp.
-Have a look at the portmappter, pmapper.lisp and also FRPC's sister project, 
-NEFARIOUS, an attempt at an NFS implementation.
+I have typed in some simple example programs. 
+For more serious usages, see port-mapper.lisp or Nefarious, an NFS implementation in Common Lisp.
 
-6. Aims
----------
-
-* Write a reasonably versatile/general purpose RPC lib
-* Both UDP and TCP servers
-* Multi-threading server
-* Singly-threaded server listening on multiple ports/protocols. We need this because many RPC systems
-require listening on a particular port, although with a portmapper (which MUST listen on 111)
-this is mitigated somewhat. However, since all RPC servers would be running from within
-the same Lisp image there is no actual need to listen on more than one port. All the 
-* UDP broadcast 
-
-7. License
+6. License
 ------------
 
 Released under the terms of the MIT license.
 
 Frank James 
 Febuary 2015.
-
-
-
-
-
-
 
