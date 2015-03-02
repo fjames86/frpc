@@ -11,14 +11,18 @@
 
 (in-package #:port-mapper)
 
-(defparameter *pmap-port* 111)
-
-;; ------- port mapper structs ----------
+;; -------- globals ------------
 
 (defconstant +pmapper-program+ 100000)
 (defconstant +pmapper-version+ 2)
 
 (use-rpc-program +pmapper-program+ +pmapper-version+)
+
+(use-rpc-port 111)
+
+(defparameter *pmap-port* 111)
+	
+;; ------- port mapper structs ----------
 
 (defxenum mapping-protocol
   ((:tcp 6)
@@ -88,9 +92,7 @@ in the mapping structure. if MAP-PORT is provided, will also match this port."
 
 ;; NULL -- test communication to the port mapper 
 
-(defrpc %call-null 0 :void :void)
-(defun call-null (&key (host *rpc-host*) (port *pmap-port*) protocol)
-  (%call-null nil :host host :port port :protocol protocol))
+(defrpc call-null 0 :void :void)
 
 (defhandler %handle-null (void 0)
   (declare (ignore void))
@@ -100,9 +102,7 @@ in the mapping structure. if MAP-PORT is provided, will also match this port."
 
 ;; SET -- set a port mapping 
 
-(defrpc %call-set 1 mapping :boolean)
-(defun call-set (mapping &key (host *rpc-host*) (port *pmap-port*) protocol)
-  (%call-set mapping :host host :port port :protocol protocol))
+(defrpc call-set 1 mapping :boolean)
 
 (defhandler %handle-set (mapping 1)
   (add-mapping mapping)
@@ -112,9 +112,7 @@ in the mapping structure. if MAP-PORT is provided, will also match this port."
 
 ;; UNSET -- remove a port mapping 
 
-(defrpc %call-unset 2 mapping :boolean)
-(defun call-unset (mapping &key (host *rpc-host*) (port *pmap-port*) protocol)
-  (%call-unset mapping :host host :port port :protocol protocol))
+(defrpc call-unset 2 mapping :boolean)
 
 (defhandler %handle-unset (mapping 2)
   (when (find-mapping mapping)
@@ -125,9 +123,7 @@ in the mapping structure. if MAP-PORT is provided, will also match this port."
 
 ;; GET-PORT -- lookup a port mapping for a given program/version
 
-(defrpc %call-get-port 3 mapping :uint32)
-(defun call-get-port (mapping &key (host *rpc-host*) (port *pmap-port*) protocol)
-  (%call-get-port mapping :host host :port port :protocol protocol))
+(defrpc call-get-port 3 mapping :uint32)
 
 (defhandler %handle-get-port (mapping 3)
   (let ((m (find-mapping mapping)))
@@ -143,13 +139,13 @@ in the mapping structure. if MAP-PORT is provided, will also match this port."
   ((map mapping)
    (next (:optional mapping-list))))
 
-(defrpc %call-dump 4 :void (:optional mapping-list))
-(defun call-dump (&key (host *rpc-host*) (port *pmap-port*) protocol)
-  (do ((mlist (%call-dump nil :host host :port port :protocol protocol) 
-	      (mapping-list-next mlist))
-       (ms nil))
-      ((null mlist) ms)
-    (push (mapping-list-map mlist) ms)))
+(defrpc call-dump 4 :void (:optional mapping-list)
+  (:transformer (res)
+    (do ((mlist res (mapping-list-next mlist))
+	 (ms nil))
+	((null mlist) ms)
+      (push (mapping-list-map mlist) ms)))
+  (:documentation "List all available port mappings."))
 
 (defhandler %handle-dump (void 4)
   (declare (ignore void))
@@ -162,19 +158,17 @@ in the mapping structure. if MAP-PORT is provided, will also match this port."
 
 ;; ---------------------
 
-(defrpc %call-callit 5 
+(defrpc call-callit 5 
   (:list :uint32 :uint32 :uint32 (:varray* :octet)) ;;prog version proc args)
-  (:list :uint32 (:varray* :octet))) ;; port result 
-
-(defun call-callit (proc packed-args &key (host *rpc-host*) (port *pmap-port*) (program 0) (version 0) protocol)
-  "Execute an RPC via the remote port mapper proxy. Returns (PORT ARGS) where ARGS is an opaque array
+  (:list :uint32 (:varray* :octet))
+  (:arg-transformer (program version proc packed-args)
+    (list program version proc packed-args))
+  (:documentation 
+   "Execute an RPC via the remote port mapper proxy. Returns (PORT ARGS) where ARGS is an opaque array
 of the packed result. The result needs to be extracted using FRPC:UNPACK. The result type is 
 recommended to be a well-defined type, i.e. represented by a symbol, so that it has an easy reader
-function available."
-  (%call-callit (list program version proc packed-args)
-		:host host
-		:port port
-		:protocol protocol))
+function available."))
+
 
 ;; In the spec it says we should be able to call any (mapped) rpc on the local machine communicating
 ;; only via UDP. We run all RPC programs from within the same Lisp image so we can directly 

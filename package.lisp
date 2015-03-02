@@ -5,6 +5,7 @@
 (defpackage #:frpc
   (:use #:cl)
   (:export #:use-rpc-program
+	   #:use-rpc-port
 	   #:defrpc
 	   #:defhandler
 	   #:find-handler
@@ -69,8 +70,8 @@
 	   #:mapping-version
 	   #:mapping-protocol
 	   #:mapping-port
-	   ;; the rpc functions
 	   #:*pmap-port*
+	   ;; the rpc functions
 	   #:call-null
 	   #:call-set
 	   #:call-unset

@@ -7,6 +7,8 @@
 
 (use-rpc-program 1 1)
 
+(use-rpc-port 8000)
+
 ;; --------------------------------------------
 
 (defrpc call-null 0 :void :void)
@@ -37,7 +39,8 @@
   (:list :uint32 :string)
   (:union hstat
     (:ok (:varray :string))
-    (otherwise :void)))
+    (otherwise :void))
+  (:arg-transformer (n string) (list n string)))
 
 (defhandler handle-goodbye (args 2)
   (destructuring-bind (len str) args

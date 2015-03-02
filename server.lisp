@@ -23,7 +23,7 @@
 ;; each program id stores an alist of version ids
 ;; each version id stores an aslist of handler lists
 ;; a handler list is (ARG-READER RES-WRITER HANDLER)
-(defparameter *handlers* nil)
+(defvar *handlers* nil)
 
 (defun %defhandler (program version proc arg-type res-type handler)
   (let ((p (assoc program *handlers*)))

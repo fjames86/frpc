@@ -4,20 +4,21 @@
 
 (in-package #:frpc.test.multi)
 
-(defparameter *port* 8000)
-
 (use-rpc-program 100012 3)
+(use-rpc-port 8000)
 
-(defrpc %call-null 0 :void :void)
-(defun call-null (&optional udp)
-  (%call-null nil :port *port* :protocol (if udp :udp :tcp)))
+;; -------------------------
+
+(defrpc call-null 0 :void :void)
+
 (defhandler %handle-null (void 0)
   (declare (ignore void))
   nil)
 
-(defrpc %call-upcase 1 :string :string)
-(defun call-upcase (string &optional udp)
-  (%call-upcase string :port *port* :protocol (if udp :udp :tcp)))
+;; ---------------------------
+
+(defrpc call-upcase 1 :string :string)
+
 (defhandler %handle-upcase (string 1)
   (string-upcase string))
 
@@ -28,7 +29,7 @@
 
 (defun start ()
   (setf *server* (make-rpc-server))
-  (start-rpc-server *server* :tcp-ports (list *port*) :udp-ports (list *port*)))
+  (start-rpc-server *server* :tcp-ports '(8000) :udp-ports '(8000)))
 
 (defun stop ()
   (stop-rpc-server *server*))

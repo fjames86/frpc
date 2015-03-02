@@ -18,7 +18,7 @@
 ;; enums
 ;; tagged unions
 
-(defparameter *xtypes* (make-hash-table))
+(defvar *xtypes* (make-hash-table))
 
 (defun %defxtype (name reader writer)
   (setf (gethash name *xtypes*)
@@ -75,10 +75,12 @@
 
 
 (defun pack (writer obj)
+  "Write the object into an octet-buffer."
   (flexi-streams:with-output-to-sequence (v :element-type 'nibbles:octet)
     (funcall writer v obj)))
 
 (defun unpack (reader buffer)
+  "Read the object from an octet-buffer."
   (flexi-streams:with-input-from-sequence (v buffer)
     (funcall reader v)))
 

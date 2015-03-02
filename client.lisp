@@ -63,6 +63,11 @@ the bytes read."
 (defparameter *rpc-host* "localhost")
 (defparameter *rpc-port* 111)
 
+(defmacro use-rpc-port (port)
+  `(eval-when (:load-toplevel :compile-toplevel :execute)
+     (setf *rpc-port* ,port)))
+
+
 (defun rpc-connect (host &optional port)
   "Establish a TCP connection to the rpc server."
   (usocket:socket-connect host (or port *rpc-port*)
@@ -188,13 +193,11 @@ the bytes read."
 	     (if (usocket:wait-for-input socket :timeout timeout :ready-only t)
 		 (multiple-value-bind (buffer count remote-host remote-port) (progn (usocket:socket-receive socket nil 65507))
 		   (log:debug "Received response from ~A:~A (count ~A)" remote-host remote-port count)
-		   ;; I just saw the count come back as 4294967295 i.e. -1 cast as uint32, this really 
-		   ;; means recvfrom returned -1 (i.e. an error occured). There seems to be a bug 
-		   ;; in sb-bsd-sockets:socket-receive. throw an error here instead 
+		   ;; sbcl bug 1426667: socket-receive on x64 windows doesn't correctly check for errors 
+		   ;; workaround is to check for -1 as an unsigned int
 		   (when (= count #xffffffff)
 		     (error "Error: recvfrom returned -1"))
-		   ;; just read from the entire buffer, even though we might not need all of it
-		   (flexi-streams:with-input-from-sequence (input buffer) ;; (subseq buffer 0 count))
+		   (flexi-streams:with-input-from-sequence (input buffer :start 0 :end count)
 		     (let ((msg (%read-rpc-msg input)))
 		       (log:debug "MSG ID ~A" (rpc-msg-xid msg))
 		       ;; FIXME: shouild really check the reply's id
@@ -205,7 +208,7 @@ the bytes read."
 
 (defun call-rpc (arg-type arg result-type 
 		 &key (host *rpc-host*) (port *rpc-port*) (program 0) (version 0) (proc 0) 
-		   auth verf request-id protocol (timeout 1) (timeout-error t))
+		   auth verf request-id protocol (timeout 1))
   "Establish a connection and execute an RPC to a remote machine. Returns the value decoded by the RESULT-TYPE.
 By default a TCP connection is established and this function will block until a reply is received.
 
@@ -255,8 +258,7 @@ received in that time. Note that it will return a list of (host port result) ins
 		   :proc proc
 		   :auth auth
 		   :verf verf
-		   :timeout (or timeout 1)
-		   :timeout-error timeout-error))
+		   :timeout timeout))
     (:broadcast
      (broadcast-rpc arg-type arg result-type
 		    :host host
@@ -269,7 +271,7 @@ received in that time. Note that it will return a list of (host port result) ins
 		    :request-id request-id
 		    :timeout timeout))))
 
-(defmacro defrpc (name proc arg-type result-type)
+(defmacro defrpc (name proc arg-type result-type &rest options)
   "Declare an RPC interface and define a client function that invokes CALL-RPC. 
 This MUST be defined before a partner DEFHANDLER form.
 
@@ -284,21 +286,55 @@ ARG-TYPE and RESULT-TYPE should be XDR type specification forms."
 	   (,gproc ,proc))
        
        ;; define a function to call it
-       (defun ,name (arg &key (host *rpc-host*) (port *rpc-port*) auth verf request-id protocol (timeout 1) (timeout-error t))
+       (defun ,name (,@(cond
+			((eq arg-type :void)
+			 '(&key))
+			((assoc :arg-transformer options)
+			 (destructuring-bind (params &body body) (cdr (assoc :arg-transformer options))
+			   (declare (ignore body))
+			   (if (member '&key params)
+			       params
+			       `(,@params &key))))
+			(t 
+			 '(arg &key)))
+		     (host ,*rpc-host*) (port ,*rpc-port*) auth verf request-id protocol (timeout 1))
+	 ,@(when (assoc :documentation options) (cdr (assoc :documentation options)))
 	 (with-writer (,gwriter ,arg-type)
 	   (with-reader (,greader ,result-type)
-	     (call-rpc #',gwriter arg #',greader
-		       :host host
-		       :port port
-		       :program ,gprogram
-		       :version ,gversion
-		       :proc ,gproc
-		       :auth auth
-		       :verf verf
-		       :request-id request-id
-		       :protocol protocol
-		       :timeout timeout
-		       :timeout-error timeout-error))))
+	     ,(let ((the-form `(call-rpc #',gwriter 
+					 ,(cond
+					   ((eq arg-type :void) 
+					    'nil)
+					   ((assoc :arg-transformer options)
+					    (destructuring-bind (params &body body) (cdr (assoc :arg-transformer options))
+					      (declare (ignore params))
+					      `(progn ,@body)))
+					    (t 'arg))
+					 #',greader
+					 :host host
+					 :port port
+					 :program ,gprogram
+					 :version ,gversion
+					 :proc ,gproc
+					 :auth auth
+					 :verf verf
+					 :request-id request-id
+					 :protocol protocol
+					 :timeout timeout))
+		    (transformer (assoc :transformer options))
+		    (gtrafo (gensym "TRAFO"))
+		    (gcall (gensym "CALL")))
+		  (if transformer	       
+		      (destructuring-bind ((var) &body body) (cdr transformer)			 
+			`(flet ((,gcall () ,the-form)
+				(,gtrafo (,var) ,@body))
+			   (case protocol
+			     (:broadcast (mapcar (lambda (b)
+						   (destructuring-bind (host port val) b
+						     (list host port (,gtrafo val))))
+						 (,gcall)))
+			     (otherwise (,gtrafo (,gcall))))))
+		      the-form)))))
 
        ;; define a server handler
        (with-reader (,greader ,arg-type)
