@@ -15,11 +15,11 @@
 	   #:defxunion
 	   #:defxenum
 	   #:defxstruct	   
-	   #:defreader
-	   #:defwriter
 	   #:defxtype*
 	   #:read-xtype
 	   #:write-xtype
+	   #:xtype-reader
+	   #:xtype-writer
 
 	   ;; enums/unions
 	   #:enum
@@ -28,7 +28,9 @@
 	   #:xunion-tag
 	   #:xunion-val
 
-	   ;; local type definitions
+	   ;; functions for type definitions
+	   #:defreader
+	   #:defwriter
 	   #:with-reader
 	   #:with-writer
 
@@ -50,6 +52,7 @@
 	   ;; server
 	   #:make-rpc-server
 	   #:start-rpc-server
+	   #:run-rpc-server
 	   #:stop-rpc-server
 	   
 	   ;; specials that are binded in the context of a handler
