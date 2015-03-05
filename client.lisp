@@ -280,11 +280,21 @@ NAME should be a symbol naming the client function to be defined.
 PROC should be an integer or constant form.
 
 ARG-TYPE and RESULT-TYPE should be XDR type specification forms."
-  (alexandria:with-gensyms (gprogram gversion gproc greader gwriter)
+  (alexandria:with-gensyms (gprogram gversion gproc)
+    (let ((arg-reader (alexandria:symbolicate '%read- name '-arg))
+	  (arg-writer (alexandria:symbolicate '%writer- name '-arg))
+	  (res-reader (alexandria:symbolicate '%read- name '-res))
+	  (res-writer (alexandria:symbolicate '%writer- name '-res)))
     `(let ((,gprogram ,*rpc-program*)
 	   (,gversion ,*rpc-version*)
 	   (,gproc ,proc))
-       
+
+       ;; define the serializers
+       (defreader ,arg-reader ,arg-type)
+       (defwriter ,arg-writer ,arg-type)
+       (defreader ,res-reader ,result-type)
+       (defwriter ,res-writer ,result-type)
+
        ;; define a function to call it
        (defun ,name (,@(cond
 			((eq arg-type :void)
@@ -299,48 +309,44 @@ ARG-TYPE and RESULT-TYPE should be XDR type specification forms."
 			 '(arg &key)))
 		     (host ,*rpc-host*) (port ,*rpc-port*) auth verf request-id protocol (timeout 1))
 	 ,@(when (assoc :documentation options) (cdr (assoc :documentation options)))
-	 (with-writer (,gwriter ,arg-type)
-	   (with-reader (,greader ,result-type)
-	     ,(let ((the-form `(call-rpc #',gwriter 
-					 ,(cond
-					   ((eq arg-type :void) 
-					    'nil)
-					   ((assoc :arg-transformer options)
-					    (destructuring-bind (params &body body) (cdr (assoc :arg-transformer options))
-					      (declare (ignore params))
-					      `(progn ,@body)))
-					    (t 'arg))
-					 #',greader
-					 :host host
-					 :port port
-					 :program ,gprogram
-					 :version ,gversion
-					 :proc ,gproc
-					 :auth auth
-					 :verf verf
-					 :request-id request-id
-					 :protocol protocol
-					 :timeout timeout))
-		    (transformer (assoc :transformer options))
-		    (gtrafo (gensym "TRAFO"))
-		    (gcall (gensym "CALL")))
-		  (if transformer	       
-		      (destructuring-bind ((var) &body body) (cdr transformer)			 
-			`(flet ((,gcall () ,the-form)
-				(,gtrafo (,var) ,@body))
-			   (case protocol
-			     (:broadcast (mapcar (lambda (b)
-						   (destructuring-bind (host port val) b
-						     (list host port (,gtrafo val))))
-						 (,gcall)))
-			     (otherwise (,gtrafo (,gcall))))))
-		      the-form)))))
+	 ,(let ((the-form `(call-rpc (function ,arg-writer)
+				     ,(cond
+				       ((eq arg-type :void) 
+					'nil)
+				       ((assoc :arg-transformer options)
+					(destructuring-bind (params &body body) (cdr (assoc :arg-transformer options))
+					  (declare (ignore params))
+					  `(progn ,@body)))
+				       (t 'arg))
+				     (function ,res-reader)
+				     :host host
+				     :port port
+				     :program ,gprogram
+				     :version ,gversion
+				     :proc ,gproc
+				     :auth auth
+				     :verf verf
+				     :request-id request-id
+				     :protocol protocol
+				     :timeout timeout))
+		(transformer (assoc :transformer options))
+		(gtrafo (gensym "TRAFO"))
+		(gcall (gensym "CALL")))
+	       (if transformer	       
+		   (destructuring-bind ((var) &body body) (cdr transformer)			 
+		     `(flet ((,gcall () ,the-form)
+			     (,gtrafo (,var) ,@body))
+			(case protocol
+			  (:broadcast (mapcar (lambda (b)
+						(destructuring-bind (host port val) b
+						  (list host port (,gtrafo val))))
+					      (,gcall)))
+			  (otherwise (,gtrafo (,gcall))))))
+		   the-form)))
 
        ;; define a server handler
-       (with-reader (,greader ,arg-type)
-	 (with-writer (,gwriter ,result-type)
-	   (%defhandler ,gprogram ,gversion ,gproc 
-			(function ,greader) 
-			(function ,gwriter) 
-			nil))))))
+       (%defhandler ,gprogram ,gversion ,gproc 
+		    (function ,arg-reader) 
+		    (function ,res-writer) 
+		    nil)))))
 

@@ -44,8 +44,12 @@
 	      *handlers*)))
   nil)
 
-(defun find-handler (program &optional version proc)
+(defun find-handler (&optional program version proc)
   "Look up the handler(s) for the given PROGRAM, VERSION and PROC IDs."
+  ;; if no program supplied return a list of all programs currently defined
+  (unless program
+    (return-from find-handler (mapcar #'car *handlers*)))
+  ;; otherwise find the specified program/version/proc 
   (let ((p (assoc program *handlers*)))
     (if (and p version)
 	(let ((v (assoc version (cdr p))))
