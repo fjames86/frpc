@@ -370,7 +370,7 @@ on the TCP-PORTS list and UDP sockets listening on the UDP-PORTS list. "
       (dolist (udp udp-sockets)
 	(usocket:socket-close udp)))))
 
-(defun start-rpc-server (server &key tcp-ports udp-ports (add-port-mappings t) timeout)
+(defun start-rpc-server (server &key tcp-ports udp-ports timeout)
   "Start the RPC server in a new thread. 
 
 TCP-PORTS and UDP-PORTS should be lists of integers specifying the ports to listen on, for each 
@@ -382,8 +382,7 @@ add each mapping manually (using ADD-MAPPING).
 
 When specified, TIMEOUT will be set as the TCP receive timeout (read timeout)."
   ;; add all the port mappings  
-  (when add-port-mappings
-    (port-mapper:add-all-mappings tcp-ports udp-ports))
+  ;;  (when add-port-mappings (port-mapper:add-all-mappings tcp-ports udp-ports))
   (setf (rpc-server-thread server)
 	(bt:make-thread (lambda ()
 			  (run-rpc-server server tcp-ports udp-ports :timeout timeout))
