@@ -59,6 +59,7 @@
 	   #:*rpc-remote-host*
 	   #:*rpc-remote-port*
 	   #:*rpc-remote-protocol*
+	   #:*rpc-remote-auth*
 	   ))
 
 ;; package for the port mapper program. we define it here so that we have access to the 

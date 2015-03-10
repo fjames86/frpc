@@ -11,6 +11,7 @@
 (defvar *rpc-remote-host* nil)
 (defvar *rpc-remote-port* nil)
 (defvar *rpc-remote-protocol* nil)
+(defvar *rpc-remote-auth* nil)
 
 (defmacro with-caller-binded ((host port protocol) &body body)
   `(let ((*rpc-remote-host* ,host)
@@ -136,11 +137,16 @@ TCP requests only."
 				(make-rpc-response :accept :proc-unavail
 						   :id (rpc-msg-xid msg))))
 	       (t 
+		;; log the authentication
+		(unless (eq (opaque-auth-flavour (call-body-auth call)) :auth-null)
+		  (log:debug "Authentication: ~S" (call-body-auth call)))
+		;; run the handler 
 		(destructuring-bind (arg-type res-type handler) h
 		  (handler-case 
 		      (let ((arg (read-xtype arg-type input-stream)))
 			(log:debug "Passing arg to handler")
-			(let ((res (funcall handler arg)))
+			(let ((res (let ((*rpc-remote-auth* (call-body-auth call)))
+				     (funcall handler arg))))
 			  (log:debug "Call successful")
 			  (%write-rpc-msg output-stream
 					  (make-rpc-response :accept :success
@@ -178,22 +184,22 @@ TCP requests only."
 until the client terminates or some other error occurs."
   ;; a connection has been accepted -- process it 
   (let ((conn (usocket:socket-accept socket)))
-    (log:debug "Accepted connection from ~A:~A" (usocket:get-peer-address conn) (usocket:get-peer-port conn))
+    (log:debug "TCP connection from ~A:~A" (usocket:get-peer-address conn) (usocket:get-peer-port conn))
     ;; set the receive timeout
     (when timeout 
       (setf (usocket:socket-option conn :receive-timeout) timeout))
     (handler-case 
 	(loop 
 	   (let ((stream (usocket:socket-stream conn)))
-	     (log:debug "reading request")
+	     (log:debug "Reading request")
 	     (flexi-streams:with-input-from-sequence (input (read-fragmented-message stream))
-	       (log:debug "successfully read request")
+	       (log:debug "Read request")
 	       (let ((buff (flexi-streams:with-output-to-sequence (output)
 			     (with-caller-binded ((usocket:get-peer-address conn)
 						  (usocket:get-peer-port conn)
 						  :tcp)
 			       (handle-request server input output)))))
-		 (log:debug "writing response")
+		 (log:debug "Writing response")
 		 ;; write the fragment header (with terminating bit set)
 		 (write-uint32 stream (logior #x80000000 (length buff)))
 		 ;; write the buffer itself
@@ -205,21 +211,11 @@ until the client terminates or some other error occurs."
 	(log:debug "Connection closed"))
       (error (e)
 	(log:error "Error processing: ~A" e)
-	nil))
-    (usocket:socket-close conn)))
+	(usocket:socket-close conn)
+	nil))))
+
 
 ;; -------------------- udp rpc server -------------
-
-;; FIXME: there must be a better way of doing this
-;;(defun %read-until-eof (stream)
-;;  "Read the rest of the stream."
-;;  (flexi-streams:with-output-to-sequence (output)
-;;    (do ((done nil))
-;;	(done)
-;;      (let ((byte (read-byte stream nil nil)))
-;;	(if byte
-;;	    (write-byte byte output)
-;;	    (setf done t))))))
 
 (defun process-udp-request (server msg input-stream)
   "Returns a packed buffer containing the response to send back to the caller."
@@ -254,11 +250,16 @@ until the client terminates or some other error occurs."
 		 (make-rpc-response :accept :proc-unavail
 				    :id id)))
 	  (t
+	   ;; log the authentication
+	   (unless (eq (opaque-auth-flavour (call-body-auth call)) :auth-null)
+	     (log:debug "Authentication: ~S" (call-body-auth call)))
+	   ;; handle the request
 	   (destructuring-bind (reader writer handler) h
 	     ;; read the argument
 	     (let ((arg (read-xtype reader input-stream)))
 	       ;; run the handler
-	       (let ((res (funcall handler arg)))
+	       (let ((res (let ((*rpc-remote-auth* (call-body-auth call)))
+			    (funcall handler arg))))
 		 ;; package the reply and send
 		 (flexi-streams:with-output-to-sequence (output)
 		   (%write-rpc-msg output
@@ -288,7 +289,7 @@ until the client terminates or some other error occurs."
   "Wait for and read a datagram from the UDP socket. If successfully read the message then process it."
   (multiple-value-bind (%buffer length remote-host remote-port) (usocket:socket-receive socket buffer (length buffer))
     (declare (ignore %buffer))
-    (log:debug "Recieved msg from ~A:~A (length ~A)" remote-host remote-port length)
+    (log:debug "UDP msg from ~A:~A (length ~A)" remote-host remote-port length)
     (cond
       ;; there seems to be a bug in SBCL which causes it not to detect error return value (-1)
       ;; from recvfrom -- this means socket-receive seemingly returns successfully but with a length
@@ -328,9 +329,9 @@ as sent in the RPC request.
   (%make-rpc-server :programs programs
 		    :auth-handler auth-handler))
 
-(defun run-rpc-server (server tcp-ports udp-ports &key timeout)
+(defun run-rpc-server (server tcp-ports udp-ports &key (timeout 60))
   "Run the RPC server until the SERVER-EXITING flag is set. Will open TCP sockets listening
-on the TCP-PORTS list and UDP sockets listening on the UDP-PORTS list. "
+on the TCP-PORTS list and UDP sockets listening on the UDP-PORTS list."
   (let (tcp-sockets udp-sockets)
     ;; collect the sockets this way so that if there is an error thrown (such as can't listen on port)
     ;; then we can gracefully fail, and close the sockets we have opened
@@ -370,7 +371,7 @@ on the TCP-PORTS list and UDP sockets listening on the UDP-PORTS list. "
       (dolist (udp udp-sockets)
 	(usocket:socket-close udp)))))
 
-(defun start-rpc-server (server &key tcp-ports udp-ports timeout)
+(defun start-rpc-server (server &key tcp-ports udp-ports (timeout 60))
   "Start the RPC server in a new thread. 
 
 TCP-PORTS and UDP-PORTS should be lists of integers specifying the ports to listen on, for each 
