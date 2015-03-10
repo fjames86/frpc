@@ -7,8 +7,7 @@ which is used to define message structures and other on-wire formats, and the RP
 FRPC makes it simple and easy to define ONC-RPC clients and servers. See the sister-project, Nefarious, which 
 uses FRPC to implement an NFSv3 client and server.
 
-1. Defining RPC interfaces
-----------------------------
+##1. Defining RPC interfaces
 
 RPC interfaces are given a unique integer called a program number. Each program may have multiple
 versions of its interface, with each version having a different set of functions/arguments. Each procedure
@@ -41,8 +40,8 @@ define a set of error statuses which will be returned as a part of the handler's
 
 The types provided to DEFRPC can be a generalized type specifier, as described below in section 4.5.
 
-2. Client
-----------
+## 2. Client
+
 
 The DEFRPC macro defines a wrapper around the underlying CALL-RPC function, with default values provided 
 for the argument writer, result reader, program, version and proc arguments. 
@@ -53,14 +52,12 @@ Thus, with the example above, the client will be able to call a remote RPC serve
 (call-hello "hello" :host "10.1.1.1" :port 8000)
 ```
 
-2.1 CALL-RPC
-------------
+### 2.1 CALL-RPC
 
 The low-level client functionality is provided by CALL-RPC. This function is used by a client to 
 send an RPC request to a remote server and blocks until a reply is received.
 
-3. RPC Server
-----------------
+## 3. RPC Server
 
 Singly-threaded TCP and UDP servers are currently implemented. See examples for usage.
 
@@ -75,14 +72,12 @@ Singly-threaded TCP and UDP servers are currently implemented. See examples for 
 (stop-rpc-server *server*)
 ```
 
-4. XDR serializer
-----------------
+## 4. XDR serializer
 
 The XDR serializer is largely decoupled from the rpc implementation. This means it 
 could be used for other purposes as a generalised binary serialization system for any purpose.
 
-4.1 Primitive types
-----------------------
+### 4.1 Primitive types
 
 The primitive types which come predefined are:
 * :int32 :uint32 :int64 :uint64 :octet
@@ -111,8 +106,7 @@ the type to/from a stream.
 
 Use PACK/UNPACK to store/extract instances from buffers rather than streams.
 
-4.2 enums
-------------
+### 4.2 enums
 
 Define enum types using
 ```
@@ -127,8 +121,7 @@ Lookup a corresponding integer or symbol using
 ```
 where val is either an integer or a symbol.
 
-4.3 unions
------------
+### 4.3 unions
 
 Define union types using
 ```
@@ -137,8 +130,7 @@ Define union types using
   ...))
 ```
 
-4.4 structures
-----------------
+### 4.4 structures
 
 Define structures using
 
@@ -148,8 +140,7 @@ Define structures using
   ...))
 ```
 
-4.5 Generalized types
-------------------------
+### 4.5 Generalized types
 
 ```
 (defxtype* name ()
@@ -171,14 +162,12 @@ These rules can be applied recursively.
 
 You may define local readers and writers using WITH-READER and WITH-WRITER macros.
 
-5. Examples
--------------
+### 5. Examples
 
 I have typed in some simple example programs. 
 For more serious usages, see port-mapper.lisp or Nefarious, an NFS implementation in Common Lisp.
 
-6. License
-------------
+### 6. License
 
 Released under the terms of the MIT license.
 
