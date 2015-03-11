@@ -405,6 +405,10 @@ on the TCP-PORTS list and UDP sockets listening on the UDP-PORTS list."
 			(log:debug "Error: ~S" e)
 			(ignore-errors (usocket:socket-close socket))
 			(setf connections (remove socket connections :key #'rpc-connection-conn))))))))))
+      ;; close outstanding connections
+      (dolist (conn connections)
+	(ignore-errors 
+	  (usocket:socket-close (rpc-connection-conn conn))))
       ;; close the server sockets
       (dolist (tcp tcp-sockets)
 	(usocket:socket-close tcp))
