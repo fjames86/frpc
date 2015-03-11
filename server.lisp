@@ -211,7 +211,8 @@ until the client terminates or some other error occurs."
 	(log:debug "Connection closed"))
       (error (e)
 	(log:error "Error processing: ~A" e)
-	(usocket:socket-close conn)
+	;; socket-close can also error if the connection was closed remotely 
+	(ignore-errors (usocket:socket-close conn))
 	nil))))
 
 
@@ -333,38 +334,39 @@ as sent in the RPC request.
   "Run the RPC server until the SERVER-EXITING flag is set. Will open TCP sockets listening
 on the TCP-PORTS list and UDP sockets listening on the UDP-PORTS list."
   (let (tcp-sockets udp-sockets)
-    ;; collect the sockets this way so that if there is an error thrown (such as can't listen on port)
-    ;; then we can gracefully fail, and close the sockets we have opened
-    ;; if we mapcar to collect them then we lose the sockets we opened before the failure
-    (dolist (port tcp-ports)
-      (push (usocket:socket-listen usocket:*wildcard-host* port
-				   :reuse-address t
-				   :element-type '(unsigned-byte 8))
-	    tcp-sockets))
-    (dolist (port udp-ports)
-      (push (usocket:socket-connect nil nil 
-				    :protocol :datagram
-				    :element-type '(unsigned-byte 8)
-				    :local-port port)
-	    udp-sockets))
     (unwind-protect 
-	 (do ((udp-buffer (nibbles:make-octet-vector 65507)))
-	     ((rpc-server-exiting server))
-	   ;; poll and timeout each second so that we can check the exiting flag
-	   (let ((ready (usocket:wait-for-input (append tcp-sockets udp-sockets) :ready-only t :timeout 1)))
-	     (dolist (socket ready)
-	       (etypecase socket
-		 (usocket:stream-server-usocket
-		  ;; a tcp socket to accept
-		  (accept-rpc-connection server socket timeout))
-		 (usocket:datagram-usocket
-		  ;; a udp socket is ready to read from
-		  (handler-case (accept-udp-rpc-request server socket udp-buffer)
-		    (error (e)
-		      ;; windows is known to throw an error on receive if there was no-one 
-		      ;; listening on the port the previous UDP packet was sent to.
-		      ;; catching the error here and ignore it then we can overcome this
-		      (log:debug "~A" e))))))))
+	 (progn 
+	   ;; collect the sockets this way so that if there is an error thrown (such as can't listen on port)
+	   ;; then we can gracefully fail, and close the sockets we have opened
+	   ;; if we mapcar to collect them then we lose the sockets we opened before the failure
+	   (dolist (port tcp-ports)
+	     (push (usocket:socket-listen usocket:*wildcard-host* port
+					  :reuse-address t
+					  :element-type '(unsigned-byte 8))
+		   tcp-sockets))
+	   (dolist (port udp-ports)
+	     (push (usocket:socket-connect nil nil 
+					   :protocol :datagram
+					   :element-type '(unsigned-byte 8)
+					   :local-port port)
+		   udp-sockets))
+
+	   (do ((udp-buffer (nibbles:make-octet-vector 65507)))
+	       ((rpc-server-exiting server))
+	     ;; poll and timeout each second so that we can check the exiting flag
+	     (let ((ready (usocket:wait-for-input (append tcp-sockets udp-sockets) :ready-only t :timeout 1)))
+	       (dolist (socket ready)
+		 (etypecase socket
+		   (usocket:stream-server-usocket
+		    ;; a tcp socket to accept
+		    (accept-rpc-connection server socket timeout))
+		   (usocket:datagram-usocket
+		    ;; a udp socket is ready to read from
+		    (handler-case (accept-udp-rpc-request server socket udp-buffer)
+		      (error (e)
+			;; windows is known to throw an error on receive if there was no-one 
+			;; listening on the port the previous UDP packet was sent to.
+			(log:debug "~A" e)))))))))
       ;; close the server sockets
       (dolist (tcp tcp-sockets)
 	(usocket:socket-close tcp))

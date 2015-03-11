@@ -171,7 +171,7 @@ the bytes read."
       (usocket:socket-close socket))))
 	
 (defun call-rpc-udp (host arg-type arg result-type 
-		     &key port program version proc auth verf request-id timeout timeout-error)
+		     &key port program version proc auth verf request-id timeout)
   "Send a request to the server via UDP and await a response. Will timeout after TIMEOUT seconds."
   (let ((socket (usocket:socket-connect host port
 					:protocol :datagram
@@ -202,8 +202,7 @@ the bytes read."
 		       (log:debug "MSG ID ~A" (rpc-msg-xid msg))
 		       ;; FIXME: shouild really check the reply's id
 		       (read-xtype result-type input))))
-		 (when timeout-error 
-		   (error 'rpc-timeout-error)))))
+		 (error 'rpc-timeout-error))))
       (usocket:socket-close socket))))
 
 (defun call-rpc (arg-type arg result-type 
