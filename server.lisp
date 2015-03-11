@@ -196,26 +196,6 @@ TCP requests only."
 	;; flush output
 	(force-output stream)))))
 
-(defun accept-rpc-connection (server socket timeout)
-  "Accept a TCP connection and process the request(s). Will keep processing requests from the connection
-until the client terminates or some other error occurs."
-  ;; a connection has been accepted -- process it 
-  (let ((conn (usocket:socket-accept socket)))
-    (log:debug "TCP connection from ~A:~A" (usocket:get-peer-address conn) (usocket:get-peer-port conn))
-    ;; set the receive timeout
-    (when timeout 
-      (setf (usocket:socket-option conn :receive-timeout) timeout))
-    (handler-case (loop (process-rpc-connection server conn))
-      (end-of-file (e)
-	(declare (ignore e))
-	(log:debug "Connection closed"))
-      (error (e)
-	(log:error "Error processing: ~A" e)
-	;; socket-close can also error if the connection was closed remotely 
-	(ignore-errors (usocket:socket-close conn))
-	nil))))
-
-
 ;; -------------------- udp rpc server -------------
 
 (defun process-udp-request (server msg input-stream)
@@ -383,11 +363,11 @@ on the TCP-PORTS list and UDP sockets listening on the UDP-PORTS list."
 		 (etypecase socket
 		   (usocket:stream-server-usocket
 		    ;; a tcp socket to accept
-		    (let ((conn (make-rpc-connection :conn
-						     (usocket:socket-accept socket)
-						     :time (get-universal-time))))
-		      (push conn connections)))
-;;		    (accept-rpc-connection server socket timeout))
+		    (push (make-rpc-connection :conn
+					       (usocket:socket-accept socket)
+					       :time 
+					       (get-universal-time))
+			  connections))
 		   (usocket:datagram-usocket
 		    ;; a udp socket is ready to read from
 		    (handler-case (accept-udp-rpc-request server socket udp-buffer)
@@ -396,7 +376,9 @@ on the TCP-PORTS list and UDP sockets listening on the UDP-PORTS list."
 			;; listening on the port the previous UDP packet was sent to.
 			(log:debug "~A" e))))
 		   (usocket:stream-usocket 
-		    ;; a connection is ready to read
+		    ;; a connection is ready to read 
+		    (let ((c (find socket connections :key #'rpc-connection-conn)))
+		      (setf (rpc-connection-time c) (get-universal-time)))
 		    (handler-case (process-rpc-connection server socket)
 		      (end-of-file ()
 			(log:debug "Connection closed by remote host")
