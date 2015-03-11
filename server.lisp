@@ -178,6 +178,23 @@ TCP requests only."
 
 ;; ------------- rpc server ----------
 
+(defun process-rpc-connection (server conn)
+  (let ((stream (usocket:socket-stream conn)))
+    (log:debug "Reading request")
+    (flexi-streams:with-input-from-sequence (input (read-fragmented-message stream))
+      (log:debug "Read request")
+      (let ((buff (flexi-streams:with-output-to-sequence (output)
+		    (with-caller-binded ((usocket:get-peer-address conn)
+					 (usocket:get-peer-port conn)
+					 :tcp)
+		      (handle-request server input output)))))
+	(log:debug "Writing response")
+	;; write the fragment header (with terminating bit set)
+	(write-uint32 stream (logior #x80000000 (length buff)))
+	;; write the buffer itself
+	(write-sequence buff stream)
+	;; flush output
+	(force-output stream)))))
 
 (defun accept-rpc-connection (server socket timeout)
   "Accept a TCP connection and process the request(s). Will keep processing requests from the connection
@@ -188,24 +205,7 @@ until the client terminates or some other error occurs."
     ;; set the receive timeout
     (when timeout 
       (setf (usocket:socket-option conn :receive-timeout) timeout))
-    (handler-case 
-	(loop 
-	   (let ((stream (usocket:socket-stream conn)))
-	     (log:debug "Reading request")
-	     (flexi-streams:with-input-from-sequence (input (read-fragmented-message stream))
-	       (log:debug "Read request")
-	       (let ((buff (flexi-streams:with-output-to-sequence (output)
-			     (with-caller-binded ((usocket:get-peer-address conn)
-						  (usocket:get-peer-port conn)
-						  :tcp)
-			       (handle-request server input output)))))
-		 (log:debug "Writing response")
-		 ;; write the fragment header (with terminating bit set)
-		 (write-uint32 stream (logior #x80000000 (length buff)))
-		 ;; write the buffer itself
-		 (write-sequence buff stream)
-		 ;; flush output
-		 (force-output stream)))))
+    (handler-case (loop (process-rpc-connection server conn))
       (end-of-file (e)
 	(declare (ignore e))
 	(log:debug "Connection closed"))
@@ -330,10 +330,14 @@ as sent in the RPC request.
   (%make-rpc-server :programs programs
 		    :auth-handler auth-handler))
 
+
+(defstruct rpc-connection 
+  conn time)
+
 (defun run-rpc-server (server tcp-ports udp-ports &key (timeout 60))
   "Run the RPC server until the SERVER-EXITING flag is set. Will open TCP sockets listening
 on the TCP-PORTS list and UDP sockets listening on the UDP-PORTS list."
-  (let (tcp-sockets udp-sockets)
+  (let (tcp-sockets udp-sockets connections)
     (unwind-protect 
 	 (progn 
 	   ;; collect the sockets this way so that if there is an error thrown (such as can't listen on port)
@@ -353,20 +357,54 @@ on the TCP-PORTS list and UDP sockets listening on the UDP-PORTS list."
 
 	   (do ((udp-buffer (nibbles:make-octet-vector 65507)))
 	       ((rpc-server-exiting server))
+
+	     ;; if any connections are getting old then close them
+	     (let ((now (get-universal-time)))
+	       (setf connections
+		     (mapcan (lambda (c)
+			       (cond
+				 ((> (- now (rpc-connection-time c)) timeout)
+				  ;; the connection is old, close it 
+				  (log:debug "Purging old connection")
+				  (handler-case (usocket:socket-close (rpc-connection-conn c))
+				    (error (e)
+				      (log:debug "Couldn't close connection: ~S" e)))
+				  nil)
+				 (t 
+				  (list c))))
+			     connections)))
+	     
 	     ;; poll and timeout each second so that we can check the exiting flag
-	     (let ((ready (usocket:wait-for-input (append tcp-sockets udp-sockets) :ready-only t :timeout 1)))
+	     (let ((ready (usocket:wait-for-input (append tcp-sockets 
+							  udp-sockets
+							  (mapcar #'rpc-connection-conn connections))
+						  :ready-only t :timeout 1)))
 	       (dolist (socket ready)
 		 (etypecase socket
 		   (usocket:stream-server-usocket
 		    ;; a tcp socket to accept
-		    (accept-rpc-connection server socket timeout))
+		    (let ((conn (make-rpc-connection :conn
+						     (usocket:socket-accept socket)
+						     :time (get-universal-time))))
+		      (push conn connections)))
+;;		    (accept-rpc-connection server socket timeout))
 		   (usocket:datagram-usocket
 		    ;; a udp socket is ready to read from
 		    (handler-case (accept-udp-rpc-request server socket udp-buffer)
 		      (error (e)
 			;; windows is known to throw an error on receive if there was no-one 
 			;; listening on the port the previous UDP packet was sent to.
-			(log:debug "~A" e)))))))))
+			(log:debug "~A" e))))
+		   (usocket:stream-usocket 
+		    ;; a connection is ready to read
+		    (handler-case (process-rpc-connection server socket)
+		      (end-of-file ()
+			(log:debug "Connection closed by remote host")
+			(setf connections (remove socket connections :key #'rpc-connection-conn)))
+		      (error (e)
+			(log:debug "Error: ~S" e)
+			(ignore-errors (usocket:socket-close socket))
+			(setf connections (remove socket connections :key #'rpc-connection-conn))))))))))
       ;; close the server sockets
       (dolist (tcp tcp-sockets)
 	(usocket:socket-close tcp))
