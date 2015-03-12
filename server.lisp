@@ -160,7 +160,7 @@ TCP requests only."
 							 :id (rpc-msg-xid msg))))
 		    (error (e)
 		      ;; FIXME: should we just terminate the connection at this point?
-		      (log:error "Error handling: ~S" e) 
+		      (log:error "Error handling: ~A" e) 
 		      (%write-rpc-msg output-stream
 				      (make-rpc-response :accept :garbage-args
 							 :id (rpc-msg-xid msg))))))))))))
@@ -345,7 +345,7 @@ on the TCP-PORTS list and UDP sockets listening on the UDP-PORTS list."
 			       (cond
 				 ((> (- now (rpc-connection-time c)) timeout)
 				  ;; the connection is old, close it 
-				  (log:debug "Purging old connection")
+				  (log:debug "Purging connection to ~A" (usocket:get-peer-address (rpc-connection-conn c)))
 				  (handler-case (usocket:socket-close (rpc-connection-conn c))
 				    (error (e)
 				      (log:debug "Couldn't close connection: ~S" e)))
@@ -363,11 +363,14 @@ on the TCP-PORTS list and UDP sockets listening on the UDP-PORTS list."
 		 (etypecase socket
 		   (usocket:stream-server-usocket
 		    ;; a tcp socket to accept
-		    (push (make-rpc-connection :conn
-					       (usocket:socket-accept socket)
-					       :time 
-					       (get-universal-time))
-			  connections))
+		    (let ((conn (make-rpc-connection :conn
+						     (usocket:socket-accept socket)
+						     :time 
+						     (get-universal-time))))
+		      (log:debug "Accepting TCP connection from ~A:~A" 
+				 (usocket:get-peer-address (rpc-connection-conn conn))
+				 (usocket:get-peer-port (rpc-connection-conn conn)))
+		      (push conn connections)))
 		   (usocket:datagram-usocket
 		    ;; a udp socket is ready to read from
 		    (handler-case (accept-udp-rpc-request server socket udp-buffer)
