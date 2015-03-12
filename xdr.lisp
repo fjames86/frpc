@@ -25,12 +25,14 @@
 	(list reader writer)))
 
 (defun xtype-reader (name) 
+  (declare (type symbol name))
   (let ((fn (first (gethash name *xtypes*))))
     (if fn
 	fn
 	(error "No type ~S" name))))
 
 (defun xtype-writer (name) 
+  (declare (type symbol name))
   (let ((fn (second (gethash name *xtypes*))))
     (if fn
 	fn
@@ -264,10 +266,11 @@
 	   (let ((gobj (gensym "OBJ")))
 	     `(let ((,gobj (,(alexandria:symbolicate 'make- struct-type))))
 		,@(mapcar (lambda (slot)
-			    (destructuring-bind (slot-name form &rest init) slot 
-			      (declare (ignore init))
-			      (let ((accessor (alexandria:symbolicate struct-type '- slot-name)))
-				`(setf (,accessor ,gobj) ,(compile-reader form stream-sym)))))
+			    (unless (symbolp slot)
+			      (destructuring-bind (slot-name form &rest init) slot 
+				(declare (ignore init))
+				(let ((accessor (alexandria:symbolicate struct-type '- slot-name)))
+				  `(setf (,accessor ,gobj) ,(compile-reader form stream-sym))))))
 			  slots)
 		,gobj)))
 	 (compile-union (enum-type arms)
@@ -377,10 +380,11 @@
 	   (let ((gobj (gensym "OBJ")))
 	     `(let ((,gobj ,obj-form))
 		,@(mapcar (lambda (slot)
-			    (destructuring-bind (slot-name form &rest init) slot 
-			      (declare (ignore init))
-			      (let ((accessor (alexandria:symbolicate struct-type '- slot-name)))
-				(compile-writer form stream-sym `(,accessor ,gobj)))))
+			    (unless (symbolp slot)
+			      (destructuring-bind (slot-name form &rest init) slot 
+				(declare (ignore init))
+				(let ((accessor (alexandria:symbolicate struct-type '- slot-name)))
+				  (compile-writer form stream-sym `(,accessor ,gobj))))))
 			  slots))))
 	 (compile-union (enum-type arms)
 	   (alexandria:with-gensyms (gtag gval)
@@ -530,24 +534,26 @@
      ;; define the structure
      (defstruct ,name-and-options
        ,@(mapcar (lambda (slot)
-		   (destructuring-bind (slot-name slot-form &rest slot-options) slot
-		     (cond
-		       (slot-options
-			`(,slot-name ,@slot-options))
-		       ((enump slot-form)
-			`(,slot-name 0))
-		       ((symbolp slot-form)
-			(case slot-form
-			  ((:int32 :int64 :uint32 :uint64 :octet)
-			   `(,slot-name 0))
-			  (:string
-			   `(,slot-name ""))
-			  ((:real32 :real64) 
-			   `(,slot-name 0.0))
-			  (otherwise
-			   `(,slot-name))))
-		       (t
-			`(,slot-name)))))
+		   (if (symbolp slot)
+		       slot
+		       (destructuring-bind (slot-name slot-form &rest slot-options) slot
+			 (cond
+			   (slot-options
+			    `(,slot-name ,@slot-options))
+			   ((enump slot-form)
+			    `(,slot-name 0))
+			   ((symbolp slot-form)
+			    (case slot-form
+			      ((:int32 :int64 :uint32 :uint64 :octet)
+			       `(,slot-name 0))
+			      (:string
+			       `(,slot-name ""))
+			      ((:real32 :real64) 
+			       `(,slot-name 0.0))
+			      (otherwise
+			       `(,slot-name))))
+			   (t
+			    `(,slot-name))))))
 		 slots))
 
      ;; define the xtype
