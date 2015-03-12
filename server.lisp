@@ -132,7 +132,7 @@ TCP requests only."
 						     :id (rpc-msg-xid msg)))))
 	       ((or (not h) (null (third h)))
 		;; no handler registered
-		(log:warn "No handler registered")
+		(log:debug "No handler registered")
 		(%write-rpc-msg output-stream
 				(make-rpc-response :accept :proc-unavail
 						   :id (rpc-msg-xid msg))))
