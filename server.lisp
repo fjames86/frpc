@@ -139,7 +139,7 @@ TCP requests only."
 	       (t 
 		;; log the authentication
 		(unless (eq (opaque-auth-flavour (call-body-auth call)) :auth-null)
-		  (log:debug "Authentication: ~S" (call-body-auth call)))
+;;		  (log:debug "Authentication: ~S" (call-body-auth call)))
 		;; run the handler 
 		(destructuring-bind (arg-type res-type handler) h
 		  (handler-case 
@@ -233,7 +233,7 @@ TCP requests only."
 	  (t
 	   ;; log the authentication
 	   (unless (eq (opaque-auth-flavour (call-body-auth call)) :auth-null)
-	     (log:debug "Authentication: ~S" (call-body-auth call)))
+;;	     (log:debug "Authentication: ~S" (call-body-auth call)))
 	   ;; handle the request
 	   (destructuring-bind (reader writer handler) h
 	     ;; read the argument
