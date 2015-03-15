@@ -138,7 +138,7 @@ TCP requests only."
 						   :id (rpc-msg-xid msg))))
 	       (t 
 		;; log the authentication
-		(unless (eq (opaque-auth-flavour (call-body-auth call)) :auth-null)
+;;		(unless (eq (opaque-auth-flavour (call-body-auth call)) :auth-null)
 ;;		  (log:debug "Authentication: ~S" (call-body-auth call)))
 		;; run the handler 
 		(destructuring-bind (arg-type res-type handler) h
@@ -232,7 +232,7 @@ TCP requests only."
 				    :id id)))
 	  (t
 	   ;; log the authentication
-	   (unless (eq (opaque-auth-flavour (call-body-auth call)) :auth-null)
+;;	   (unless (eq (opaque-auth-flavour (call-body-auth call)) :auth-null)
 ;;	     (log:debug "Authentication: ~S" (call-body-auth call)))
 	   ;; handle the request
 	   (destructuring-bind (reader writer handler) h
