@@ -5,7 +5,7 @@
 (defpackage #:frpc
   (:use #:cl)
   (:export #:use-rpc-program
-	   #:use-rpc-port
+	   #:use-rpc-host
 	   #:defrpc
 	   #:defhandler
 	   #:find-handler

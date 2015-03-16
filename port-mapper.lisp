@@ -17,8 +17,7 @@
 (defconstant +pmapper-version+ 2)
 
 (use-rpc-program +pmapper-program+ +pmapper-version+)
-
-(use-rpc-port 111)
+(use-rpc-host '*rpc-host* 111)
 
 (defparameter *pmap-port* 111)
 	

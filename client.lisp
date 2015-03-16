@@ -63,9 +63,13 @@ the bytes read."
 (defparameter *rpc-host* "localhost")
 (defparameter *rpc-port* 111)
 
-(defmacro use-rpc-port (port)
+(defparameter *default-rpc-host* '*rpc-host*)
+(defparameter *default-rpc-port* '*rpc-port*)
+
+(defmacro use-rpc-host (host port)
   `(eval-when (:load-toplevel :compile-toplevel :execute)
-     (setf *rpc-port* ,port)))
+     (setf *default-rpc-host* ,host
+	   *default-rpc-port* ,port)))
 
 
 (defun rpc-connect (host &optional port)
@@ -270,15 +274,31 @@ received in that time. Note that it will return a list of (host port result) ins
 		    :request-id request-id
 		    :timeout timeout))))
 
+;; FIXME: it would be nice to have some simple way of providing default values for
+;; the arguments. in many cases you typically want to be using the same host, port, protocol 
+;; etc. and it would be nice to have defaults used rathe rthan specifying them each every time.
+;; maybe we should just bind specials?
+;; The problem really is that *rpc-host* is being used as both a runtime default host value and 
+;; a compile-time form to use as the default keyword value
 (defmacro defrpc (name proc arg-type result-type &rest options)
-  "Declare an RPC interface and define a client function that invokes CALL-RPC. 
-This MUST be defined before a partner DEFHANDLER form.
+  "Declare an RPC interface and define a client function that invokes CALL-RPC. This must be defined before a partner DEFHANDLER form.
 
 NAME should be a symbol naming the client function to be defined.
 
 PROC should be an integer or constant form.
 
-ARG-TYPE and RESULT-TYPE should be XDR type specification forms."
+ARG-TYPE and RESULT-TYPE should be XDR type specification forms.
+
+By default the generated function will accept a single argument which must match the type specifed by the ARG-TYPE. 
+
+OPTIONS allow customization of the generated client function:
+
+\(:arg-transformer lambda-list &body body\) makes it possible to augment the default function parameters before passing them to CALL-RPC. The body should return a value matching the type specified by ARG-TYPE.
+
+\(:transformer (var) &body body\) runs after CALL-RPC has returned with VAR bound to the result. This makes it possible to destructure the result object.
+
+\(:documentation doc-string\) specifies the docu-string for the client function.
+"
   (alexandria:with-gensyms (gprogram gversion gproc)
     (let ((arg-reader (alexandria:symbolicate '%read- name '-arg))
 	  (arg-writer (alexandria:symbolicate '%writer- name '-arg))
@@ -306,7 +326,7 @@ ARG-TYPE and RESULT-TYPE should be XDR type specification forms."
 			       `(,@params &key))))
 			(t 
 			 '(arg &key)))
-		     (host ,*rpc-host*) (port ,*rpc-port*) auth verf request-id protocol (timeout 1))
+		     (host ,*default-rpc-host*) (port ,*default-rpc-port*) auth verf request-id protocol (timeout 1))
 	 ,@(when (assoc :documentation options) (cdr (assoc :documentation options)))
 	 ,(let ((the-form `(call-rpc (function ,arg-writer)
 				     ,(cond

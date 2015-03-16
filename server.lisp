@@ -314,9 +314,14 @@ as sent in the RPC request.
 (defstruct rpc-connection 
   conn time)
 
-(defun run-rpc-server (server tcp-ports udp-ports &key (timeout 60))
-  "Run the RPC server until the SERVER-EXITING flag is set. Will open TCP sockets listening
-on the TCP-PORTS list and UDP sockets listening on the UDP-PORTS list."
+;; FIXME: should we put a limit on the maximum number of simultaneous connections?
+(defun run-rpc-server (server &key tcp-ports udp-ports (timeout 60))
+  "Run the RPC server until the SERVER-EXITING flag is set. Will open TCP sockets listening on the TCP-PORTS list and UDP sockets listening on the UDP-PORTS list.
+
+TIMEOUT should be an integer specifying the maximum time TCP connections should be held open."
+  (declare (type rpc-server server)
+	   (type list tcp-ports udp-ports)
+	   (type fixnum timeout))
   (let (tcp-sockets udp-sockets connections)
     (unwind-protect 
 	 (progn 
@@ -335,24 +340,29 @@ on the TCP-PORTS list and UDP sockets listening on the UDP-PORTS list."
 					   :local-port port)
 		   udp-sockets))
 
-	   (do ((udp-buffer (nibbles:make-octet-vector 65507)))
+	   ;; the polling-loop
+	   (do ((udp-buffer (nibbles:make-octet-vector 65507))
+		(prev-time (get-universal-time)))
 	       ((rpc-server-exiting server))
 
 	     ;; if any connections are getting old then close them
+	     ;; only do the check at most once per second
 	     (let ((now (get-universal-time)))
-	       (setf connections
-		     (mapcan (lambda (c)
-			       (cond
-				 ((> (- now (rpc-connection-time c)) timeout)
-				  ;; the connection is old, close it 
-				  (log:debug "Purging connection to ~A" (usocket:get-peer-address (rpc-connection-conn c)))
-				  (handler-case (usocket:socket-close (rpc-connection-conn c))
-				    (error (e)
-				      (log:debug "Couldn't close connection: ~S" e)))
-				  nil)
-				 (t 
-				  (list c))))
-			     connections)))
+	       (when (> now prev-time)
+		 (setf connections
+		       (mapcan (lambda (c)
+				 (cond
+				   ((> (- now (rpc-connection-time c)) timeout)
+				    ;; the connection is old, close it 
+				    (log:debug "Purging connection to ~A" (usocket:get-peer-address (rpc-connection-conn c)))
+				    (handler-case (usocket:socket-close (rpc-connection-conn c))
+				      (error (e)
+					(log:debug "Couldn't close connection: ~S" e)))
+				    nil)
+				   (t 
+				    (list c))))
+			       connections)
+		       prev-time now)))
 	     
 	     ;; poll and timeout each second so that we can check the exiting flag
 	     (let ((ready (usocket:wait-for-input (append tcp-sockets 
@@ -410,12 +420,16 @@ If ADD-PORT-MAPPINGS is non-nil then all possible port mappings will be added to
 you only want to advertise each service on particular ports then you should set this to nil and 
 add each mapping manually (using ADD-MAPPING).
 
-When specified, TIMEOUT will be set as the TCP receive timeout (read timeout)."
+When specified, TIMEOUT will be set as the TCP receive timeout (read timeout). Accepted TCP connections which are inactive for longer than TIMEOUT will be closed.
+"
   ;; add all the port mappings  
   ;;  (when add-port-mappings (port-mapper:add-all-mappings tcp-ports udp-ports))
   (setf (rpc-server-thread server)
 	(bt:make-thread (lambda ()
-			  (run-rpc-server server tcp-ports udp-ports :timeout timeout))
+			  (run-rpc-server server 
+					  :tcp-ports tcp-ports 
+					  :udp-ports udp-ports 
+					  :timeout timeout))
 			:name "rpc-server-thread"))
   server)
 

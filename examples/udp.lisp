@@ -7,8 +7,7 @@
 
 
 (use-rpc-program 1234 1)
-
-(use-rpc-port 8000)
+(use-rpc-host "localhost" 8000)
 
 ;; ----------------------------------------------
 

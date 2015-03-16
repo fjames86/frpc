@@ -5,7 +5,7 @@
 (in-package #:frpc.test.multi)
 
 (use-rpc-program 100012 3)
-(use-rpc-port 8000)
+(use-rpc-host "localhost" 8000)
 
 ;; -------------------------
 
