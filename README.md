@@ -4,10 +4,9 @@ FRPC is an implementation of the ONC-RPC ("SunRPC") protocol.
 The library is composed to two largely decoupled components: the eXtensible Data Representation (XDR) serializer,
 which is used to define message structures and other on-wire formats, and the RPC framework itself.
 
-FRPC makes it simple and easy to define ONC-RPC clients and servers. See the sister-project, Nefarious, which 
-uses FRPC to implement an NFSv3 client and server.
+See the related project [nefarious](https://github.com/fjames86/nefarious), which uses FRPC to implement an NFSv3 client and server.
 
-##1. Defining RPC interfaces
+## 1. Defining RPC interfaces
 
 RPC interfaces are given a unique integer called a program number. Each program may have multiple
 versions of its interface, with each version having a different set of functions/arguments. Each procedure
@@ -101,7 +100,7 @@ prepended with the type's name are used.
 Use XTYPE-READER and XTYPE-WRITER to lookup the type's reader
 and writer functions.
 
-Use READ-XTYPE and WRITE-XTYPE to reader/write an instance of 
+Use READ-XTYPE and WRITE-XTYPE to read/write an instance of 
 the type to/from a stream.
 
 Use PACK/UNPACK to store/extract instances from buffers rather than streams.
