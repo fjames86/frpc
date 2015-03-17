@@ -56,9 +56,25 @@ Thus, with the example above, the client will be able to call a remote RPC serve
 The low-level client functionality is provided by CALL-RPC. This function is used by a client to 
 send an RPC request to a remote server and blocks until a reply is received.
 
+### 2.2 TCP connections
+
+You can provide a connection to the functions defined by DEFRPC. This makes it more efficient to send multiple 
+messages to a single server, without having to reconnect for each request.
+
+Use RPC-CONNECT and RPC-CLOSE to establish and close a connection. The macro WITH-RPC-CONNECTION can be used to ensure the connection is closed on exit.
+
+```
+;; normal way to do it. establishes a connection and closes it at the end 
+(pmap:call-dump "192.168.0.8" :protocol :tcp)
+
+;; reuses a connection to the server 
+(frpc:with-rpc-connection (c "192.168.0.8" 111) 
+  (list (pmap:call-dump :connection c) 
+        (pmap:call-dump :connection c)))
+```
 ## 3. RPC Server
 
-Singly-threaded TCP and UDP servers are currently implemented. See examples for usage.
+An RPC server runs from within a single thread and listens on a set of TCP and UDP ports. It my serve a subset of available RPC programs, by default serving all programs. Authentication handlers can be supplied to filter client requests.
 
 ```
 ;; make a server instance
