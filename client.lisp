@@ -275,8 +275,6 @@ received in that time. Note that it will return a list of (host port result) ins
 ;; the arguments. in many cases you typically want to be using the same host, port, protocol 
 ;; etc. and it would be nice to have defaults used rathe rthan specifying them each every time.
 ;; maybe we should just bind specials?
-;; The problem really is that *rpc-host* is being used as both a runtime default host value and 
-;; a compile-time form to use as the default keyword value
 (defmacro defrpc (name proc arg-type result-type &rest options)
   "Declare an RPC interface and define a client function that invokes CALL-RPC. This must be defined before a partner DEFHANDLER form.
 
@@ -323,28 +321,46 @@ OPTIONS allow customization of the generated client function:
 			       `(,@params &key))))
 			(t 
 			 '(arg &key)))
-		     (host ,*default-rpc-host*) (port ,*default-rpc-port*) auth verf request-id protocol (timeout 1))
+		     (host ,*default-rpc-host*) (port ,*default-rpc-port*) auth verf request-id protocol (timeout 1) connection)
 	 ,@(when (assoc :documentation options) (cdr (assoc :documentation options)))
-	 ,(let ((the-form `(call-rpc (function ,arg-writer)
-				     ,(cond
-				       ((eq arg-type :void) 
-					'nil)
-				       ((assoc :arg-transformer options)
-					(destructuring-bind (params &body body) (cdr (assoc :arg-transformer options))
-					  (declare (ignore params))
-					  `(progn ,@body)))
-				       (t 'arg))
-				     (function ,res-reader)
-				     :host host
-				     :port port
-				     :program ,gprogram
-				     :version ,gversion
-				     :proc ,gproc
-				     :auth auth
-				     :verf verf
-				     :request-id request-id
-				     :protocol protocol
-				     :timeout timeout))
+	 ,(let ((the-form `(if connection
+                           (call-rpc-server connection
+                                            (function ,arg-writer)
+                                            ,(cond
+                                              ((eq arg-type :void) 
+                                               'nil)
+                                              ((assoc :arg-transformer options)
+                                               (destructuring-bind (params &body body) (cdr (assoc :arg-transformer options))
+                                                 (declare (ignore params))
+                                                 `(progn ,@body)))
+                                              (t 'arg))
+                                            (function ,res-reader)
+                                            :program ,gprogram
+                                            :version ,gversion
+                                            :proc ,gproc
+                                            :auth auth
+                                            :verf verf
+                                            :request-id request-id)                                            
+                           (call-rpc (function ,arg-writer)
+                                     ,(cond
+                                       ((eq arg-type :void) 
+                                        'nil)
+                                       ((assoc :arg-transformer options)
+                                        (destructuring-bind (params &body body) (cdr (assoc :arg-transformer options))
+                                          (declare (ignore params))
+                                          `(progn ,@body)))
+                                       (t 'arg))
+                                     (function ,res-reader)
+                                     :host host
+                                     :port port
+                                     :program ,gprogram
+                                     :version ,gversion
+                                     :proc ,gproc
+                                     :auth auth
+                                     :verf verf
+                                     :request-id request-id
+                                     :protocol protocol
+                                     :timeout timeout)))
 		(transformer (assoc :transformer options))
 		(gtrafo (gensym "TRAFO"))
 		(gcall (gensym "CALL")))
