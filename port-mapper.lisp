@@ -6,8 +6,31 @@
 ;;; with local RPC programs. Can also be used as a proxy to directly 
 ;;; execute RPCs via the CALLIT procedure.
 
-;; TODO: add support for the newer versions 3 and 4
-;; TODO: add UDP broadcast to find services on the network
+;; package for the port mapper program. we define it here so that we have access to the 
+;; external symbols in frpc itself. this is needed in server.lisp to add the port mappings
+;; when starting a server   
+(defpackage #:port-mapper
+  (:use #:cl #:frpc)
+  (:nicknames #:pmap)
+  (:export #:mapping
+           #:make-mapping
+           #:mapping-program
+           #:mapping-version
+           #:mapping-protocol
+           #:mapping-port
+           #:*pmap-port*
+           ;; the rpc functions
+           #:call-null
+           #:call-set
+           #:call-unset
+           #:call-get-port
+           #:call-dump
+           #:call-callit
+           ;; underlying API
+           #:add-mapping
+           #:add-all-mappings
+           #:rem-mapping
+           #:find-mapping))
 
 (in-package #:port-mapper)
 
@@ -92,7 +115,6 @@ in the mapping structure. if MAP-PORT is provided, will also match this port."
 ;; NULL -- test communication to the port mapper 
 
 (defrpc call-null 0 :void :void)
-
 (defhandler %handle-null (void 0)
   (declare (ignore void))
   nil)
@@ -101,7 +123,9 @@ in the mapping structure. if MAP-PORT is provided, will also match this port."
 
 ;; SET -- set a port mapping 
 
-(defrpc call-set 1 mapping :boolean)
+(defrpc call-set 1 mapping :boolean
+  (:arg-transformer (mapping) mapping)
+  (:documentation "Set a port mapping."))
 
 (defhandler %handle-set (mapping 1)
   (add-mapping mapping)
@@ -111,7 +135,9 @@ in the mapping structure. if MAP-PORT is provided, will also match this port."
 
 ;; UNSET -- remove a port mapping 
 
-(defrpc call-unset 2 mapping :boolean)
+(defrpc call-unset 2 mapping :boolean
+  (:arg-transformer (mapping) mapping)
+  (:documentation "Remove a port mapping."))
 
 (defhandler %handle-unset (mapping 2)
   (when (find-mapping mapping)
@@ -122,7 +148,12 @@ in the mapping structure. if MAP-PORT is provided, will also match this port."
 
 ;; GET-PORT -- lookup a port mapping for a given program/version
 
-(defrpc call-get-port 3 mapping :uint32)
+(defrpc call-get-port 3 mapping :uint32
+  (:arg-transformer (program version &key (query-protocol :tcp))
+    (make-mapping :program program
+                  :version version
+                  :protocol query-protocol))
+  (:documentation "Query the port for the specified program."))
 
 (defhandler %handle-get-port (mapping 3)
   (let ((m (find-mapping mapping)))
