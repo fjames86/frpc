@@ -11,7 +11,7 @@
   nil)
 
 (defun read-response (stream res-type)
-  "Read an RPC response from the stream. This is for TCP response parsing only."
+  "Read an RPC response from the stream."
   (let ((msg (%read-rpc-msg stream)))
     (unless (eq (xunion-tag (rpc-msg-body msg)) :reply)
       (error "Expected REPLY recieved ~S" (xunion-tag (rpc-msg-body msg))))
@@ -32,7 +32,7 @@
 		     :low (cdr (assoc 'low a))
 		     :high (cdr (assoc 'high a))
 		     :description "Program mismatch")))
-	   (:success ;; do nothing 
+	   (:success ;; do nothing -- the result value will be read at the end 
 	    nil)
 	   (otherwise
 	    (error 'rpc-accept-error 
@@ -202,10 +202,7 @@ the bytes read."
 		   (when (= count #xffffffff)
 		     (error "Error: recvfrom returned -1"))
 		   (flexi-streams:with-input-from-sequence (input buffer :start 0 :end count)
-		     (let ((msg (%read-rpc-msg input)))
-		       (log:debug "MSG ID ~A" (rpc-msg-xid msg))
-		       ;; FIXME: shouild really check the reply's id
-		       (read-xtype result-type input))))
+             (nth-value 1 (read-response input result-type))))
 		 (error 'rpc-timeout-error))))
       (usocket:socket-close socket))))
 

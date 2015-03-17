@@ -92,22 +92,30 @@ in the mapping structure. if MAP-PORT is provided, will also match this port."
 			t)))
 	     *mappings*)))
 
-(defun add-all-mappings (tcp-ports udp-ports)
-  "Add mappings for all defined RPCs to the TCP and UDP ports specified."
+(defun add-all-mappings (tcp-ports udp-ports &key rpc)
+  "Add mappings for all defined RPCs to the TCP and UDP ports specified. If RPC is non-nil, the local port-mapper program will contacted using RPC, otherwise the local Lisp port-mapper program will have the mappings added directly."
   (setf *mappings* nil)
   (dolist (ppair frpc::*handlers*)
     (destructuring-bind (program . versions) ppair
       (dolist (vpair versions)
-	(let ((version (car vpair)))
-	  (dolist (port tcp-ports)
-	    (add-mapping (make-mapping :program program
-				       :version version
-				       :port port)))
-	  (dolist (port udp-ports)
-	    (add-mapping (make-mapping :program program
-				       :version version
-				       :protocol :udp
-				       :port port)))))))
+        (let ((version (car vpair)))
+          (dolist (port tcp-ports)
+            (let ((mapping (make-mapping :program program
+                                       :version version
+                                       :port port)))              
+            (if rpc 
+                ;; send an RPC to the local port-mapper to add the
+                (call-set mapping :protocol :udp :timeout nil)
+                ;; we are running the port-mapper within Lisp
+                (add-mapping mapping))))
+          (dolist (port udp-ports)
+            (let ((mapping (make-mapping :program program
+                                         :version version
+                                         :protocol :udp
+                                         :port port)))
+              (if rpc 
+                  (call-set mapping :protocol :udp :timeout nil)
+                  (add-mapping mapping))))))))
   nil)
 
 ;; ----------------------
