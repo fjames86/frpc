@@ -60,5 +60,14 @@
 	   #:*rpc-remote-port*
 	   #:*rpc-remote-protocol*
 	   #:*rpc-remote-auth*
+
+	   ;; errors
+	   #:rpc-error
+	   #:rpc-accept-error
+	   #:rpc-prog-mismatch-error
+	   #:rpc-timeout-error
+	   #:rpc-auth-error
+	   #:rpc-mismatch-error
+
 	   ))
 
