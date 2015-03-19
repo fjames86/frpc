@@ -1,9 +1,11 @@
+;;;; Copyright (c) Frank James 2015 <frank.a.james@gmail.com>
+;;;; This code is licensed under the MIT license.
 
 
 (asdf:defsystem :frpc
   :name "frpc"
   :author "Frank James <frank.a.james@gmail.com>"
-  :description "An ONC/RPC implementation."
+  :description "An ONC-RPC implementation."
   :license "MIT"
   :components
   ((:file "package")
