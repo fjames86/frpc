@@ -27,8 +27,8 @@
 ;; ------------------------------------
 
 (defxenum stat
-  ((:ok 0)
-   (:error 1)))
+  (:ok 0)
+  (:error 1))
 
 (defrpc call-people 2
   :string

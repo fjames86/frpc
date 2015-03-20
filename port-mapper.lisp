@@ -47,14 +47,14 @@
 ;; ------- port mapper structs ----------
 
 (defxenum mapping-protocol
-  ((:tcp 6)
-   (:udp 17)))
+  (:tcp 6)
+  (:udp 17))
 
 (defxstruct mapping ()
-  ((program :uint32)
-   (version :uint32)
-   (protocol mapping-protocol :tcp)
-   (port :uint32)))
+  (program :uint32)
+  (version :uint32)
+  (protocol mapping-protocol :tcp)
+  (port :uint32))
 
 (defun mapping-eql (m1 m2)
   (and (= (mapping-program m1) (mapping-program m2))
@@ -174,8 +174,8 @@ in the mapping structure. if MAP-PORT is provided, will also match this port."
 ;; DUMP -- list all mappings
 
 (defxstruct mapping-list ()
-  ((map mapping)
-   (next (:optional mapping-list))))
+  (map mapping)
+  (next (:optional mapping-list)))
 
 (defrpc call-dump 4 :void (:optional mapping-list)
   (:transformer (res)

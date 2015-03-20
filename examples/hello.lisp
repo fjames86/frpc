@@ -19,8 +19,8 @@
 ;; ---------------------------------------------
 
 (defxenum hstat 
-  ((:ok 0)
-   (:error 1)))
+ (:ok 0)
+ (:error 1))
 
 (defrpc call-hello 1
   :string

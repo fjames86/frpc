@@ -212,7 +212,7 @@
 
 (defparameter *enums* (make-hash-table))
 
-(defmacro defxenum (name slots)
+(defmacro defxenum (name &rest slots)
   `(eval-when (:compile-toplevel :load-toplevel :execute)
      (setf (gethash ',name *enums*)
 	   (list ,@(let ((n 0))
@@ -526,7 +526,7 @@
 
 ;; structures 
 
-(defmacro defxstruct (name-and-options options slots)
+(defmacro defxstruct (name-and-options options &rest slots)
   (let ((name (if (symbolp name-and-options)
 			   name-and-options
 			   (car name-and-options))))

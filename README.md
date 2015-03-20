@@ -126,8 +126,8 @@ Use PACK/UNPACK to store/extract instances from buffers rather than streams.
 Define enum types using
 ```
 (defxenum enum-name
-  ((symbol integer)
-  ...))
+  (symbol integer)
+  ...)
 ```
 
 Lookup a corresponding integer or symbol using
@@ -151,8 +151,8 @@ Define structures using
 
 ```
 (defxstruct struct-name ()
-  ((slot-name type-name &optional initial-value)
-  ...))
+  (slot-name type-name &optional initial-value)
+  ...)
 ```
 
 ### 4.5 Generalized types
