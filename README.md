@@ -87,10 +87,12 @@ An RPC server runs from within a single thread and listens on a set of TCP and U
 (stop-rpc-server *server*)
 ```
 
+When the server accepts a TCP connection, it is added to a list of currently open connections. The server will select a connection to process using USOCKET:WAIT-FOR-INPUT. This allows the server to keep open multiple TCP connections without blocking other traffic. Note that the socket IO is still syncronous. Connections which are idle for TIMEOUT seconds (default 60 seconds) are closed by the FRPC server. 
+
 ## 4. XDR serializer
 
 The XDR serializer is largely decoupled from the rpc implementation. This means it 
-could be used for other purposes as a generalised binary serialization system for any purpose.
+could be used for other purposes as a generalised binary serialization system.
 
 ### 4.1 Primitive types
 
@@ -175,7 +177,24 @@ Where the FORM is:
 
 These rules can be applied recursively. 
 
-You may define local readers and writers using WITH-READER and WITH-WRITER macros.
+You may define global readers/writers using DEFREADER and DEFWRITER. These macros generate DEFUN forms. 
+The equivalent macros using FLET are WITH-READER and WITH-WRITER.
+
+### 4.6 XDR examples
+
+```
+;; defstruct and define reader/writer for it 
+(defxstruct foobar ((:reader read-foobar) (:writer write-foobar))
+  (x :string)
+  (y :uint32))
+
+;; serialize the structure to a file 
+(with-open-file (f "foobar.dat" :direction :output :if-exists :supersede :element-type '(unsigned-byte 8))
+  (write-foobar f (make-foobar :x "hello" :y 123)))
+;; deserialize the stucture from a file 
+(with-open-file (f "foobar.dat" :direction :intput :element-type '(unsigned-byte 8))
+  (read-foobar f))
+```
 
 ### 5. Examples
 
