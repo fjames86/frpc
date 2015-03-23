@@ -115,7 +115,7 @@
 (defun read-array-padding (stream array-length)
   (let ((m (mod array-length 4)))
     (unless (zerop m)
-      (read-sequence (loop :for i :below m :collect 0) stream)))
+      (read-sequence (loop :for i :below (- 4 m) :collect 0) stream)))
   nil)
 (defun write-array-padding (stream array-length)
   (let ((m (mod array-length 4)))
