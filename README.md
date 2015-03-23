@@ -72,6 +72,7 @@ Use RPC-CONNECT and RPC-CLOSE to establish and close a connection. The macro WIT
   (list (pmap:call-dump :connection c) 
         (pmap:call-dump :connection c)))
 ```
+
 ## 3. RPC Server
 
 An RPC server runs from within a single thread and listens on a set of TCP and UDP ports. It my serve a subset of available RPC programs, by default serving all programs. Authentication handlers can be supplied to filter client requests.
