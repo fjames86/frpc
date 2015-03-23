@@ -197,12 +197,18 @@ The equivalent macros using FLET are WITH-READER and WITH-WRITER.
   (read-foobar f))
 ```
 
-### 5. Examples
+## 5. Examples
 
 I have typed in some simple example programs. 
 For more serious usages, see port-mapper.lisp or Nefarious, an NFS implementation in Common Lisp.
 
-### 6. License
+## 6. Notes
+
+Debug logging is provided by the LOG4CL package. I've noticed turning on :DEBUG level logging really slows 
+things down, the latency is very high. When not doing development you should turn the logging off. Alternatively
+we should use an alternative low-latency logging system (such as what?). 
+
+## 7. License
 
 Released under the terms of the MIT license.
 
