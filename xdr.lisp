@@ -112,6 +112,16 @@
   ((stream obj)
    (nibbles:write-ub64/be obj stream)))
 
+(defun read-array-padding (stream array-length)
+  (let ((m (mod array-length 4)))
+    (unless (zerop m)
+      (read-sequence (list 0 0 0) stream )))
+  nil)
+(defun write-array-padding (stream array-length)
+  (let ((m (mod array-length 4)))
+    (unless (zerop m)
+      (write-sequence (subseq #(0 0 0) 0 (- 4 m)) stream))))
+
 (defxtype :string ((:reader read-xstring) (:writer write-xstring))
   ((stream)
    (let* ((len (read-uint32 stream))
@@ -123,9 +133,7 @@
 	  (length (length octets)))
      (write-uint32 stream length)
      (write-sequence octets stream)
-     (let ((m (mod length 4)))
-       (unless (zerop m)
-	 (write-sequence (subseq #(0 0 0) 0 (- 4 m)) stream))))))
+     (write-array-padding stream length))))
 
 (defxtype :boolean ((:reader read-boolean) (:writer write-boolean))
   ((stream)
@@ -169,22 +177,28 @@
     arr))
 
 (defun write-fixed-array (writer stream array)
-  (dotimes (i (length array))
-    (funcall writer stream (aref array i)))
+  (let ((length (length array)))
+    (dotimes (i length)
+      (funcall writer stream (aref array i))))
   nil)
 
-;; read variable arrys into lists
-(defun read-variable-array (reader stream)
-  (let ((length (read-uint32 stream)))
-    (loop :for i :below length 
-       :collect (funcall reader stream))))
-
-(defun write-variable-array (writer stream list)
-  (declare (type list list))
-  (write-uint32 stream (length list))
-  (dolist (item list)
-    (funcall writer stream item))
+(defun read-octet-array (stream)
+  (let ((len (read-uint32 stream)))
+    (let ((sequence (nibbles:make-octet-vector len)))
+      (dotimes (i len)
+        (setf (elt sequence i)
+              (read-octet stream)))
+      sequence)))
+(defun write-octet-array (stream sequence &key (start 0) end)
+  (unless end (setf end (length sequence)))
+  (let ((len (- end start)))
+    (write-uint32 stream len)
+    (do ((i start (1+ i)))
+        ((= i end) len)
+      (write-octet stream (aref sequence i)))
+    (write-array-padding stream len))
   nil)
+                
 
 ;; read optional or return nil
 (defun read-optional (reader stream)
@@ -362,6 +376,9 @@
 		 (dotimes (,gi ,glen)
 		   (setf (aref ,garr ,gi)
 			 ,(compile-reader form stream-sym)))
+         ;; read array padding if required to, but only if an octet vector
+         ,(when (eq form :octet)
+            `(read-array-padding stream ,glen))
 		 ,garr))))
 	 (:varray 
 	  ;; (:varray form &optional max-length)
@@ -372,7 +389,11 @@
 		     `((when (> ,glen ,max-length) 
 			 (error "Length ~S exceeds maximum length ~S" ,glen ,max-length))))
 		 (loop for ,gi below ,glen collect 
-		      ,(compile-reader form stream-sym)))))))))))
+		      ,(compile-reader form stream-sym))
+         ;; read array padding if required to, but only if an octet vector
+         ,(when (eq form :octet)
+            `(read-array-padding stream ,glen))
+         )))))))))
 		    
  
 (defun compile-writer (forms stream-sym obj-form)
@@ -490,6 +511,9 @@
 		 (write-uint32 ,stream-sym ,glen)
 		 (dotimes (,gi ,glen)
 		   ,(compile-writer form stream-sym `(aref ,gobj ,gi)))
+         ;; write padding if required to, but only if this is an octet array
+         ,(when (eq form :octet)
+            `(write-array-padding ,stream-sym ,glen))
 		 nil))))
 	 (:varray
 	  ;; (:varray form &optional max-length)
@@ -503,6 +527,9 @@
 		 (write-uint32 ,stream-sym ,glen)
 		 (dolist (,gi ,gobj)
 		   ,(compile-writer form stream-sym gi))
+         ;; write padding at the end, but only if this is an octet array
+         ,(when (eq form :octet)
+           `(write-array-padding ,stream-sym ,glen))
 		 nil)))))))))
   
 ) ;; eval-when
