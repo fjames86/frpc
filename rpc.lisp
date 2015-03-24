@@ -71,13 +71,13 @@
      (otherwise :void))))
 
 (defxunion rejected-reply (reject-stat)
-  ((:rpc-mismatch
+  (:rpc-mismatch
     (:alist (low :uint32) (high :uint32)))
-   (:auth-error auth-stat)))
+  (:auth-error auth-stat))
 
 (defxunion reply-body (reply-stat)
-  ((:msg-accepted accepted-reply)
-   (:msg-denied rejected-reply)))
+  (:msg-accepted accepted-reply)
+  (:msg-denied rejected-reply))
 
 (defxstruct rpc-msg ()
   (xid :uint32 0)
@@ -162,8 +162,8 @@
   (window (:array :octet 4)))
 
 (defxunion authdes-cred (authdes-namekind)
-  ((:adn-fullname authdes-fullname (make-des-block))
-   (:adn-nickname :int32)))
+  (:adn-fullname authdes-fullname (make-des-block))
+  (:adn-nickname :int32))
 
 (defxstruct timestamp ()
   (seconds :uint32)

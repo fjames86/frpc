@@ -542,7 +542,7 @@
 (defun xunion-tag (un) (car un))
 (defun xunion-val (un) (cdr un))
 
-(defmacro defxunion (name (enum &rest options) arms)
+(defmacro defxunion (name (enum &rest options) &rest arms)
   `(defxtype ,name (,@options)
      ((stream)
       ,(compile-reader `(:union ,enum ,@arms) 'stream))

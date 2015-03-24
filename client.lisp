@@ -298,9 +298,9 @@ OPTIONS allow customization of the generated client function:
 "
   (alexandria:with-gensyms (gprogram gversion gproc)
     (let ((arg-reader (alexandria:symbolicate '%read- name '-arg))
-	  (arg-writer (alexandria:symbolicate '%writer- name '-arg))
+	  (arg-writer (alexandria:symbolicate '%write- name '-arg))
 	  (res-reader (alexandria:symbolicate '%read- name '-res))
-	  (res-writer (alexandria:symbolicate '%writer- name '-res)))
+	  (res-writer (alexandria:symbolicate '%write- name '-res)))
     `(let ((,gprogram ,*rpc-program*)
 	   (,gversion ,*rpc-version*)
 	   (,gproc ,proc))

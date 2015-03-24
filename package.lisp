@@ -69,5 +69,10 @@
 	   #:rpc-auth-error
 	   #:rpc-mismatch-error
 
+       ;; structures
+       #:make-opaque-auth
+       #:opaque-auth-flavour
+       #:opaque-auth-data
+
 	   ))
 

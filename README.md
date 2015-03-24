@@ -226,6 +226,8 @@ Debug logging is provided by the LOG4CL package. I've noticed turning on :DEBUG 
 things down, the latency is very high. When not doing development you should turn the logging off. Alternatively
 we should use an alternative low-latency logging system (such as what?). 
 
+I've not really put any effort into properly handling authentication, either for the client or the server. This needs to be addressed.
+
 ## 7. License
 
 Released under the terms of the MIT license.
