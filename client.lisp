@@ -139,7 +139,7 @@ the bytes read."
 	       (push (list remote-host remote-port (read-xtype result-type input))
 		     replies)))))))))
     
-(defun send-rpc-udp (socket arg-type arg &key program version proc auth verf request-id)
+(defun send-rpc-udp (socket arg-type arg &key program version proc auth verf request-id host port)
   (let ((buffer 
 	 (flexi-streams:with-output-to-sequence (stream)
 	   (write-request stream 
@@ -150,11 +150,12 @@ the bytes read."
 					    :id request-id)
 			  arg-type
 			  arg))))
-    (usocket:socket-send socket buffer (length buffer))))
+    (usocket:socket-send socket buffer (length buffer)
+                         :host host :port port)))
 
 (defun broadcast-rpc (arg-type arg result-type 
 		     &key host port program version proc auth verf request-id timeout)
-  (let ((socket (usocket:socket-connect host port
+  (let ((socket (usocket:socket-connect nil nil
 					:protocol :datagram
 					:element-type '(unsigned-byte 8))))
     ;; we need to do this to prevent certain errors getting raised
@@ -168,7 +169,8 @@ the bytes read."
 			 :proc proc
 			 :auth auth
 			 :verf verf
-			 :request-id request-id)
+			 :request-id request-id
+             :host host :port port)
 	   ;; now wait for the replies to come in
 	   (log:debug "Collecting replies")
 	   (collect-udp-replies socket timeout result-type))
