@@ -73,6 +73,24 @@ Use RPC-CONNECT and RPC-CLOSE to establish and close a connection. The macro WIT
         (pmap:call-dump :connection c)))
 ```
 
+### 2.3 UDP 
+
+Specifying :UDP as the protocol will send the message using the UDP transport instead of TCP (the default). If you care about the result, then specify a timeout in seconds to wait for the reply. If not reply is received an FRPC-TIMEOUT-ERROR will be raised, otherwise the function returns immediately with retult nil.
+
+```
+(pmap:call-null :host "192.168.0.1" :protocol :udp)
+```
+
+### 2.4 UDP broadcast
+
+You may send messages using UDP broadcast to find services on your local network.
+
+```
+(pmap:call-null :host "255.255.255.255" :protocol :broadcast)
+```
+
+Broadcast messages return a list of the responses received within the timeout -- no timeout error is raised if no replies are received. Each element in the list is a list of 3 items (host port result), where host and port identify where the response came from and result is the result of decoding the message that was received.
+
 ## 3. RPC Server
 
 An RPC server runs from within a single thread and listens on a set of TCP and UDP ports. It my serve a subset of available RPC programs, by default serving all programs. Authentication handlers can be supplied to filter client requests.
