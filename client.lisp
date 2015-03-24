@@ -131,13 +131,28 @@ the bytes read."
 	  ((= count #xffffffff)
 	   (log:error "recvfrom returned -1"))
 	  (t
-	   (log:debug "Received response from ~A:~A" remote-host remote-port)
-	   (flexi-streams:with-input-from-sequence (input (subseq buffer 0 count))
-	     (let ((msg (%read-rpc-msg input)))
-	       (log:debug "MSG ID ~A" (rpc-msg-xid msg))
-	       ;; FIXME: shouild really check the reply's id
-	       (push (list remote-host remote-port (read-xtype result-type input))
-		     replies)))))))))
+	   (log:debug "Received response from ~A:~A (length ~A)" remote-host remote-port count)
+	   (flexi-streams:with-input-from-sequence (input buffer :start 0 :end count)
+         (handler-case
+             (let ((msg (%read-rpc-msg input)))
+               (log:debug "MSG ID ~A" (rpc-msg-xid msg))
+               (let ((body (rpc-msg-body msg)))
+                 (cond
+                   ((eq (xunion-tag (xunion-val body)) :msg-denied)
+                    ;; rpc denied e.g. auth-error
+                    (list remote-host remote-port nil))
+                   ((not (eq (xunion-tag (accepted-reply-reply-data (xunion-val (xunion-val body))))
+                             :success))
+                    ;; rpc unsuccessful e.g. prog-unavail
+                    (list remote-host remote-port nil))
+                   (t 
+                    ;; FIXME: should really check the reply's id
+                    (push (list remote-host remote-port (read-xtype result-type input))
+                          replies)))))
+           (error (e)
+             (log:debug "~A" e)
+             (log:debug "~S" (subseq buffer 0 count))
+             (list remote-host remote-port nil))))))))))
     
 (defun send-rpc-udp (socket arg-type arg &key program version proc auth verf request-id host port)
   (let ((buffer 
