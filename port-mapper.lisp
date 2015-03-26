@@ -28,8 +28,9 @@
            #:call-callit
            ;; underlying API
            #:add-mapping
-           #:add-all-mappings
            #:rem-mapping
+           #:add-all-mappings
+           #:remove-all-mappings
            #:find-mapping))
 
 (in-package #:port-mapper)
@@ -103,26 +104,42 @@ in the mapping structure. if MAP-PORT is provided, will also match this port."
   (setf *mappings* nil)
   (dolist (ppair frpc::*handlers*)
     (destructuring-bind (program . versions) ppair
-      (dolist (vpair versions)
-        (let ((version (car vpair)))
-          (dolist (port tcp-ports)
-            (let ((mapping (make-mapping :program program
-                                       :version version
-                                       :port port)))              
-            (if rpc 
-                ;; send an RPC to the local port-mapper to add the mapping
-                (call-set mapping :protocol :udp)
-                ;; we are running the port-mapper within this Lisp image
-                (add-mapping mapping))))
-          (dolist (port udp-ports)
-            (let ((mapping (make-mapping :program program
-                                         :version version
-                                         :protocol :udp
-                                         :port port)))
-              (if rpc 
-                  (call-set mapping :protocol :udp)
-                  (add-mapping mapping))))))))
+      (unless (and rpc (= program +pmapper-program+))
+        (dolist (vpair versions)
+          (let ((version (car vpair)))
+            ;; add all TCP port mappings
+            (dolist (port tcp-ports)
+              (let ((mapping (make-mapping :program program
+                                           :version version
+                                           :port port)))
+                (add-mapping mapping)
+                (when rpc 
+                  (call-set mapping :protocol :udp))))
+            ;; add all UDP port mappings
+            (dolist (port udp-ports)
+              (let ((mapping (make-mapping :program program
+                                           :version version
+                                           :protocol :udp
+                                           :port port)))
+                (add-mapping mapping)
+                (when rpc 
+                  (call-set mapping :protocol :udp)))))))))
   nil)
+
+(defun remove-all-mappings (&key rpc)
+  "Remove mappings for all defined RPCs to the TCP and UDP ports specified. If RPC is non-nil, the local port-mapper program will contacted using RPC, otherwise the local Lisp port-mapper program will have the mappings removed from the Lisp list."
+  ;; if we are using RPC to contact the local port mapper, 
+  ;; then ensure the port mapper program is actually running!
+  (when rpc
+    (handler-case (call-null :host "localhost" :protocol :udp)
+      (rpc-timeout-error ()
+        (error "Failed to contact local portmapper"))))
+  (when rpc 
+    (dolist (mapping *mappings*)
+      (call-unset mapping :protocol :udp)))
+  (setf *mappings* nil)
+  nil)
+
 
 ;; ----------------------
 
