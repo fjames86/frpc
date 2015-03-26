@@ -94,6 +94,12 @@ in the mapping structure. if MAP-PORT is provided, will also match this port."
 
 (defun add-all-mappings (tcp-ports udp-ports &key rpc)
   "Add mappings for all defined RPCs to the TCP and UDP ports specified. If RPC is non-nil, the local port-mapper program will contacted using RPC, otherwise the local Lisp port-mapper program will have the mappings added directly."
+  ;; if we are using RPC to contact the local port mapper, 
+  ;; then ensure the port mapper program is actually running!
+  (when rpc
+    (handler-case (call-null :host "localhost" :protocol :udp)
+      (rpc-timeout-error ()
+        (error "Failed to contact local portmapper"))))
   (setf *mappings* nil)
   (dolist (ppair frpc::*handlers*)
     (destructuring-bind (program . versions) ppair
@@ -104,9 +110,9 @@ in the mapping structure. if MAP-PORT is provided, will also match this port."
                                        :version version
                                        :port port)))              
             (if rpc 
-                ;; send an RPC to the local port-mapper to add the
-                (call-set mapping :protocol :udp :timeout nil)
-                ;; we are running the port-mapper within Lisp
+                ;; send an RPC to the local port-mapper to add the mapping
+                (call-set mapping :protocol :udp)
+                ;; we are running the port-mapper within this Lisp image
                 (add-mapping mapping))))
           (dolist (port udp-ports)
             (let ((mapping (make-mapping :program program
@@ -114,7 +120,7 @@ in the mapping structure. if MAP-PORT is provided, will also match this port."
                                          :protocol :udp
                                          :port port)))
               (if rpc 
-                  (call-set mapping :protocol :udp :timeout nil)
+                  (call-set mapping :protocol :udp)
                   (add-mapping mapping))))))))
   nil)
 
