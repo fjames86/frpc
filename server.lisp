@@ -152,6 +152,18 @@ TCP requests only."
 					  (make-rpc-response :accept :success
 							     :id (rpc-msg-xid msg)))
 			  (write-xtype res-type output-stream res)))
+            (rpc-accept-error (e)
+              (log:error "Accept error: ~A" e)
+              (%write-rpc-msg output-stream
+                              (make-rpc-response :accept (rpc-accept-error-stat e)
+                                                 :id (rpc-msg-xid msg))))
+            (rpc-auth-error (e)
+              (log:error "Auth error: ~A" e)
+              (%write-rpc-msg output-stream
+                              (make-rpc-response :reject :auth-error
+                                                 :auth-stat (auth-error-stat e)
+                                                 :id (rpc-msg-xid msg))))
+
 		    (undefined-function (e)
 		      ;; no such function -- probably means we didn't register a handler
 		      (log:warn "No handler: ~S" e)
@@ -238,15 +250,33 @@ TCP requests only."
 	   (destructuring-bind (reader writer handler) h
 	     ;; read the argument
 	     (let ((arg (read-xtype reader input-stream)))
-	       ;; run the handler
-	       (let ((res (let ((*rpc-remote-auth* (call-body-auth call)))
-			    (funcall handler arg))))
-		 ;; package the reply and send
-		 (flexi-streams:with-output-to-sequence (output)
-		   (%write-rpc-msg output
-				   (make-rpc-response :accept :success
-						      :id id))
-		   (write-xtype writer output res)))))))))))
+           ;; package the reply and send
+           (flexi-streams:with-output-to-sequence (output)             
+             (handler-case 
+                 ;; run the handler
+                 (let ((res (let ((*rpc-remote-auth* (call-body-auth call)))
+                              (funcall handler arg))))
+                   (%write-rpc-msg output
+                                   (make-rpc-response :accept :success
+                                                      :id id))
+                   (write-xtype writer output res))
+               (rpc-accept-error (e)
+                 (log:error "Accept error: ~A" e)
+                 (%write-rpc-msg output
+                                 (make-rpc-response :accept (rpc-accept-error-stat e)
+                                                    :id (rpc-msg-xid msg))))
+               (rpc-auth-error (e)
+                 (log:error "Auth error: ~A" e)
+                 (%write-rpc-msg output
+                                 (make-rpc-response :reject :auth-error
+                                                    :auth-stat (auth-error-stat e)
+                                                    :id (rpc-msg-xid msg))))               
+               (error (e)
+                 (log:error "error handling: ~A" e)
+                 (%write-rpc-msg output
+                                 (make-rpc-response :accept :garbage-args
+                                                    :id (rpc-msg-xid msg))))))))))))))
+
 
 (defun handle-udp-request (server socket buffer length remote-host remote-port)
   "Given a buffer containing an RPC message and argument, read it and take appropriate action."
