@@ -93,18 +93,18 @@ with enum status return values."
 TCP requests only."
   (handler-case 
       (let ((msg (%read-rpc-msg input-stream)))
-	(log:debug "Recieved message ID ~A" (rpc-msg-xid msg))
+	(frpc-log :info "Recieved message ID ~A" (rpc-msg-xid msg))
 	;; validate the message
 	(cond
 	  ((not (eq (xunion-tag (rpc-msg-body msg)) :call))
 	   ;; not a call
-	   (log:info "Bad request: not a call")
+	   (frpc-log :info "Bad request: not a call")
 	   (%write-rpc-msg output-stream
 			   (make-rpc-response :accept :garbage-args
 					      :id (rpc-msg-xid msg))))
 	  ((not (= (call-body-rpcvers (xunion-val (rpc-msg-body msg))) 2))
 	   ;; rpc version != 2
-	   (log:info "RPC version not = 2")
+	   (frpc-log :info "RPC version not = 2")
 	   (%write-rpc-msg output-stream
 			   (make-rpc-response :reject :rpc-mismatch
 					      :id (rpc-msg-xid msg))))
@@ -113,52 +113,52 @@ TCP requests only."
 		  (h (find-handler (call-body-prog call)
 				   (call-body-vers call)
 				   (call-body-proc call))))
-	     (log:debug "Calling ~A:~A:~A" (call-body-prog call) (call-body-vers call) (call-body-proc call))
+	     (frpc-log :info "Calling ~A:~A:~A" (call-body-prog call) (call-body-vers call) (call-body-proc call))
 	     (cond
 	       ((and (rpc-server-programs server)
 		     (not (member (call-body-prog call) 
 				  (rpc-server-programs server))))
 		;; program not in the list of permissible programs
-		(log:info "Program ~A not in program list" (call-body-prog call))
+		(frpc-log :info "Program ~A not in program list" (call-body-prog call))
 		(%write-rpc-msg output-stream
 				(make-rpc-response :accept :prog-mismatch
 						   :id (rpc-msg-xid msg))))
 	       ((rpc-server-auth-handler server)
 		(unless (funcall (rpc-server-auth-handler server) (call-body-auth call) (call-body-verf call))
-		  (log:info "Authentication failure")
+		  (frpc-log :info "Authentication failure")
 		  (%write-rpc-msg output-stream
 				  (make-rpc-response :reject :auth-error 
 						     :auth-stat :auth-rejected
 						     :id (rpc-msg-xid msg)))))
 	       ((or (not h) (null (third h)))
 		;; no handler registered
-		(log:debug "No handler registered")
+		(frpc-log :info "No handler registered")
 		(%write-rpc-msg output-stream
 				(make-rpc-response :accept :proc-unavail
 						   :id (rpc-msg-xid msg))))
 	       (t 
 		;; log the authentication
 ;;		(unless (eq (opaque-auth-flavour (call-body-auth call)) :auth-null)
-;;		  (log:debug "Authentication: ~S" (call-body-auth call)))
+;;		  (frpc-log :info "Authentication: ~S" (call-body-auth call)))
 		;; run the handler 
 		(destructuring-bind (arg-type res-type handler) h
 		  (handler-case 
 		      (let ((arg (read-xtype arg-type input-stream)))
-			(log:debug "Passing arg to handler")
+			(frpc-log :info "Passing arg to handler")
 			(let ((res (let ((*rpc-remote-auth* (call-body-auth call)))
 				     (funcall handler arg))))
-			  (log:debug "Call successful")
+			  (frpc-log :info "Call successful")
 			  (%write-rpc-msg output-stream
 					  (make-rpc-response :accept :success
 							     :id (rpc-msg-xid msg)))
 			  (write-xtype res-type output-stream res)))
             (rpc-accept-error (e)
-              (log:error "Accept error: ~A" e)
+              (frpc-log :error "Accept error: ~A" e)
               (%write-rpc-msg output-stream
                               (make-rpc-response :accept (rpc-accept-error-stat e)
                                                  :id (rpc-msg-xid msg))))
             (rpc-auth-error (e)
-              (log:error "Auth error: ~A" e)
+              (frpc-log :error "Auth error: ~A" e)
               (%write-rpc-msg output-stream
                               (make-rpc-response :reject :auth-error
                                                  :auth-stat (auth-error-stat e)
@@ -166,13 +166,13 @@ TCP requests only."
 
 		    (undefined-function (e)
 		      ;; no such function -- probably means we didn't register a handler
-		      (log:warn "No handler: ~S" e)
+		      (frpc-log :warning "No handler: ~S" e)
 		      (%write-rpc-msg output-stream
 				      (make-rpc-response :accept :proc-unavail
 							 :id (rpc-msg-xid msg))))
 		    (error (e)
 		      ;; FIXME: should we just terminate the connection at this point?
-		      (log:error "Error handling: ~A" e) 
+		      (frpc-log :error "Error handling: ~A" e) 
 		      (%write-rpc-msg output-stream
 				      (make-rpc-response :accept :garbage-args
 							 :id (rpc-msg-xid msg))))))))))))
@@ -181,26 +181,26 @@ TCP requests only."
       ;; rethrow the error so the connection handler knows the connection has been closed
       (error e))
     (error (e)
-      (log:error "Error reading msg: ~A" e)
+      (frpc-log :error "Error reading msg: ~A" e)
       (%write-rpc-msg output-stream
 		      (make-rpc-response :accept :garbage-args))))
-  (log:debug "Flushing output")
+  (frpc-log :info "Flushing output")
   (force-output output-stream)
-  (log:debug "Finished request"))
+  (frpc-log :info "Finished request"))
 
 ;; ------------- rpc server ----------
 
 (defun process-rpc-connection (server conn)
   (let ((stream (usocket:socket-stream conn)))
-    (log:debug "Reading request")
+    (frpc-log :info "Reading request")
     (flexi-streams:with-input-from-sequence (input (read-fragmented-message stream))
-      (log:debug "Read request")
+      (frpc-log :info "Read request")
       (let ((buff (flexi-streams:with-output-to-sequence (output)
 		    (with-caller-binded ((usocket:get-peer-address conn)
 					 (usocket:get-peer-port conn)
 					 :tcp)
 		      (handle-request server input output)))))
-	(log:debug "Writing response")
+	(frpc-log :info "Writing response")
 	;; write the fragment header (with terminating bit set)
 	(write-uint32 stream (logior #x80000000 (length buff)))
 	;; write the buffer itself
@@ -217,13 +217,13 @@ TCP requests only."
     (let ((program (call-body-prog call))
 	  (version (call-body-vers call))
 	  (proc (call-body-proc call)))
-      (log:debug "Calling ~A:~A:~A" program version proc)
+      (frpc-log :info "Calling ~A:~A:~A" program version proc)
       (let ((h (find-handler program version proc)))
 	(cond
 	  ((and (rpc-server-programs server)
 		(not (member program (rpc-server-programs server))))
 	   ;; not in allowed programs list
-	   (log:warn "Program ~A not in program list" program)
+	   (frpc-log :warning "Program ~A not in program list" program)
 	   (pack #'%write-rpc-msg 
 		 (make-rpc-response :accept :prog-mismatch
 				    :id id)))
@@ -231,21 +231,21 @@ TCP requests only."
 		(not (funcall (rpc-server-auth-handler server)
 			      (call-body-auth call)
 			      (call-body-verf call))))
-	   (log:debug "Authentication failure")
+	   (frpc-log :info "Authentication failure")
 	   (pack #'%write-rpc-msg 
 		 (make-rpc-response :reject :auth-error 
 				    :id id
 				    :auth-stat :auth-rejected)))
 	  ((or (not h) (null (third h)))
 	   ;; no handler
-	   (log:warn "No handler registered for ~A:~A:~A" program version proc)
+	   (frpc-log :warning "No handler registered for ~A:~A:~A" program version proc)
 	   (pack #'%write-rpc-msg
 		 (make-rpc-response :accept :proc-unavail
 				    :id id)))
 	  (t
 	   ;; log the authentication
 ;;	   (unless (eq (opaque-auth-flavour (call-body-auth call)) :auth-null)
-;;	     (log:debug "Authentication: ~S" (call-body-auth call)))
+;;	     (frpc-log :info "Authentication: ~S" (call-body-auth call)))
 	   ;; handle the request
 	   (destructuring-bind (reader writer handler) h
 	     ;; read the argument
@@ -261,18 +261,18 @@ TCP requests only."
                                                       :id id))
                    (write-xtype writer output res))
                (rpc-accept-error (e)
-                 (log:error "Accept error: ~A" e)
+                 (frpc-log :error "Accept error: ~A" e)
                  (%write-rpc-msg output
                                  (make-rpc-response :accept (rpc-accept-error-stat e)
                                                     :id (rpc-msg-xid msg))))
                (rpc-auth-error (e)
-                 (log:error "Auth error: ~A" e)
+                 (frpc-log :error "Auth error: ~A" e)
                  (%write-rpc-msg output
                                  (make-rpc-response :reject :auth-error
                                                     :auth-stat (auth-error-stat e)
                                                     :id (rpc-msg-xid msg))))               
                (error (e)
-                 (log:error "error handling: ~A" e)
+                 (frpc-log :error "error handling: ~A" e)
                  (%write-rpc-msg output
                                  (make-rpc-response :accept :garbage-args
                                                     :id (rpc-msg-xid msg))))))))))))))
@@ -280,19 +280,19 @@ TCP requests only."
 
 (defun handle-udp-request (server socket buffer length remote-host remote-port)
   "Given a buffer containing an RPC message and argument, read it and take appropriate action."
-;;  (log:debug "Buffer ~S" buffer)
+;;  (frpc-log :info "Buffer ~S" buffer)
   (flexi-streams:with-input-from-sequence (input buffer :start 0 :end length)
     (let ((msg (%read-rpc-msg input)))
       (ecase (xunion-tag (rpc-msg-body msg))
 	(:reply
 	 ;; received a reply to the server port --- is a bit odd since we never 
 	 ;; initiate rpcs from the server so don't expect any replies. let's just discard it 
-	 (log:warn "Recieved reply from ~A:~A" remote-host remote-port))
+	 (frpc-log :warning "Recieved reply from ~A:~A" remote-host remote-port))
 	(:call 
 	 ;; is a call -- lookup the proc handler and send a reply 
-	 (log:debug "Recived call from ~A:~A" remote-host remote-port)
+	 (frpc-log :info "Recived call from ~A:~A" remote-host remote-port)
 	 (let ((return-buffer (process-udp-request server msg input)))
-	   (log:debug "Sending reply to ~A:~A" remote-host remote-port)
+	   (frpc-log :info "Sending reply to ~A:~A" remote-host remote-port)
 	   (usocket:socket-send socket return-buffer (length return-buffer) 
 				:host remote-host :port remote-port)))))))
 
@@ -300,13 +300,13 @@ TCP requests only."
   "Wait for and read a datagram from the UDP socket. If successfully read the message then process it."
   (multiple-value-bind (%buffer length remote-host remote-port) (usocket:socket-receive socket buffer (length buffer))
     (declare (ignore %buffer))
-    (log:debug "UDP msg from ~A:~A (length ~A)" remote-host remote-port length)
+    (frpc-log :info "UDP msg from ~A:~A (length ~A)" remote-host remote-port length)
     (cond
       ;; there seems to be a bug in SBCL which causes it not to detect error return value (-1)
       ;; from recvfrom -- this means socket-receive seemingly returns successfully but with a length
       ;; of 4294967295. we shouldn't really need to be checking for it here, but this is a workaround
       ((= length #xffffffff)
-       (log:error "recvfrom returned -1"))
+       (frpc-log :error "recvfrom returned -1"))
       (t 
        (handler-case 
 	   (with-caller-binded (remote-host remote-port :udp)
@@ -314,7 +314,7 @@ TCP requests only."
 				 buffer length
 				 remote-host remote-port))
 	 (error (e)
-	   (log:error "Error handling: ~S" e)))))))
+	   (frpc-log :error "Error handling: ~S" e)))))))
 
 
 
@@ -384,10 +384,10 @@ TIMEOUT should be an integer specifying the maximum time TCP connections should 
 				 (cond
 				   ((> (- now (rpc-connection-time c)) timeout)
 				    ;; the connection is old, close it 
-				    (log:debug "Purging connection to ~A" (usocket:get-peer-address (rpc-connection-conn c)))
+				    (frpc-log :info "Purging connection to ~A" (usocket:get-peer-address (rpc-connection-conn c)))
 				    (handler-case (usocket:socket-close (rpc-connection-conn c))
 				      (error (e)
-					(log:debug "Couldn't close connection: ~S" e)))
+					(frpc-log :info "Couldn't close connection: ~S" e)))
 				    nil)
 				   (t 
 				    (list c))))
@@ -407,7 +407,7 @@ TIMEOUT should be an integer specifying the maximum time TCP connections should 
 						     (usocket:socket-accept socket)
 						     :time 
 						     (get-universal-time))))
-		      (log:debug "Accepting TCP connection from ~A:~A" 
+		      (frpc-log :info "Accepting TCP connection from ~A:~A" 
 				 (usocket:get-peer-address (rpc-connection-conn conn))
 				 (usocket:get-peer-port (rpc-connection-conn conn)))
 		      (push conn connections)))
@@ -417,17 +417,17 @@ TIMEOUT should be an integer specifying the maximum time TCP connections should 
 		      (error (e)
 			;; windows is known to throw an error on receive if there was no-one 
 			;; listening on the port the previous UDP packet was sent to.
-			(log:debug "~A" e))))
+			(frpc-log :info "~A" e))))
 		   (usocket:stream-usocket 
 		    ;; a connection is ready to read 
 		    (let ((c (find socket connections :key #'rpc-connection-conn)))
 		      (setf (rpc-connection-time c) (get-universal-time)))
 		    (handler-case (process-rpc-connection server socket)
 		      (end-of-file ()
-			(log:debug "Connection closed by remote host")
+			(frpc-log :info "Connection closed by remote host")
 			(setf connections (remove socket connections :key #'rpc-connection-conn)))
 		      (error (e)
-			(log:debug "Error: ~S" e)
+			(frpc-log :info "Error: ~S" e)
 			(ignore-errors (usocket:socket-close socket))
 			(setf connections (remove socket connections :key #'rpc-connection-conn))))))))))
       ;; close outstanding connections

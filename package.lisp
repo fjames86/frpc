@@ -69,10 +69,13 @@
 	   #:rpc-auth-error
 	   #:rpc-mismatch-error
 
-       ;; structures
-       #:make-opaque-auth
-       #:opaque-auth-flavour
-       #:opaque-auth-data
+	   ;; structures
+	   #:make-opaque-auth
+	   #:opaque-auth-flavour
+	   #:opaque-auth-data
 
+	   ;; debug logging
+	   #:*frpc-log*
+	   #:frpc-log
 	   ))
 

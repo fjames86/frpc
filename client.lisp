@@ -129,13 +129,13 @@ the bytes read."
 	(cond
 	  ;; workaround for sbcl bug
 	  ((= count #xffffffff)
-	   (log:error "recvfrom returned -1"))
+	   (frpc-log :error "recvfrom returned -1"))
 	  (t
-	   (log:debug "Received response from ~A:~A (length ~A)" remote-host remote-port count)
+	   (frpc-log :info "Received response from ~A:~A (length ~A)" remote-host remote-port count)
 	   (flexi-streams:with-input-from-sequence (input buffer :start 0 :end count)
          (handler-case
              (let ((msg (%read-rpc-msg input)))
-               (log:debug "MSG ID ~A" (rpc-msg-xid msg))
+               (frpc-log :info "MSG ID ~A" (rpc-msg-xid msg))
                (let ((body (rpc-msg-body msg)))
                  (cond
                    ((eq (xunion-tag (xunion-val body)) :msg-denied)
@@ -150,8 +150,8 @@ the bytes read."
                     (push (list remote-host remote-port (read-xtype result-type input))
                           replies)))))
            (error (e)
-             (log:debug "~A" e)
-             (log:debug "~S" (subseq buffer 0 count))
+             (frpc-log :info "~A" e)
+             (frpc-log :info "~S" (subseq buffer 0 count))
              (list remote-host remote-port nil))))))))))
     
 (defun send-rpc-udp (socket arg-type arg &key program version proc auth verf request-id host port)
@@ -177,7 +177,7 @@ the bytes read."
     (setf (usocket:socket-option socket :broadcast) t)
     (unwind-protect 
 	 (progn 
-	   (log:debug "Sending to ~A:~A" host port)
+	   (frpc-log :info "Sending to ~A:~A" host port)
 	   (send-rpc-udp socket arg-type arg 
 			 :program program
 			 :version version
@@ -187,7 +187,7 @@ the bytes read."
 			 :request-id request-id
              :host host :port port)
 	   ;; now wait for the replies to come in
-	   (log:debug "Collecting replies")
+	   (frpc-log :info "Collecting replies")
 	   (collect-udp-replies socket timeout result-type))
       (usocket:socket-close socket))))
 	
@@ -199,7 +199,7 @@ the bytes read."
 					:element-type '(unsigned-byte 8))))
     (unwind-protect 
 	 (progn 
-	   (log:debug "Sending to ~A:~A" host port)
+	   (frpc-log :info "Sending to ~A:~A" host port)
 	   (send-rpc-udp socket arg-type arg 
 			 :program program
 			 :version version
@@ -210,10 +210,10 @@ the bytes read."
 	   ;; now wait for a reply, but only if a timeout has been supplied 
 	   ;; otherwise just exit
 	   (when timeout
-	     (log:debug "Waiting for reply")
+	     (frpc-log :info "Waiting for reply")
 	     (if (usocket:wait-for-input socket :timeout timeout :ready-only t)
 		 (multiple-value-bind (buffer count remote-host remote-port) (progn (usocket:socket-receive socket nil 65507))
-		   (log:debug "Received response from ~A:~A (count ~A)" remote-host remote-port count)
+		   (frpc-log :info "Received response from ~A:~A (count ~A)" remote-host remote-port count)
 		   ;; sbcl bug 1426667: socket-receive on x64 windows doesn't correctly check for errors 
 		   ;; workaround is to check for -1 as an unsigned int
 		   (when (= count #xffffffff)

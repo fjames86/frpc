@@ -237,7 +237,7 @@ function available."))
 (defhandler %handle-callit (args 5)
   (destructuring-bind (program version proc arg-buffer) args
     ;; find the handler and port mapping 
-    (log:debug "CALLIT ~A:~A:~A" program version proc)
+    (frpc-log :info "CALLIT ~A:~A:~A" program version proc)
     (let ((mapping (find-mapping (make-mapping :program program
 					       :version version
 					       :protocol :udp)))
