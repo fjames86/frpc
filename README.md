@@ -222,11 +222,12 @@ For more serious usages, see port-mapper.lisp or Nefarious, an NFS implementatio
 
 ## 6. Notes
 
-Debug logging is provided by the LOG4CL package. I've noticed turning on :DEBUG level logging really slows 
-things down, the latency is very high. When not doing development you should turn the logging off. Alternatively
-we should use an alternative low-latency logging system (such as what?). 
+Debug logging is provided by [pounds](https://github.com/fjames86/pounds). 
+Originally debug logging was provided by the LOG4CL package but I noticed severe latency 
+issues when under heavy load. 
 
-I've not really put any effort into properly handling authentication, either for the client or the server. This needs to be addressed.
+I've not really put any effort into properly handling authentication, 
+either for the client or the server. This needs to be addressed.
 
 ## 7. License
 
