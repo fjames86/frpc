@@ -220,16 +220,43 @@ The equivalent macros using FLET are WITH-READER and WITH-WRITER.
 I have typed in some simple example programs. 
 For more serious usages, see port-mapper.lisp or Nefarious, an NFS implementation in Common Lisp.
 
-## 6. Notes
+## 6. Logging 
 
-Debug logging is provided by [pounds](https://github.com/fjames86/pounds). 
-Originally debug logging was provided by the LOG4CL package but I noticed severe latency 
-issues when under heavy load. 
+Debug logging is provided by [pounds](https://github.com/fjames86/pounds). By default this will create a 2MB log file
+in your home directory named "frpc.log". You should change the path by modifying:
+
+```
+(setf frpc:*frpc-log-path* (merge-pathnames (user-homedir-pathname) "foo.log"))
+```
+The log is created on the first call to FRPC-LOG. 
+
+For debugging and development you may follow the log to see output as it arrives:
+```
+(pounds.log:start-following *frpc-log*)
+
+(pounds.log:stop-following)
+```
+
+Users may also write to this log if they wish, you should simply use a different tag.
+```
+(let ((tag (babel:string-to-octets "MYLG")))
+  (defun my-log (lvl format-control &rest args)
+    (unless *frpc-log*		  
+      (frpc-log :info "Initialzing log"))
+    (pounds.log:write-message *frpc-log* 
+    			      lvl 		      
+			      (apply #'format nil format-control args)
+			      :tag tag)))
+```
+
+See the pounds [README](https://github.com/fjames86/pounds/README.md) for documentation on the logging system.
+
+## 7. Notes
 
 I've not really put any effort into properly handling authentication, 
 either for the client or the server. This needs to be addressed.
 
-## 7. License
+## 8. License
 
 Released under the terms of the MIT license.
 

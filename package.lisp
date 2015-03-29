@@ -76,6 +76,7 @@
 
 	   ;; debug logging
 	   #:*frpc-log*
+	   #:*frpc-log-path*
 	   #:frpc-log
 	   ))
 
