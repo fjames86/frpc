@@ -40,6 +40,7 @@
   (:auth-unix 1)
   (:auth-short 2)
   (:auth-des 3)
+  (:auth-kerb4 4)
   (:gss 6))
 
 ;; --------------
