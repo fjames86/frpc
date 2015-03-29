@@ -249,7 +249,7 @@ Users may also write to this log if they wish, you should simply use a different
 			      :tag tag)))
 ```
 
-See the pounds [README](https://github.com/fjames86/pounds/README.md) for documentation on the logging system.
+See the pounds documentation for more information on the logging system.
 
 ## 7. Notes
 
