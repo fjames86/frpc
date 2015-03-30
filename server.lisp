@@ -450,10 +450,10 @@ If ADD-PORT-MAPPINGS is non-nil then all possible port mappings will be added to
 you only want to advertise each service on particular ports then you should set this to nil and 
 add each mapping manually (using ADD-MAPPING).
 
-When specified, TIMEOUT will be set as the TCP receive timeout (read timeout). Accepted TCP connections which are inactive for longer than TIMEOUT will be closed.
+When specified, TIMEOUT will be set as the TCP receive timeout (read timeout). 
+Accepted TCP connections which are inactive for longer than TIMEOUT will be closed.
 "
   ;; add all the port mappings  
-  ;;  (when add-port-mappings (port-mapper:add-all-mappings tcp-ports udp-ports))
   (setf (rpc-server-thread server)
 	(bt:make-thread (lambda ()
 			  (run-rpc-server server 

@@ -81,6 +81,14 @@ Specifying :UDP as the protocol will send the message using the UDP transport in
 (pmap:call-null :host "192.168.0.1" :protocol :udp)
 ```
 
+Users may also supply a connection argument for UDP so that they don't need to keep making new UDP sockets for each RPC.
+```
+(let ((sock (usocket:socket-connect host port :protocol :datagram)))
+  (pmap:call-null :protocol :udp :connection sock)
+  (pmap:call-dump :protocol :udp :connection sock)
+  (usocket:socket-close sock))
+```
+
 ### 2.4 UDP broadcast
 
 You may send messages using UDP broadcast to find services on your local network.
