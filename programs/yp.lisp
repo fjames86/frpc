@@ -43,13 +43,20 @@
 (use-rpc-host '*rpc-host* '*rpc-port*)
 
 (defrpc call-null 0 :void :void)
-(defrpc call-domain 1 domainname :boolean)
-(defrpc call-domain-nonack 2 domainname :boolean)
-(defrpc call-match 3 req-key resp-val)
-(defrpc call-first 4 req-key resp-key-val)
-(defrpc call-next 5 req-key resp-key-val)
-;;(defrpc call-xfr 6 req-xfr resp-fxr)
-(defrpc call-clear 7 :void :void)
+(defrpc call-domain 1 domainname :boolean
+  (:documentation "Return of TRUE indicates the NIS server serves the named domain, FALSE indicates no support."))
+(defrpc call-domain-nonack 2 domainname :boolean
+  (:documentation "Same as CALL-DOMAIN, but does not reply if no support. Use for broadcasts"))
+(defrpc call-match 3 req-key resp-val
+  (:documentation "Returns the right-hand value for a passed left-hand key within a named map and domain."))
+(defrpc call-first 4 req-key resp-key-val
+  (:documentation "Returns the first left-value pair from a named domain and map."))
+(defrpc call-next 5 req-key resp-key-val
+  (:documentation "Returns the key-value pair following a passed key-value pair wthin a named domain and map."))
+;;(defrpc call-xfr 6 req-xfr resp-fxr
+;;  (:documentation "Indicates to a server that a map should be updated."))
+(defrpc call-clear 7 :void :void
+  (:documentation "Instructs an NIS server to close the current map so that old versions of the disk file don't get held open."))
 (defrpc call-all 8 req-nokey resp-all)
 (defrpc call-master 9 req-nokey resp-master)
 (defrpc call-order 10 req-nokey resp-order)

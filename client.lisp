@@ -131,11 +131,11 @@ the bytes read."
 	  ((= count #xffffffff)
 	   (frpc-log :error "recvfrom returned -1"))
 	  (t
-	   (frpc-log :info "Received response from ~A:~A (length ~A)" remote-host remote-port count)
+	   (frpc-log :trace "Received response from ~A:~A (length ~A)" remote-host remote-port count)
 	   (flexi-streams:with-input-from-sequence (input buffer :start 0 :end count)
          (handler-case
              (let ((msg (%read-rpc-msg input)))
-               (frpc-log :info "MSG ID ~A" (rpc-msg-xid msg))
+               (frpc-log :trace "MSG ID ~A" (rpc-msg-xid msg))
                (let ((body (rpc-msg-body msg)))
                  (cond
                    ((eq (xunion-tag (xunion-val body)) :msg-denied)
@@ -150,8 +150,8 @@ the bytes read."
                     (push (list remote-host remote-port (read-xtype result-type input))
                           replies)))))
            (error (e)
-             (frpc-log :info "~A" e)
-             (frpc-log :info "~S" (subseq buffer 0 count))
+             (frpc-log :error "~A" e)
+             (frpc-log :error "~S" (subseq buffer 0 count))
              (list remote-host remote-port nil))))))))))
     
 (defun send-rpc-udp (socket arg-type arg &key program version proc auth verf request-id host port)
@@ -177,7 +177,7 @@ the bytes read."
     (setf (usocket:socket-option socket :broadcast) t)
     (unwind-protect 
 	 (progn 
-	   (frpc-log :info "Sending to ~A:~A" host port)
+	   (frpc-log :trace "Sending to ~A:~A" host port)
 	   (send-rpc-udp socket arg-type arg 
 			 :program program
 			 :version version
@@ -187,19 +187,21 @@ the bytes read."
 			 :request-id request-id
              :host host :port port)
 	   ;; now wait for the replies to come in
-	   (frpc-log :info "Collecting replies")
+	   (frpc-log :trace "Collecting replies")
 	   (collect-udp-replies socket timeout result-type))
       (usocket:socket-close socket))))
 	
 (defun call-rpc-udp (host arg-type arg result-type 
-		     &key port program version proc auth verf request-id timeout)
+		     &key port program version proc auth verf request-id timeout connection)
   "Send a request to the server via UDP and await a response. Will timeout after TIMEOUT seconds."
-  (let ((socket (usocket:socket-connect host port
-					:protocol :datagram
-					:element-type '(unsigned-byte 8))))
+  (let ((socket (if connection
+		    connection
+		    (usocket:socket-connect host port
+					    :protocol :datagram
+					    :element-type '(unsigned-byte 8)))))
     (unwind-protect 
 	 (progn 
-	   (frpc-log :info "Sending to ~A:~A" host port)
+	   (frpc-log :trace "Sending to ~A:~A" host port)
 	   (send-rpc-udp socket arg-type arg 
 			 :program program
 			 :version version
@@ -210,10 +212,10 @@ the bytes read."
 	   ;; now wait for a reply, but only if a timeout has been supplied 
 	   ;; otherwise just exit
 	   (when timeout
-	     (frpc-log :info "Waiting for reply")
+	     (frpc-log :trace "Waiting for reply")
 	     (if (usocket:wait-for-input socket :timeout timeout :ready-only t)
 		 (multiple-value-bind (buffer count remote-host remote-port) (progn (usocket:socket-receive socket nil 65507))
-		   (frpc-log :info "Received response from ~A:~A (count ~A)" remote-host remote-port count)
+		   (frpc-log :trace "Received response from ~A:~A (count ~A)" remote-host remote-port count)
 		   ;; sbcl bug 1426667: socket-receive on x64 windows doesn't correctly check for errors 
 		   ;; workaround is to check for -1 as an unsigned int
 		   (when (= count #xffffffff)
@@ -221,11 +223,12 @@ the bytes read."
 		   (flexi-streams:with-input-from-sequence (input buffer :start 0 :end count)
              (nth-value 1 (read-response input result-type))))
 		 (error 'rpc-timeout-error))))
-      (usocket:socket-close socket))))
+      (unless connection
+	(usocket:socket-close socket)))))
 
 (defun call-rpc (arg-type arg result-type 
 		 &key (host *rpc-host*) (port *rpc-port*) (program 0) (version 0) (proc 0) 
-		   auth verf request-id protocol (timeout 1))
+		   auth verf request-id protocol (timeout 1) connection)
   "Establish a connection and execute an RPC to a remote machine. Returns the value decoded by the RESULT-TYPE.
 By default a TCP connection is established and this function will block until a reply is received.
 
@@ -252,20 +255,28 @@ PROTOCOL should be :TCP, :UDP or :BROADCAST. :TCP is the default, and will block
 :UDP will wait for up to TIMEOUT seconds for a reply and will raise an RPC-TIMEOUT-ERROR if it doesn't receive one.
 :BROADCAST should be used for UDP broadcasts. The client will wait for up to TIMEOUT seconds and collect all the repsonses
 received in that time. Note that it will return a list of (host port result) instead of just the result.
+
+CONNECTION should be a TCP connection, as returned by RPC-CONNECT, or a UDP socket, as returned by USOCKET:SOCKET-CONNECT.
 "
   (ecase protocol
     ((:tcp nil)
-     (with-rpc-connection (conn host port)
+     (let ((conn (if connection 
+		     connection
+		     (rpc-connect host port))))
        ;; if timeout specified then set the socket option
        (when timeout
 	 (setf (usocket:socket-option conn :receive-timeout) timeout))
-       (call-rpc-server conn arg-type arg result-type 
-			:request-id request-id
-			:program program
-			:version version
-			:proc proc
-			:auth auth
-			:verf verf)))
+
+       (unwind-protect 
+	  (call-rpc-server conn arg-type arg result-type 
+			   :request-id request-id
+			   :program program
+			   :version version
+			   :proc proc
+			   :auth auth
+			   :verf verf)
+	 (unless connection 
+	   (rpc-close conn)))))
     (:udp
      (call-rpc-udp host arg-type arg result-type
 		   :port port
@@ -275,7 +286,8 @@ received in that time. Note that it will return a list of (host port result) ins
 		   :proc proc
 		   :auth auth
 		   :verf verf
-		   :timeout timeout))
+		   :timeout timeout
+		   :connection connection))
     (:broadcast
      (broadcast-rpc arg-type arg result-type
 		    :host host
@@ -340,25 +352,7 @@ OPTIONS allow customization of the generated client function:
 			 '(arg &key)))
 		     (host ,*default-rpc-host*) (port ,*default-rpc-port*) auth verf request-id protocol (timeout 1) connection)
 	 ,@(when (assoc :documentation options) (cdr (assoc :documentation options)))
-	 ,(let ((the-form `(if connection
-                           (call-rpc-server connection
-                                            (function ,arg-writer)
-                                            ,(cond
-                                              ((eq arg-type :void) 
-                                               'nil)
-                                              ((assoc :arg-transformer options)
-                                               (destructuring-bind (params &body body) (cdr (assoc :arg-transformer options))
-                                                 (declare (ignore params))
-                                                 `(progn ,@body)))
-                                              (t 'arg))
-                                            (function ,res-reader)
-                                            :program ,gprogram
-                                            :version ,gversion
-                                            :proc ,gproc
-                                            :auth auth
-                                            :verf verf
-                                            :request-id request-id)                                            
-                           (call-rpc (function ,arg-writer)
+	 ,(let ((the-form `(call-rpc (function ,arg-writer)
                                      ,(cond
                                        ((eq arg-type :void) 
                                         'nil)
@@ -377,7 +371,8 @@ OPTIONS allow customization of the generated client function:
                                      :verf verf
                                      :request-id request-id
                                      :protocol protocol
-                                     :timeout timeout)))
+                                     :timeout timeout
+				     :connection connection))
 		(transformer (assoc :transformer options))
 		(gtrafo (gensym "TRAFO"))
 		(gcall (gensym "CALL")))

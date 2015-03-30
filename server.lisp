@@ -93,7 +93,7 @@ with enum status return values."
 TCP requests only."
   (handler-case 
       (let ((msg (%read-rpc-msg input-stream)))
-	(frpc-log :info "Recieved message ID ~A" (rpc-msg-xid msg))
+	(frpc-log :trace "Recieved message ID ~A" (rpc-msg-xid msg))
 	;; validate the message
 	(cond
 	  ((not (eq (xunion-tag (rpc-msg-body msg)) :call))
@@ -144,10 +144,10 @@ TCP requests only."
 		(destructuring-bind (arg-type res-type handler) h
 		  (handler-case 
 		      (let ((arg (read-xtype arg-type input-stream)))
-			(frpc-log :info "Passing arg to handler")
+			(frpc-log :trace "Passing arg to handler")
 			(let ((res (let ((*rpc-remote-auth* (call-body-auth call)))
 				     (funcall handler arg))))
-			  (frpc-log :info "Call successful")
+			  (frpc-log :trace "Call successful")
 			  (%write-rpc-msg output-stream
 					  (make-rpc-response :accept :success
 							     :id (rpc-msg-xid msg)))
@@ -166,7 +166,7 @@ TCP requests only."
 
 		    (undefined-function (e)
 		      ;; no such function -- probably means we didn't register a handler
-		      (frpc-log :warning "No handler: ~S" e)
+		      (frpc-log :info "No handler: ~S" e)
 		      (%write-rpc-msg output-stream
 				      (make-rpc-response :accept :proc-unavail
 							 :id (rpc-msg-xid msg))))
@@ -184,23 +184,23 @@ TCP requests only."
       (frpc-log :error "Error reading msg: ~A" e)
       (%write-rpc-msg output-stream
 		      (make-rpc-response :accept :garbage-args))))
-  (frpc-log :info "Flushing output")
+  (frpc-log :trace "Flushing output")
   (force-output output-stream)
-  (frpc-log :info "Finished request"))
+  (frpc-log :trace "Finished request"))
 
 ;; ------------- rpc server ----------
 
 (defun process-rpc-connection (server conn)
   (let ((stream (usocket:socket-stream conn)))
-    (frpc-log :info "Reading request")
+    (frpc-log :trace "Reading request")
     (flexi-streams:with-input-from-sequence (input (read-fragmented-message stream))
-      (frpc-log :info "Read request")
+      (frpc-log :trace "Read request")
       (let ((buff (flexi-streams:with-output-to-sequence (output)
 		    (with-caller-binded ((usocket:get-peer-address conn)
 					 (usocket:get-peer-port conn)
 					 :tcp)
 		      (handle-request server input output)))))
-	(frpc-log :info "Writing response")
+	(frpc-log :trace "Writing response")
 	;; write the fragment header (with terminating bit set)
 	(write-uint32 stream (logior #x80000000 (length buff)))
 	;; write the buffer itself
