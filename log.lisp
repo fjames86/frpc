@@ -4,10 +4,11 @@
 (in-package #:frpc)
 
 (defparameter *frpc-log-path* (merge-pathnames (user-homedir-pathname) "frpc.log"))
-(defvar *frpc-log* nil)
+(defvar *frpc-log* nil
+  "The log to write messages to. Gets opened on the first call to FRPC-LOG.")
 
 (defun frpc-log (lvl control-string &rest args)
-  "Write a messagee to the debug log"
+  "Write a message to the debug log."
   (unless *frpc-log*
     (let ((path (namestring *frpc-log-path*))) 
       #+(or windows win32)(setf path (substitute #\\ #\/ path))

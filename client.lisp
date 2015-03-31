@@ -72,13 +72,20 @@ the bytes read."
 	   *default-rpc-port* ,port)))
 
 
-(defun rpc-connect (host &optional port)
-  "Establish a TCP connection to the rpc server."
-  (usocket:socket-connect host (or port *rpc-port*)
-			  :element-type '(unsigned-byte 8)))
+(defun rpc-connect (host port &optional (protocol :udp))
+  "Establish a connection to the rpc server."
+  (ecase protocol
+    (:udp 
+     (usocket:socket-connect host port
+			     :protocol :datagram
+			     :element-type '(unsigned-byte 8)))
+    (:tcp
+     (usocket:socket-connect host (or port *rpc-port*)
+			     :protocol :stream
+			     :element-type '(unsigned-byte 8)))))
 
 (defun rpc-close (conn)
-  "Close the TCP connection to the server."
+  "Close the connection to the server."
   (usocket:socket-close conn))
 	    
 (defmacro with-rpc-connection ((var host &optional port) &body body)
@@ -228,7 +235,7 @@ the bytes read."
 
 (defun call-rpc (arg-type arg result-type 
 		 &key (host *rpc-host*) (port *rpc-port*) (program 0) (version 0) (proc 0) 
-		   auth verf request-id protocol (timeout 1) connection)
+		   auth verf request-id (protocol :udp) (timeout 1) connection)
   "Establish a connection and execute an RPC to a remote machine. Returns the value decoded by the RESULT-TYPE.
 By default a TCP connection is established and this function will block until a reply is received.
 
@@ -259,7 +266,7 @@ received in that time. Note that it will return a list of (host port result) ins
 CONNECTION should be a TCP connection, as returned by RPC-CONNECT, or a UDP socket, as returned by USOCKET:SOCKET-CONNECT.
 "
   (ecase protocol
-    ((:tcp nil)
+    (:tcp
      (let ((conn (if connection 
 		     connection
 		     (rpc-connect host port))))
@@ -350,7 +357,7 @@ OPTIONS allow customization of the generated client function:
 			       `(,@params &key))))
 			(t 
 			 '(arg &key)))
-		     (host ,*default-rpc-host*) (port ,*default-rpc-port*) auth verf request-id protocol (timeout 1) connection)
+		     (host ,*default-rpc-host*) (port ,*default-rpc-port*) auth verf request-id (protocol :udp) (timeout 1) connection)
 	 ,@(when (assoc :documentation options) (cdr (assoc :documentation options)))
 	 ,(let ((the-form `(call-rpc (function ,arg-writer)
                                      ,(cond

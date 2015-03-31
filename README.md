@@ -21,7 +21,11 @@ For instance, a client should write:
 (defrpc call-goodbye 1 :uint32 :string)
 ```
 
-This defines a Lisp function for each RPC proc to call out to an RPC server to execute the procedures.
+This defines a Lisp function for each RPC proc to call out to an RPC server to execute the procedure, e.g.
+```
+CL-USER> (call-hello "Bob" :host "10.1.1.1" :port 1234 :protocol :udp)
+"Hello, Bob!"
+```
 
 Servers should additionally implement handlers for the procedures they wish to support
 ```
@@ -50,6 +54,32 @@ Thus, with the example above, the client will be able to call a remote RPC serve
 ```
 (call-hello "hello" :host "10.1.1.1" :port 8000)
 ```
+
+The default client function accepts a single mandatory argument, which must match the corresponding XDR type specifier.
+However, typically the programmer would like to provide a better interface to hide the underlying implementation. 
+For instance, consider a procedure which accepts and returns a structure of two strings:
+```
+(defxstruct my-arg ()
+  (a :string)
+  (b :string))
+(defrpc call-my-proc 1 my-arg my-arg
+  (:arg-transformer (a &key (b ""))
+    (make-my-arg :a a :b b))
+  (:transformer (res)
+    (values (my-arg-a res) (my-arg-b res)))
+  (:documentation "Accepts two strings A and B. Returns (values (string-upcase A) (string-upcase B))."))
+```
+The resulting client function can then be called:
+```
+CL-USER> (call-my-proc "Alice" :b "Bob" :host "10.1.1.1" :port 1234 :protocol :udp)
+"ALICE"
+"BOB"
+```
+
+The :ARG-TRANSFORMER option specifies how to transform the arguments to the function into arguments for 
+the RPC call. You may use this to allow some of the arguments be passed in as keyword parameters. 
+The :TRANSFORMER option specifies how to transform the result of the RPC call back to Lisp.
+Documentation strings can be provided with the :DOCUMENTATION option.
 
 ### 2.1 CALL-RPC
 
@@ -261,8 +291,16 @@ See the pounds documentation for more information on the logging system.
 
 ## 7. Notes
 
-I've not really put any effort into properly handling authentication, 
-either for the client or the server. This needs to be addressed.
+* I've not really put any effort into properly handling authentication, either for the client or the server.
+* Default protocol is TCP, should this be changed to UDP? 
+* At the moment, reading from TCP streams requires buffering the input to cope with reading multiple fragments. 
+A fragmented-stream type could be defined to wrap the underlying socket stream so that we can avoid the buffering on reads.
+You still need to buffer writes because you need to know how much you intend to write before you've written it.
+* You can start listening on wildcard ports (by supplying 0 as a port number), but there is no way to find out what ports
+were selected. This makes it impossible to inform the port mapper of where to direct traffic.
+* Could make it easier to add more transports, e.g. using CL+SSL.
+* UDP multicast?
+* The XDR serializer is probably not as efficient as it could be.
 
 ## 8. License
 
