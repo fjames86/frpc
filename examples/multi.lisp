@@ -9,19 +9,20 @@
 
 ;; -------------------------
 
-(defrpc call-null 0 :void :void)
-
-(defhandler %handle-null (void 0)
+(defun %handle-null (void)
   (declare (ignore void))
   nil)
 
+(defrpc call-null 0 :void :void
+  (:handler #'%handle-null))
+
 ;; ---------------------------
 
-(defrpc call-upcase 1 :string :string)
-
-(defhandler %handle-upcase (string 1)
+(defun %handle-upcase (string)
   (string-upcase string))
 
+(defrpc call-upcase 1 :string :string
+  (:handler #'%handle-upcase))
 
 ;; -----------------------------
 

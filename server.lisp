@@ -59,33 +59,6 @@
 	      (cdr v)))
 	(cdr p))))
 				     
-(defmacro defhandler (name (var proc) &body body)
-  "Define a server handler for the procedure specified. You MUST have defined the RPC signature with a
-previous call to DEFRPC. This is needed so the system knows the argument/result types.
-
-A function named NAME will be defined and will accept a single argument named VAR, which will be bound
-to a value of type specified by the ARG-TYPE in the partner DEFRPC form. The function should return 
-a value of type specified in the RESULT-TYPE of the DEFRPC.
-
-The BODY should NEVER signal any errors, any incorrect behaviour (such as bad arg values etc) 
-should be returned to the sender in a way specified by the RPC program itself, typically 
-with enum status return values." 
-  (alexandria:with-gensyms (gprogram gversion gproc gh gha garg-type gres-type)
-    `(let* ((,gprogram ,*rpc-program*)
-	    (,gversion ,*rpc-version*)
-	    (,gproc ,proc)
-	    (,gh (find-handler ,gprogram ,gversion ,gproc)))
-       (unless ,gh
-	 (error "RPC ~A:~A:~A not yet declared. DEFRPC first!" 
-		,gprogram ,gversion ,gproc))
-       (destructuring-bind (,garg-type ,gres-type ,gha) ,gh
-	 (declare (ignore ,gha))
-	 (defun ,name (,var)
-	   ,@body)
-	 (%defhandler ,gprogram ,gversion ,gproc 
-		      ,garg-type ,gres-type 
-		      (function ,name))))))
-
 ;; ------------------------- handle a request from the stream --------------
 
 (defun handle-request (server input-stream output-stream)

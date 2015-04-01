@@ -127,7 +127,10 @@ in the mapping structure. if MAP-PORT is provided, will also match this port."
   nil)
 
 (defun remove-all-mappings (&key rpc)
-  "Remove mappings for all defined RPCs to the TCP and UDP ports specified. If RPC is non-nil, the local port-mapper program will contacted using RPC, otherwise the local Lisp port-mapper program will have the mappings removed from the Lisp list."
+  "Remove mappings for all defined RPCs to the TCP and UDP ports specified. 
+If RPC is non-nil, the local port-mapper program will contacted using RPC, 
+otherwise the local Lisp port-mapper program will have the mappings 
+removed from the Lisp list."
   ;; if we are using RPC to contact the local port mapper, 
   ;; then ensure the port mapper program is actually running!
   (when rpc
@@ -145,52 +148,58 @@ in the mapping structure. if MAP-PORT is provided, will also match this port."
 
 ;; NULL -- test communication to the port mapper 
 
-(defrpc call-null 0 :void :void)
-(defhandler %handle-null (void 0)
+(defun %handle-null (void)
   (declare (ignore void))
   nil)
+
+(defrpc call-null 0 :void :void
+  (:handler #'%handle-null))
 
 ;; ---------------
 
 ;; SET -- set a port mapping 
 
-(defrpc call-set 1 mapping :boolean
-  (:arg-transformer (mapping) mapping)
-  (:documentation "Set a port mapping."))
-
-(defhandler %handle-set (mapping 1)
+(defun %handle-set (mapping)
   (add-mapping mapping)
   t)
+
+(defrpc call-set 1 mapping :boolean
+  (:arg-transformer (mapping) mapping)
+  (:documentation "Set a port mapping.")
+  (:handler #'%handle-set))
 
 ;; -------------------
 
 ;; UNSET -- remove a port mapping 
 
-(defrpc call-unset 2 mapping :boolean
-  (:arg-transformer (mapping) mapping)
-  (:documentation "Remove a port mapping."))
-
-(defhandler %handle-unset (mapping 2)
+(defun %handle-unset (mapping)
   (when (find-mapping mapping)
     (rem-mapping mapping)
     t))
 
+(defrpc call-unset 2 mapping :boolean
+  (:arg-transformer (mapping) mapping)
+  (:documentation "Remove a port mapping.")
+  (:handler #'%handle-unset))
+
 ;; ----------------------
 
 ;; GET-PORT -- lookup a port mapping for a given program/version
+
+
+(defun %handle-get-port (mapping)
+  (let ((m (find-mapping mapping)))
+    (if m
+	(mapping-port m)
+	0)))
 
 (defrpc call-get-port 3 mapping :uint32
   (:arg-transformer (program version &key (query-protocol :tcp))
     (make-mapping :program program
                   :version version
                   :protocol query-protocol))
-  (:documentation "Query the port for the specified program."))
-
-(defhandler %handle-get-port (mapping 3)
-  (let ((m (find-mapping mapping)))
-    (if m
-	(mapping-port m)
-	0)))
+  (:documentation "Query the port for the specified program.")
+  (:handler #'%handle-get-port))
 
 ;; ------------------------
 
@@ -200,15 +209,7 @@ in the mapping structure. if MAP-PORT is provided, will also match this port."
   (map mapping)
   (next (:optional mapping-list)))
 
-(defrpc call-dump 4 :void (:optional mapping-list)
-  (:transformer (res)
-    (do ((mlist res (mapping-list-next mlist))
-	 (ms nil))
-	((null mlist) ms)
-      (push (mapping-list-map mlist) ms)))
-  (:documentation "List all available port mappings."))
-
-(defhandler %handle-dump (void 4)
+(defun %handle-dump (void)
   (declare (ignore void))
   (do ((mappings *mappings* (cdr mappings))
        (mlist nil))
@@ -217,24 +218,22 @@ in the mapping structure. if MAP-PORT is provided, will also match this port."
       (setf mlist 
 	    (make-mapping-list :map map :next mlist)))))
 
-;; ---------------------
+(defrpc call-dump 4 :void (:optional mapping-list)
+  (:transformer (res)
+    (do ((mlist res (mapping-list-next mlist))
+	 (ms nil))
+	((null mlist) ms)
+      (push (mapping-list-map mlist) ms)))
+  (:documentation "List all available port mappings.")
+  (:handler #'%handle-dump))
 
-(defrpc call-callit 5 
-  (:list :uint32 :uint32 :uint32 (:varray* :octet)) ;;prog version proc args)
-  (:list :uint32 (:varray* :octet))
-  (:arg-transformer (program version proc packed-args)
-    (list program version proc packed-args))
-  (:documentation 
-   "Execute an RPC via the remote port mapper proxy. Returns (PORT ARGS) where ARGS is an opaque array
-of the packed result. The result needs to be extracted using FRPC:UNPACK. The result type is 
-recommended to be a well-defined type, i.e. represented by a symbol, so that it has an easy reader
-function available."))
+;; ---------------------
 
 
 ;; In the spec it says we should be able to call any (mapped) rpc on the local machine communicating
 ;; only via UDP. We run all RPC programs from within the same Lisp image so we can directly 
 ;; execute the handler without having to do any real proxy RPCs.
-(defhandler %handle-callit (args 5)
+(defun %handle-callit (args)
   (destructuring-bind (program version proc arg-buffer) args
     ;; find the handler and port mapping 
     (frpc-log :info "CALLIT ~A:~A:~A" program version proc)
@@ -254,5 +253,17 @@ function available."))
 		 (list (mapping-port mapping)
 		       (pack writer res)))
 	       (list 0 nil))))))))
+
+(defrpc call-callit 5 
+  (:list :uint32 :uint32 :uint32 (:varray* :octet)) ;;prog version proc args)
+  (:list :uint32 (:varray* :octet))
+  (:arg-transformer (program version proc packed-args)
+    (list program version proc packed-args))
+  (:documentation 
+   "Execute an RPC via the remote port mapper proxy. Returns (PORT ARGS) where ARGS is an opaque array
+of the packed result. The result needs to be extracted using FRPC:UNPACK. The result type is 
+recommended to be a well-defined type, i.e. represented by a symbol, so that it has an easy reader
+function available.")
+  (:handler #'%handle-callit))
 
 

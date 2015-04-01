@@ -11,18 +11,20 @@
 
 ;; ----------------------------------------------
 
-(defrpc call-null 0 :void :void)
-
-(defhandler %handle-null (void 0) 
+(defun %handle-null (void) 
   (declare (ignore void))
   nil)
 
-;; ------------------------
+(defrpc call-null 0 :void :voi
+  (:handler #'%handle-null))
 
-(defrpc call-hello 1 :string :string)
-  
-(defhandler %handle-hello (string 1)
+;; ------------------------
+ 
+(defun %handle-hello (string)
   (format nil "Hello ~A!" string))
+
+(defrpc call-hello 1 :string :string
+  (:handler #'%handle-hello))
 
 ;; ------------------------------------
 
@@ -30,15 +32,15 @@
   (:ok 0)
   (:error 1))
 
+(defun %handle-people (string)
+  (make-xunion :ok (string-upcase string)))
+
 (defrpc call-people 2
   :string
   (:union stat
     (:ok :string)
-    (otherwise :void)))
-
-(defhandler %handle-people (string 2)
-  (make-xunion :ok (string-upcase string)))
-
+    (otherwise :void))
+  (:handler #'%handle-people))
 
 ;; ---------------------------
 

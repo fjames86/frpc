@@ -10,11 +10,12 @@
 
 ;; --------------------------------------------
 
-(defrpc call-null 0 :void :void)
-
-(defhandler handle-null (void 0) 
+(defun handle-null (void) 
   (declare (ignore void))
   nil)
+
+(defrpc call-null 0 :void :void
+  (:handler #'handle-null))
 
 ;; ---------------------------------------------
 
@@ -22,48 +23,53 @@
  (:ok 0)
  (:error 1))
 
+(defun handle-hello (msg)
+  (make-xunion :ok
+	       (string-upcase msg)))
+
 (defrpc call-hello 1
   :string
   (:union hstat
     (:ok :string)
-    (otherwise :void)))
+    (otherwise :void))
+  (:handler #'handle-hello))
 
-(defhandler handle-hello (msg 1)
-  (make-xunion :ok
-	       (string-upcase msg)))
 
 ;; ---------------------------------------------
+
+
+(defun handle-goodbye (args)
+  (destructuring-bind (len str) args
+    (make-xunion :ok
+		 (loop for i below len collect str))))
 
 (defrpc call-goodbye 2
   (:list :uint32 :string)
   (:union hstat
     (:ok (:varray :string))
     (otherwise :void))
-  (:arg-transformer (n string) (list n string)))
-
-(defhandler handle-goodbye (args 2)
-  (destructuring-bind (len str) args
-    (make-xunion :ok
-		 (loop for i below len collect str))))
+  (:arg-transformer (n string) (list n string))
+  (:handler #'handle-goodbye))
 
 ;; --------------------
 
-(defrpc call-plist 3
-  :string
-  (:plist :name :string :age :uint32))
-
-(defhandler handle-plist (string 3)
+(defun handle-plist (string)
   (list :name string :age 123))
 
+(defrpc call-plist 3
+  :string
+  (:plist :name :string :age :uint32)
+  (:handler #'handle-plist))
 
 ;; ------------------
 
+(defun handle-varray* (strings)
+  (make-array (length strings) :initial-contents strings))
+
 (defrpc call-varray* 4
   (:varray :string)
-  (:varray* :string))
-
-(defhandler handle-varray* (strings 4)
-  (make-array (length strings) :initial-contents strings))
+  (:varray* :string)
+  (:handler #'handle-varray*))
 
 ;; ---------------------
 

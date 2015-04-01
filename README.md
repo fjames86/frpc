@@ -301,6 +301,11 @@ were selected. This makes it impossible to inform the port mapper of where to di
 * Could make it easier to add more transports, e.g. using CL+SSL.
 * UDP multicast?
 * The XDR serializer is probably not as efficient as it could be.
+* The UDP processing does a lot of consing. This needs to be improved because sending every UDP message
+currently requires consing 64k as a receive buffer. Perhaps a pool of pre-allocated buffers we can cycle through 
+would help.
+* Could add a stream class that is roughly comparable to flexi-streams' binary vector-stream, except it writes 
+to a pre-allocated buffer. That way we could reuse the statically allocated buffers we need to read responses from too.
 
 ## 8. License
 

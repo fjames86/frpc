@@ -27,7 +27,7 @@
 	(t 
 	 (case (xunion-tag (accepted-reply-reply-data (xunion-val body)))
 	   (:prog-mismatch
-	    (let ((a (xunion-val(accepted-reply-reply-data (xunion-val body)))))
+	    (let ((a (xunion-val (accepted-reply-reply-data (xunion-val body)))))
 	      (error 'rpc-mismatch-error 
 		     :low (cdr (assoc 'low a))
 		     :high (cdr (assoc 'high a))
@@ -88,9 +88,9 @@ the bytes read."
   "Close the connection to the server."
   (usocket:socket-close conn))
 	    
-(defmacro with-rpc-connection ((var host &optional port) &body body)
-  "Execute the body in the context of a TCP connection."
-  `(let ((,var (rpc-connect ,host ,port)))
+(defmacro with-rpc-connection ((var host port &optional protocol) &body body)
+  "Execute the body in the context of a connection."
+  `(let ((,var (rpc-connect ,host ,port ,@(when protocol `(,protocol)))))
      (unwind-protect (progn ,@body)
        (rpc-close ,var))))
 
@@ -126,7 +126,7 @@ the bytes read."
 (defun collect-udp-replies (socket timeout result-type)
   "Wait TIMEOUT seconds, collecting as many UDP replies as arrive in that time."
   (do ((replies nil)
-       (buffer (nibbles:make-octet-vector 65507))
+       (buffer (frpc.streams:allocate-buffer)) ;;(nibbles:make-octet-vector 65507))
        (start (get-universal-time))
        (now (get-universal-time) (get-universal-time)))
       ((> (- now start) timeout) replies)
@@ -139,7 +139,8 @@ the bytes read."
 	   (frpc-log :error "recvfrom returned -1"))
 	  (t
 	   (frpc-log :trace "Received response from ~A:~A (length ~A)" remote-host remote-port count)
-	   (flexi-streams:with-input-from-sequence (input buffer :start 0 :end count)
+	   (frpc.streams:with-buffer-stream (input buffer :start 0 :end count)
+;;	   (flexi-streams:with-input-from-sequence (input buffer :start 0 :end count)
          (handler-case
              (let ((msg (%read-rpc-msg input)))
                (frpc-log :trace "MSG ID ~A" (rpc-msg-xid msg))
@@ -162,18 +163,19 @@ the bytes read."
              (list remote-host remote-port nil))))))))))
     
 (defun send-rpc-udp (socket arg-type arg &key program version proc auth verf request-id host port)
-  (let ((buffer 
-	 (flexi-streams:with-output-to-sequence (stream)
-	   (write-request stream 
-			  (make-rpc-request program proc 
-					    :version version
-					    :auth auth
-					    :verf verf
-					    :id request-id)
-			  arg-type
-			  arg))))
-    (usocket:socket-send socket buffer (length buffer)
-                         :host host :port port)))
+  (let ((buffer (frpc.streams:allocate-buffer)))
+    (let ((count (frpc.streams:with-buffer-stream (stream buffer)
+		   ;;	 (flexi-streams:with-output-to-sequence (stream)
+		   (write-request stream 
+				  (make-rpc-request program proc 
+						    :version version
+						    :auth auth
+						    :verf verf
+						    :id request-id)
+				  arg-type
+				  arg))))
+      (usocket:socket-send socket buffer count 
+			   :host host :port port))))
 
 (defun broadcast-rpc (arg-type arg result-type 
 		     &key host port program version proc auth verf request-id timeout)
@@ -221,15 +223,18 @@ the bytes read."
 	   (when timeout
 	     (frpc-log :trace "Waiting for reply")
 	     (if (usocket:wait-for-input socket :timeout timeout :ready-only t)
-		 (multiple-value-bind (buffer count remote-host remote-port) (progn (usocket:socket-receive socket nil 65507))
-		   (frpc-log :trace "Received response from ~A:~A (count ~A)" remote-host remote-port count)
-		   ;; sbcl bug 1426667: socket-receive on x64 windows doesn't correctly check for errors 
-		   ;; workaround is to check for -1 as an unsigned int
-		   (when (= count #xffffffff)
-		     (error "Error: recvfrom returned -1"))
-		   (flexi-streams:with-input-from-sequence (input buffer :start 0 :end count)
-             (nth-value 1 (read-response input result-type))))
-		 (error 'rpc-timeout-error))))
+		 (let ((buffer (frpc.streams:allocate-buffer)))
+		   (multiple-value-bind (%buffer count remote-host remote-port) (progn (usocket:socket-receive socket buffer 65507))
+		     (declare (ignore %buffer))
+		     (frpc-log :trace "Received response from ~A:~A (count ~A)" remote-host remote-port count)
+		     ;; sbcl bug 1426667: socket-receive on x64 windows doesn't correctly check for errors 
+		     ;; workaround is to check for -1 as an unsigned int
+		     (when (= count #xffffffff)
+		       (error "Error: recvfrom returned -1"))
+		     (let ((input (frpc.streams:make-buffer-stream buffer :end count)))
+;;		     (flexi-streams:with-input-from-sequence (input buffer :start 0 :end count)
+		       (nth-value 1 (read-response input result-type)))))
+		   (error 'rpc-timeout-error))))
       (unless connection
 	(usocket:socket-close socket)))))
 
@@ -269,7 +274,7 @@ CONNECTION should be a TCP connection, as returned by RPC-CONNECT, or a UDP sock
     (:tcp
      (let ((conn (if connection 
 		     connection
-		     (rpc-connect host port))))
+		     (rpc-connect host port :tcp))))
        ;; if timeout specified then set the socket option
        (when timeout
 	 (setf (usocket:socket-option conn :receive-timeout) timeout))
@@ -329,6 +334,8 @@ OPTIONS allow customization of the generated client function:
 \(:transformer (var) &body body\) runs after CALL-RPC has returned with VAR bound to the result. This makes it possible to destructure the result object.
 
 \(:documentation doc-string\) specifies the docu-string for the client function.
+
+\(:handler function-designator\) specifies a server handler for the rpc. It should designate a function of a single parameter.
 "
   (alexandria:with-gensyms (gprogram gversion gproc)
     (let ((arg-reader (alexandria:symbolicate '%read- name '-arg))
@@ -339,10 +346,11 @@ OPTIONS allow customization of the generated client function:
 	   (,gversion ,*rpc-version*)
 	   (,gproc ,proc))
 
-       ;; define the serializers
-       (defreader ,arg-reader ,arg-type)
+       ;; define the serializers for the client 
        (defwriter ,arg-writer ,arg-type)
        (defreader ,res-reader ,result-type)
+       ;; for the server
+       (defreader ,arg-reader ,arg-type)
        (defwriter ,res-writer ,result-type)
 
        ;; define a function to call it
@@ -395,9 +403,11 @@ OPTIONS allow customization of the generated client function:
 			  (otherwise (,gtrafo (,gcall))))))
 		   the-form)))
 
-       ;; define a server handler
-       (%defhandler ,gprogram ,gversion ,gproc 
-		    (function ,arg-reader) 
-		    (function ,res-writer) 
-		    nil)))))
+       ;; define a server handler if required
+       ,@(let ((handler(cadr (assoc :handler options))))
+	   (when handler
+	     `((%defhandler ,gprogram ,gversion ,gproc 
+			    (function ,arg-reader) 
+			    (function ,res-writer) 
+			    ,handler))))))))
 

@@ -7,7 +7,6 @@
   (:export #:use-rpc-program
 	   #:use-rpc-host
 	   #:defrpc
-	   #:defhandler
 	   #:find-handler
 
 	   ;; type definitions
@@ -42,7 +41,6 @@
 	   #:rpc-connect
 	   #:rpc-close
 	   #:with-rpc-connection
-	   #:call-rpc-server
 	   #:call-rpc
 	   #:*rpc-host*
 	   #:*rpc-port*

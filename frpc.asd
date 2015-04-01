@@ -13,7 +13,8 @@
    (:file "xdr" :depends-on ("log"))
    (:file "rpc" :depends-on ("xdr"))
    (:file "errors" :depends-on ("rpc"))
-   (:file "client" :depends-on ("errors"))
+   (:file "streams")
+   (:file "client" :depends-on ("errors" "streams"))
    (:file "server" :depends-on ("client"))
    (:file "port-mapper" :depends-on ("server")))
   :depends-on (:alexandria :nibbles :flexi-streams 
