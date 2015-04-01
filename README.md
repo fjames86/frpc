@@ -29,17 +29,24 @@ CL-USER> (call-hello "Bob" :host "10.1.1.1" :port 1234 :protocol :udp)
 
 Servers should additionally implement handlers for the procedures they wish to support
 ```
-(defhandler handle-hello (msg 0)
+(defun handle-hello (msg)
   (format nil "Hello, ~A!" msg))
 
-(defhandler handle-goodbye (u 0)
-  (format nil "Goodbye ~A!" u))))
+(defrpc call-hello 0 :string :string
+  (:handler #'handle-hello))
+
+(defun handle-goodbye (u)
+  (format nil "Goodbye ~A!" u))
+
+(defrpc call-goodbye 1 :uint32 :string
+  (:handler #'handle-goodbye))
+
 ```
-DEFHANDLER defines a function which accepts a single argument, which will be the value decoded according
+The :HANDLER option specifies a function which accepts a single argument, which will be the value decoded according
 to the rule defined for the arg-type by the DEFRPC form. The handler function should return a single value which will be 
 passed to the result-type serializer defined by the DEFRPC form. Handlers should never signal errors because 
 the RPC protocol does not have a generalized mechanism of reporting errors. Instead, your RPC interface will typically
-define a set of error statuses which will be returned as a part of the handler's return value.
+define a set of error status codes which will be returned as a part of the handler's return value.
 
 The types provided to DEFRPC can be a generalized type specifier, as described below in section 4.5.
 

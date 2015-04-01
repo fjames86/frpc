@@ -7,6 +7,9 @@
 (defvar *frpc-log* nil
   "The log to write messages to. Gets opened on the first call to FRPC-LOG.")
 
+;; can turn on :trace level logging if it's really needed, generally it's not
+(defparameter *frpc-log-levels* '(:info :warning :error))
+
 (defun frpc-log (lvl control-string &rest args)
   "Write a message to the debug log."
   (unless *frpc-log*
@@ -15,6 +18,7 @@
       (setf *frpc-log*
 	    (pounds.log:open-log :path path
 				 :tag "FRPC"))))
-  (pounds.log:write-message *frpc-log* lvl 
-			    (apply #'format nil control-string args)))
+  (when (member lvl *frpc-log-levels*)
+    (pounds.log:write-message *frpc-log* lvl 
+			      (apply #'format nil control-string args))))
 
