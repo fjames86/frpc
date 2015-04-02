@@ -5,7 +5,9 @@
   (:use #:cl #:trivial-gray-streams)
   (:export #:make-buffer-stream
 	   #:allocate-buffer
-	   #:with-buffer-stream))
+	   #:with-buffer-stream
+	   #:buffer-stream-buffer
+	   #:buffer-stream-position))
 
 (in-package #:frpc.streams)
 

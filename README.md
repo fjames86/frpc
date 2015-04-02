@@ -234,7 +234,7 @@ Where the FORM is:
 * (:alist &rest (tag form))
 * (:plist &rest key form)
 * (:struct struct-name &rest (slot-name form))
-* (:union enum-name &rest (enum-keys form))
+* (:union enum-name &rest (enum-keys form)) 
 * (:array form length) 
 * (:varray form &optional length) 
 * (:varray* form &optional length)
@@ -299,7 +299,6 @@ See the pounds documentation for more information on the logging system.
 ## 7. Notes
 
 * I've not really put any effort into properly handling authentication, either for the client or the server.
-* Default protocol is TCP, should this be changed to UDP? 
 * At the moment, reading from TCP streams requires buffering the input to cope with reading multiple fragments. 
 A fragmented-stream type could be defined to wrap the underlying socket stream so that we can avoid the buffering on reads.
 You still need to buffer writes because you need to know how much you intend to write before you've written it.
@@ -307,12 +306,7 @@ You still need to buffer writes because you need to know how much you intend to 
 were selected. This makes it impossible to inform the port mapper of where to direct traffic.
 * Could make it easier to add more transports, e.g. using CL+SSL.
 * UDP multicast?
-* The XDR serializer is probably not as efficient as it could be.
-* The UDP processing does a lot of consing. This needs to be improved because sending every UDP message
-currently requires consing 64k as a receive buffer. Perhaps a pool of pre-allocated buffers we can cycle through 
-would help.
-* Could add a stream class that is roughly comparable to flexi-streams' binary vector-stream, except it writes 
-to a pre-allocated buffer. That way we could reuse the statically allocated buffers we need to read responses from too.
+* The XDR serializer is probably not as efficient as it could be. 
 
 ## 8. License
 
