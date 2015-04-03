@@ -86,7 +86,10 @@ TCP requests only."
 		  (h (find-handler (call-body-prog call)
 				   (call-body-vers call)
 				   (call-body-proc call))))
-	     (frpc-log :info "Calling ~A:~A:~A" (call-body-prog call) (call-body-vers call) (call-body-proc call))
+	     ;; unpack the authentication objects
+	     (setf (call-body-auth call) (unpack-opaque-auth (call-body-auth call))
+		   (call-body-verf call) (unpack-opaque-auth (call-body-verf call)))
+	     (frpc-log :info "Call ~A:~A:~A" (call-body-prog call) (call-body-vers call) (call-body-proc call))
 	     (cond
 	       ((and (rpc-server-programs server)
 		     (not (member (call-body-prog call) 
@@ -97,7 +100,9 @@ TCP requests only."
 				(make-rpc-response :accept :prog-mismatch
 						   :id (rpc-msg-xid msg))))
 	       ((rpc-server-auth-handler server)
-		(unless (funcall (rpc-server-auth-handler server) (call-body-auth call) (call-body-verf call))
+		(unless (funcall (rpc-server-auth-handler server) 
+				 (call-body-auth call)
+				 (call-body-verf call))
 		  (frpc-log :info "Authentication failure")
 		  (%write-rpc-msg output-stream
 				  (make-rpc-response :reject :auth-error 
@@ -190,6 +195,9 @@ TCP requests only."
     (let ((program (call-body-prog call))
 	  (version (call-body-vers call))
 	  (proc (call-body-proc call)))
+      ;; unpack the authentication objects
+      (setf (call-body-auth call) (unpack-opaque-auth (call-body-auth call))
+	    (call-body-verf call) (unpack-opaque-auth (call-body-verf call)))
       (frpc-log :info "Calling ~A:~A:~A" program version proc)
       (let ((h (find-handler program version proc)))
 	(cond

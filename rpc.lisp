@@ -41,17 +41,24 @@
   (:auth-short 2)
   (:auth-des 3)
   (:auth-kerb4 4)
-  (:gss 6))
+  (:auth-gss 6))
 
 ;; --------------
 
 ;; structs
 
-(defxstruct opaque-auth ()
-  (flavour auth-flavour :auth-null)
-  (data (:varray* :octet 400)))
+(defxtype* opaque-auth ()
+  (:plist :flavour auth-flavour 
+	  :data (:varray* :octet 400)))
+(defun %make-opaque-auth (&key flavour data)
+  (list :flavour (or flavour :auth-null)
+	:data data))
+(defun opaque-auth-flavour (auth)
+  (getf auth :flavour))
+(defun opaque-auth-data (auth)
+  (getf auth :data))
 
-(defparameter *default-opaque-auth* (make-opaque-auth :flavour :auth-null))
+(defparameter *default-opaque-auth* (%make-opaque-auth))
 
 (defxstruct call-body ()
   (rpcvers :uint32 2) ;; must always be 2
@@ -166,9 +173,9 @@
   (:adn-fullname authdes-fullname (make-des-block))
   (:adn-nickname :int32))
 
-(defxstruct timestamp ()
-  (seconds :uint32)
-  (useconds :uint32))
+(defxtype* authdes-timestamp ()
+  (:plist :seconds :uint32
+	  :useconds :uint32))
 
 (defxstruct authdes-verf-client ()
   (adv-timestamp des-block (make-des-block))
@@ -180,6 +187,68 @@
 
 ;; 9.3.5 Diffie-Hellman 
 
+;; these constants are specified in the rfc
+;; (defconstant +dh-base+ 3)
+;; (defconstant +dh-modulus+ (parse-integer "d4a0ba0250b6fd2ec626e7efd637df76c716e22d0944b88b" 
+;; 					 :radix 16))
+
+;; (defun dh-public-key (secret)
+;;   (mod (expt +dh-base+ secret) +dh-modulus+))
+
+;; (defun dh-common-key (secret public)
+;;   "Local private key, remote public key"
+;;   (mod (expt public secret) +dh-modulus+))
+
+;; (defun dh-conversation-key (common)
+;;   (let ((bytes (nibbles:make-octet-vector 8)))
+;;     (setf (nibbles:ub64ref/be bytes 0) (ash common -64))
+;;     (dotimes (i 8)
+;;       (let ((parity (logcount (aref bytes i))))
+;; 	(unless (zerop parity)
+;; 	  (setf (aref bytes i)
+;; 		(logior (aref bytes i) 1)))))
+;;     (nibbles:ub64ref/be bytes 0)))
+
+;; (defun make-dh-cipher (private public)
+;;   "Local private key, remote public key"
+;;   (ironclad:make-cipher :des
+;; 			:mode :cbc
+;; 			:key (dh-conversation-key (dh-common-key private publc))))
+
+;; (defun dh-encrypt (cipher data)
+;;   (let ((result (nibbles:make-octet-vector 8)))
+;;     (ironclad:encrypt cipher data result)
+;;     result))
+;; (defun dh-decrypt (cipher data)
+;;   (let ((result (nibbles:make-octet-vector 8)))
+;;     (ironclad:decrypt cipher data result)
+;;     result))
+
+;; ------------------------
+
+(defun unpack-opaque-auth (auth)
+  (let ((data (opaque-auth-data auth)))
+    (list :flavour (opaque-auth-flavour auth)
+	  :data
+	  (case (opaque-auth-flavour auth)
+	    (:auth-null nil)
+	    (:auth-unix (unpack #'%read-auth-unix data))
+	    (:auth-short data)
+	    (otherwise data)))))
+
+(defun pack-opaque-auth (auth)
+  (let ((data (opaque-auth-data auth)))
+    (list :flavour (opaque-auth-flavour auth)
+	  :data 
+	  (case (opaque-auth-flavour auth)
+	    (:auth-null nil)
+	    (:auth-unix (pack #'%write-auth-unix data))
+	    (:auth-short data)
+	    (otherwise data)))))
+
+(defun make-opaque-auth (flavour data)
+  (pack-opaque-auth (%make-opaque-auth :flavour flavour
+				       :data data)))
 
 ;; ----------------------------------------
 

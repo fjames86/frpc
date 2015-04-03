@@ -71,6 +71,12 @@
 	   #:make-opaque-auth
 	   #:opaque-auth-flavour
 	   #:opaque-auth-data
+	   #:make-auth-unix
+	   #:auth-unix-stamp
+	   #:auth-unix-machine-name
+	   #:auth-unix-uid
+	   #:auth-unix-gid
+	   #:auth-unix-gids
 
 	   ;; debug logging
 	   #:*frpc-log*
