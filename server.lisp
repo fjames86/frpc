@@ -91,6 +91,7 @@ TCP requests only."
 		   (call-body-verf call) (unpack-opaque-auth (call-body-verf call)))
 	     (frpc-log :info "Call ~A:~A:~A" (call-body-prog call) (call-body-vers call) (call-body-proc call))
 	     (cond
+	       ;; check we support the program
 	       ((and (rpc-server-programs server)
 		     (not (member (call-body-prog call) 
 				  (rpc-server-programs server))))
@@ -99,25 +100,24 @@ TCP requests only."
 		(%write-rpc-msg output-stream
 				(make-rpc-response :accept :prog-mismatch
 						   :id (rpc-msg-xid msg))))
-	       ((rpc-server-auth-handler server)
-		(unless (funcall (rpc-server-auth-handler server) 
-				 (call-body-auth call)
-				 (call-body-verf call))
-		  (frpc-log :info "Authentication failure")
-		  (%write-rpc-msg output-stream
-				  (make-rpc-response :reject :auth-error 
-						     :auth-stat :auth-rejected
-						     :id (rpc-msg-xid msg)))))
+	       ;; check there is a handler
 	       ((or (not h) (null (third h)))
 		;; no handler registered
 		(frpc-log :info "No handler registered")
 		(%write-rpc-msg output-stream
 				(make-rpc-response :accept :proc-unavail
 						   :id (rpc-msg-xid msg))))
+	       ;; check with the auth-handler
+	       ((and (rpc-server-auth-handler server)
+		     (not (funcall (rpc-server-auth-handler server) 
+				   (call-body-auth call)
+				   (call-body-verf call))))
+		  (frpc-log :info "Authentication failure")
+		  (%write-rpc-msg output-stream
+				  (make-rpc-response :reject :auth-error 
+						     :auth-stat :auth-rejected
+						     :id (rpc-msg-xid msg))))
 	       (t 
-		;; log the authentication
-;;		(unless (eq (opaque-auth-flavour (call-body-auth call)) :auth-null)
-;;		  (frpc-log :info "Authentication: ~S" (call-body-auth call)))
 		;; run the handler 
 		(destructuring-bind (arg-type res-type handler) h
 		  (handler-case 
@@ -157,6 +157,7 @@ TCP requests only."
     (end-of-file (e)
       ;; unexpected end of file -- probably means the connection was closed 
       ;; rethrow the error so the connection handler knows the connection has been closed
+      (frpc-log :info "End of file error")
       (error e))
     (error (e)
       (frpc-log :error "Error reading msg: ~A" e)
@@ -208,6 +209,12 @@ TCP requests only."
 	   (pack #'%write-rpc-msg 
 		 (make-rpc-response :accept :prog-mismatch
 				    :id id)))
+	  ((or (not h) (null (third h)))
+	   ;; no handler
+	   (frpc-log :warning "No handler registered for ~A:~A:~A" program version proc)
+	   (pack #'%write-rpc-msg
+		 (make-rpc-response :accept :proc-unavail
+				    :id id)))
 	  ((and (rpc-server-auth-handler server)
 		(not (funcall (rpc-server-auth-handler server)
 			      (call-body-auth call)
@@ -217,12 +224,6 @@ TCP requests only."
 		 (make-rpc-response :reject :auth-error 
 				    :id id
 				    :auth-stat :auth-rejected)))
-	  ((or (not h) (null (third h)))
-	   ;; no handler
-	   (frpc-log :warning "No handler registered for ~A:~A:~A" program version proc)
-	   (pack #'%write-rpc-msg
-		 (make-rpc-response :accept :proc-unavail
-				    :id id)))
 	  (t
 	   ;; log the authentication
 ;;	   (unless (eq (opaque-auth-flavour (call-body-auth call)) :auth-null)

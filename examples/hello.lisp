@@ -12,6 +12,7 @@
 
 (defun handle-null (void) 
   (declare (ignore void))
+  (frpc-log :info "auth ~S" frpc::*rpc-remote-auth*)
   nil)
 
 (defrpc call-null 0 :void :void
@@ -73,12 +74,18 @@
 
 ;; ---------------------
 
+(defun auth-handler (auth verf)
+  (declare (ignore verf))
+  (frpc-log :info "checking auth in handler")
+  (and (eq (opaque-auth-flavour auth) :auth-unix)
+       (let ((uid (auth-unix-uid (opaque-auth-data auth))))
+	 (member uid '(0 1000)))))
 
 ;; the server 
 (defvar *server* nil)
 
 (defun start ()
-  (setf *server* (make-rpc-server))
+  (setf *server* (make-rpc-server :auth-handler #'auth-handler))
   (start-rpc-server *server* :tcp-ports '(8000)))
 
 (defun stop ()
