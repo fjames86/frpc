@@ -150,7 +150,7 @@ TCP requests only."
 							 :id (rpc-msg-xid msg))))
 		    (error (e)
 		      ;; FIXME: should we just terminate the connection at this point?
-		      (frpc-log :error "Error handling: ~A" e) 
+		      (frpc-log :error "Error handling TCP: ~A" e) 
 		      (%write-rpc-msg output-stream
 				      (make-rpc-response :accept :garbage-args
 							 :id (rpc-msg-xid msg))))))))))))
@@ -254,7 +254,7 @@ TCP requests only."
                                                     :auth-stat (auth-error-stat e)
                                                     :id (rpc-msg-xid msg))))               
                (error (e)
-                 (frpc-log :error "error handling: ~A" e)
+                 (frpc-log :error "error handling UDP: ~A" e)
                  (%write-rpc-msg output
                                  (make-rpc-response :accept :garbage-args
                                                     :id (rpc-msg-xid msg))))))))))))))
@@ -296,7 +296,7 @@ TCP requests only."
 				 buffer length
 				 remote-host remote-port))
 	 (error (e)
-	   (frpc-log :error "Error handling: ~S" e)))))))
+	   (frpc-log :error "Error handling UDP: ~A" e)))))))
 
 
 
