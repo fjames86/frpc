@@ -120,8 +120,10 @@ the bytes read."
       (force-output stream))
     ;; need to read the response back to a local stream, to account for the fragmenting
     (flexi-streams:with-input-from-sequence (input (read-fragmented-message stream))
-      ;; read the response (throws error if failed)
+      ;; read the response (throws error if failed)      
       (nth-value 1 (read-response input result-type)))))
+;;      (multiple-value-bind (msg res) (read-response input result-type)
+;;	(values res msg)))))
 
 (defun collect-udp-replies (socket timeout result-type)
   "Wait TIMEOUT seconds, collecting as many UDP replies as arrive in that time."
@@ -408,7 +410,3 @@ OPTIONS allow customization of the generated client function:
 			    (function ,res-writer) 
 			    ,handler))))))))
 
-
-;; 
-(defstruct (rpc-client (:constructor %make-rpc-client))
-  args program version port)
