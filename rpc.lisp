@@ -226,25 +226,27 @@
 
 ;; ------------------------
 
-(defun unpack-opaque-auth (auth)
-  (let ((data (opaque-auth-data auth)))
-    (list :flavour (opaque-auth-flavour auth)
-	  :data
-	  (case (opaque-auth-flavour auth)
-	    (:auth-null nil)
-	    (:auth-unix (unpack #'%read-auth-unix data))
-	    (:auth-short data)
-	    (otherwise data)))))
+(defgeneric pack-auth-data (type data))
+(defmethod pack-auth-data (type data)
+  data)
+(defmethod pack-auth-data ((type (eql :auth-unix)) data)
+  (pack #'%write-auth-unix data))
+
+(defgeneric unpack-auth-data (type data))
+(defmethod unpack-auth-data (type data)
+  data)
+(defmethod unpack-auth-data ((type (eql :auth-unix)) data)
+  (unpack #'%read-auth-unix data))
 
 (defun pack-opaque-auth (auth)
-  (let ((data (opaque-auth-data auth)))
-    (list :flavour (opaque-auth-flavour auth)
-	  :data 
-	  (case (opaque-auth-flavour auth)
-	    (:auth-null nil)
-	    (:auth-unix (pack #'%write-auth-unix data))
-	    (:auth-short data)
-	    (otherwise data)))))
+  (list :flavour (opaque-auth-flavour auth)
+	:data (pack-auth-data (opaque-auth-flavour auth)
+			      (opaque-auth-data auth))))
+
+(defun unpack-opaque-auth (auth)
+  (list :flavour (opaque-auth-flavour auth)
+	:data (unpack-auth-data (opaque-auth-flavour auth)
+				(opaque-auth-data auth))))
 
 (defun make-opaque-auth (flavour data)
   (pack-opaque-auth (%make-opaque-auth :flavour flavour
