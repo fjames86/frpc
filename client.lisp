@@ -136,8 +136,8 @@ the bytes read."
       (multiple-value-bind (%buffer count remote-host remote-port) (usocket:socket-receive socket buffer 65507)
 	(declare (ignore %buffer))
 	(cond
-	  ;; workaround for sbcl bug
-	  ((= count #xffffffff)
+	  ;; workaround for sbcl bug. seems like there is a similar bug in the usocket Lispworks codes too
+	  ((or (= count #xffffffff) (= count -1))
 	   (frpc-log :error "recvfrom returned -1"))
 	  (t
 	   (frpc-log :trace "Received response from ~A:~A (length ~A)" remote-host remote-port count)
@@ -229,8 +229,9 @@ the bytes read."
 		     (declare (ignore %buffer))
 		     (frpc-log :trace "Received response from ~A:~A (count ~A)" remote-host remote-port count)
 		     ;; sbcl bug 1426667: socket-receive on x64 windows doesn't correctly check for errors 
-		     ;; workaround is to check for -1 as an unsigned int
-		     (when (= count #xffffffff)
+		     ;; workaround is to check for -1 as an unsigned int.
+		     ;; Seems like there is a similar bug in the usocket Lispworks codes too
+		     (when (or (= count #xffffffff) (= count -1))
 		       (error "Error: recvfrom returned -1"))
 		     (let ((input (frpc.streams:make-buffer-stream buffer :end count)))
 ;;		     (flexi-streams:with-input-from-sequence (input buffer :start 0 :end count)

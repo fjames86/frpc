@@ -287,7 +287,7 @@ TCP requests only."
       ;; there seems to be a bug in SBCL which causes it not to detect error return value (-1)
       ;; from recvfrom -- this means socket-receive seemingly returns successfully but with a length
       ;; of 4294967295. we shouldn't really need to be checking for it here, but this is a workaround
-      ((= length #xffffffff)
+      ((or (= length #xffffffff) (= length -1))
        (frpc-log :error "recvfrom returned -1"))
       (t 
        (handler-case 
