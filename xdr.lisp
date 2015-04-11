@@ -1,47 +1,7 @@
 ;;;; Copyright (c) Frank James 2015 <frank.a.james@gmail.com>
 ;;;; This code is licensed under the MIT license.
 
-(defpackage #:frpc.xdr 
-  (:use #:cl)
-  (:export #:%defxtype
-	   ;; type definitions
-	   #:defxtype
-	   #:defxunion
-	   #:defxenum
-	   #:defxstruct	   
-	   #:defxtype*
-	   #:read-xtype
-	   #:write-xtype
-	   #:xtype-reader
-	   #:xtype-writer
-
-	   ;; enums/unions
-	   #:enum
-	   #:enump
-	   #:make-xunion
-	   #:xunion-tag
-	   #:xunion-val
-
-	   ;; functions for type definitions
-	   #:defreader
-	   #:defwriter
-	   #:with-reader
-	   #:with-writer
-
-	   #:read-fixed-array
-	   #:read-octet
-	   #:read-uint32
-	   #:write-fixed-array
-	   #:write-octet
-	   #:write-uint32
-	   #:read-int32
-	   #:write-int32
-	   
-	   ;; serializing to/from buffer 
-	   #:pack
-	   #:unpack))
-
-(in-package #:frpc.xdr)
+(in-package #:frpc)
 
 ;; types:
 

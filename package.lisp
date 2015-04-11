@@ -3,7 +3,7 @@
 
 
 (defpackage #:frpc
-  (:use #:cl #:frpc.xdr)
+  (:use #:cl)
   (:export #:use-rpc-program
 	   #:use-rpc-host
 	   #:defrpc
