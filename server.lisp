@@ -121,6 +121,8 @@ TCP requests only."
 		;; run the handler 
 		(destructuring-bind (arg-type res-type handler) h
 		  (handler-case 
+              ;; FIXME: when we come to implementing GSSSEC authentication, we need to be able to 
+              ;; read the GSS control messages instead of the argument (which is always nil in that scenario)
 		      (let ((arg (read-xtype arg-type input-stream)))
 			(frpc-log :trace "Passing arg to handler")
 			(let ((res (let ((*rpc-remote-auth* (call-body-auth call)))
@@ -231,6 +233,8 @@ TCP requests only."
 	   ;; handle the request
 	   (destructuring-bind (reader writer handler) h
 	     ;; read the argument
+         ;; FIXME: when we come to implementing GSSSEC authentication, we need to be able to 
+         ;; read the GSS control messages instead of the argument (which is always nil in that scenario)
 	     (let ((arg (read-xtype reader input-stream)))
            ;; package the reply and send
            (flexi-streams:with-output-to-sequence (output)             

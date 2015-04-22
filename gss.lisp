@@ -3,19 +3,35 @@
 
 (in-package  #:frpc)
 
+;; Authentication using GSS requires the following:
+;; 1. context creation
+;; 2. data exchange
+;; 3. context destruction
+;;
+;; The messages for parts 1 and 3 (creation and destruction) are NOT sent to the
+;; normal RPC procedures. Instead, they are sent to the NULLPROC (proc = 0). This is safe
+;; because this function should ALWAYS accept void argument, i.e. no argument. It is therefore possible
+;; to custom data to the RPC server itself rather than the procedure.
+;; A field of the credential information (gss-cred.proc) signals whether this is a control message or not.
+;; If this field is :data then it is a regular message, otherwise it is a control message.
+;; 
+
+
 (defxenum gss-proc-t 
- (:data 0)
+  (:data 0)
   (:init 1)
   (:continue 2)
   (:destroy 3))
 
 (defxenum gss-service-t 
- (:none 1)
+  (:none 1)
   (:integrity 2)
   (:privacy 3))
 
 (defconstant +gss-version+ 1)
 
+;; this is defined as a union(version) but since there is only a single permitted version (1) 
+;; lets just put it in a structure
 (defxstruct gss-cred ()
   (version :uint32 +gss-version+)
   (proc gss-proc-t)
