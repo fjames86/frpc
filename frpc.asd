@@ -13,8 +13,9 @@
    (:file "rpc" :depends-on ("xdr"))
    (:file "errors" :depends-on ("rpc"))
    (:file "streams")
-   (:file "client" :depends-on ("errors" "streams"))
-   (:file "server" :depends-on ("client"))
+   (:file "gss" :depends-on ("xdr"))
+   (:file "client" :depends-on ("errors" "streams" "gss"))
+   (:file "server" :depends-on ("client" "gss"))
    (:file "port-mapper" :depends-on ("server")))
   :depends-on (:alexandria :nibbles :flexi-streams 
 	       :usocket :bordeaux-threads :pounds :babel))

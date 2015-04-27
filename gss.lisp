@@ -84,3 +84,12 @@
   (:call-inaccessible-write #x02000000)
   (:call-bad-structure #x03000000))
 
+
+
+;; ----------------------
+
+;; pseudo handler which accepts an init context request
+(defun gss-context-create-handler (opaque)
+  "Parses the GSS context token."
+  nil)
+
