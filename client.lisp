@@ -413,3 +413,36 @@ OPTIONS allow customization of the generated client function:
 			    (function ,res-writer) 
 			    ,handler))))))))
 
+;; to initiate a gss context creation
+(defun call-create-gss-context (context program version 
+				&key (host *rpc-host*) (port *rpc-port*) 
+				  protocol (timeout 1) connection)
+  "Initiate a GSS context with the RPC server. 
+
+Returns an OPAQUE-AUTH structure to be used in subsequent RPC calls.
+
+Typically the CONTEXT parameter will be a packed Kerberos AP-REQ buffer, wrapped with an OID. 
+E.g. as returned from a CERBERUS:PACK-INITIAL-CONTEXT-TOKEN call."
+  (declare (type (vector (unsigned-byte 8)) context)
+	   (type integer program version))
+  (let ((res 
+	 (call-rpc 'gss-init-arg
+		   context
+		   'gss-init-res
+		   :host host
+		   :port port
+		   :program program
+		   :version version
+		   :auth (make-opaque-auth :auth-gss
+					   (make-gss-cred :proc :init))
+		   :protocol protocol
+		   :timeout timeout
+		   :connection connection)))
+    (make-opaque-auth :auth-gss
+		      (make-gss-cred :proc :data
+				     :seqno 0
+				     :service :none
+				     :handle (gss-init-res-handle res)))))
+
+
+

@@ -86,10 +86,5 @@
 
 
 
-;; ----------------------
 
-;; pseudo handler which accepts an init context request
-(defun gss-context-create-handler (opaque)
-  "Parses the GSS context token."
-  nil)
 
