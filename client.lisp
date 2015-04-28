@@ -426,9 +426,9 @@ E.g. as returned from a CERBERUS:PACK-INITIAL-CONTEXT-TOKEN call."
   (declare (type (vector (unsigned-byte 8)) context)
 	   (type integer program version))
   (let ((res 
-	 (call-rpc 'gss-init-arg
+	 (call-rpc #'%write-gss-init-arg
 		   context
-		   'gss-init-res
+		   #'%read-gss-init-res
 		   :host host
 		   :port port
 		   :program program

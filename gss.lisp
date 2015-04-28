@@ -39,6 +39,9 @@
   (service gss-service-t)
   (handle (:varray* :octet)))
 
+;; the arguments sent as a part of the control message (to the nullproc)
+(defxtype* gss-init-arg () (:varray* :octet))
+
 (defxstruct gss-init-res ()
   (handle (:varray* :octet))
   (major :uint32)
@@ -46,13 +49,20 @@
   (window :uint32)
   (token (:varray* :octet)))
 
+;; this is sent in place of the arguments if the service level is :integrity
 (defxstruct gss-integ-data ()
-  (integ (:varray* :octet))
-  (checksum (:varray* :octet)))
+  (integ (:varray* :octet)) ;; packed gss-data-t 
+  (checksum (:varray* :octet))) ;; computed using GSS_GetMIC(integ) or equivalent
 
+;; this is packed and placed in the integ field of the gss-integ-data structure
 ;;(defxstruct gss-data-t ()
 ;;  (seqno :uint32)
-;;  (arg proc-req-arg-t))
+;;  (arg proc-req-arg-t)) ;; here the argument type is whatever the normal argument type is
+
+;; this is sent in place of the arguments if the service level is :privacy
+;; In this case, the arguments have been encrypted using GSS wrap() call or equivalent
+(defxtype* gss-priv-data () (:varray* :octet))
+
 
 (defxenum gss-major-stat
  (:complete #x00000000)
