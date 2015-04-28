@@ -107,6 +107,20 @@ TCP requests only."
 		(%write-rpc-msg output-stream
 				(make-rpc-response :accept :proc-unavail
 						   :id (rpc-msg-xid msg))))
+	       ;; if the auth structure is a GSS cred control message then we need to do special things
+	       ((and (eq (opaque-auth-flavour (call-body-auth call)) :auth-gss)
+		     (eq (gss-cred-proc (opaque-auth-data (call-body-auth call))) :init))
+		;; special case to handle GSS context creation
+		;; the proc should (must?) be the nullproc, lets just assume it is
+		;; read the argument
+		(let ((arg (%read-gss-init-arg input-stream)))
+		  ;; FIXME: authenticate it somehow?
+
+		  ;; return the result 
+		  (%write-rpc-msg output-stream
+				  (make-rpc-response :reject :auth-error
+						     :auth-stat :auth-rejected
+						     :id (rpc-msg-xid msg)))))
 	       ;; check with the auth-handler
 	       ((and (rpc-server-auth-handler server)
 		     (not (funcall (rpc-server-auth-handler server) 
@@ -121,8 +135,6 @@ TCP requests only."
 		;; run the handler 
 		(destructuring-bind (arg-type res-type handler) h
 		  (handler-case 
-              ;; FIXME: when we come to implementing GSSSEC authentication, we need to be able to 
-              ;; read the GSS control messages instead of the argument (which is always nil in that scenario)
 		      (let ((arg (read-xtype arg-type input-stream)))
 			(frpc-log :trace "Passing arg to handler")
 			(let ((res (let ((*rpc-remote-auth* (call-body-auth call)))
@@ -217,6 +229,20 @@ TCP requests only."
 	   (pack #'%write-rpc-msg
 		 (make-rpc-response :accept :proc-unavail
 				    :id id)))
+	  ;; if the auth structure is a GSS cred control message then we need to do special things
+	  ((and (eq (opaque-auth-flavour (call-body-auth call)) :auth-gss)
+		(eq (gss-cred-proc (opaque-auth-data (call-body-auth call))) :init))
+	   ;; special case to handle GSS context creation
+	   ;; the proc should (must?) be the nullproc, lets just assume it is
+	   ;; read the argument
+	   (let ((arg (%read-gss-init-arg input-stream)))
+	     ;; FIXME: authenticate it somehow?
+	     
+	     ;; return the result 
+	     (pack #'%write-rpc-msg 
+			     (make-rpc-response :reject :auth-error
+						:auth-stat :auth-rejected
+						:id (rpc-msg-xid msg)))))
 	  ((and (rpc-server-auth-handler server)
 		(not (funcall (rpc-server-auth-handler server)
 			      (call-body-auth call)
@@ -227,14 +253,8 @@ TCP requests only."
 				    :id id
 				    :auth-stat :auth-rejected)))
 	  (t
-	   ;; log the authentication
-;;	   (unless (eq (opaque-auth-flavour (call-body-auth call)) :auth-null)
-;;	     (frpc-log :info "Authentication: ~S" (call-body-auth call)))
-	   ;; handle the request
 	   (destructuring-bind (reader writer handler) h
 	     ;; read the argument
-         ;; FIXME: when we come to implementing GSSSEC authentication, we need to be able to 
-         ;; read the GSS control messages instead of the argument (which is always nil in that scenario)
 	     (let ((arg (read-xtype reader input-stream)))
            ;; package the reply and send
            (flexi-streams:with-output-to-sequence (output)             
@@ -343,7 +363,7 @@ TIMEOUT should be an integer specifying the maximum time TCP connections should 
 	 (progn 
 	   ;; collect the sockets this way so that if there is an error thrown (such as can't listen on port)
 	   ;; then we can gracefully fail, and close the sockets we have opened
-	   ;; if we mapcar to collect them then we lose the sockets we opened before the failure
+	   ;; if we mapcar to collect them then we leak the sockets we opened before the failure
 	   (dolist (port tcp-ports)
 	     (push (usocket:socket-listen usocket:*wildcard-host* port
 					  :reuse-address t

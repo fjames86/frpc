@@ -231,12 +231,16 @@
   data)
 (defmethod pack-auth-data ((type (eql :auth-unix)) data)
   (pack #'%write-auth-unix data))
+(defmethod pack-auth-data ((type (eql :auth-gss)) data)
+  (pack #'%write-gss-cred data))
 
 (defgeneric unpack-auth-data (type data))
 (defmethod unpack-auth-data (type data)
   data)
 (defmethod unpack-auth-data ((type (eql :auth-unix)) data)
   (unpack #'%read-auth-unix data))
+(defmethod unpack-auth-data ((type (eql :auth-gss)) data)
+  (unpack #'%read-gss-cred data))
 
 (defun pack-opaque-auth (auth)
   (list :flavour (opaque-auth-flavour auth)

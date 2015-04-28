@@ -95,6 +95,81 @@
   (:call-bad-structure #x03000000))
 
 
+;; (defparameter *krb5-keys* nil
+;;   "The application server's keylist (i.e. contents of a keytab file or equivalent).")
 
+;; (defun gss-init (keylist)
+;;   "Setup the application server's GSS support."
+;;   (setf *krb5-keys* keylist))
+
+;; ;; ---------------------------------------
+
+;; (defvar *gss-contexts* nil
+;;   "List of currently active gss session contexts.")
+
+;; (defstruct gss-context 
+;;   host key handle timestamp seqno)
+
+;; (defun add-gss-context (host req)
+;;   (push (make-gss-context :host host
+;; 			  :key (cerberus:ap-req-session-key req)
+;; 			  :handle (let ((v (nibbles:make-octet-vector 4)))
+;; 				    (setf (nibbles:ub32ref/be v 0) (random (expt 2 32)))
+;; 				    v)
+;; 			  :timestamp (get-universal-time)
+;; 			  :seqno 0
+;; 			  :window 10)
+;; 	*gss-contexts*))
+
+;; (defun find-gss-context (handle)
+;;   (find-if (lambda (c)
+;; 	     (equalp handle (gss-context-handle c)))
+;; 	   *gss-contexts*))
+
+;; (defun purge-gss-context (age)
+;;   (let ((now (get-universal-time)))
+;;     (setf *gss-contexts*
+;; 	  (remove-if (lambda (c)
+;; 		       (> (- (gss-context-timestamp c) now) age))
+;; 		     *gss-contexts*))))
+		       
+;; ;; -----------------------------------------
+
+;; (defun gss-authenticate (token)
+;;   "Parse the GSS token and authenticate it. This should be used in initial context requests. Only support kerberos.
+
+;; Returns the GSS cred on success, signals an RPC-AUTH-ERROR on failure."
+;;   (declare (type (vector (unsigned-byte 8)) token))
+;;   (handler-case 
+;;       (let ((tok (cerberus:unpack-initial-context-token token)))
+;; 	(typecase tok
+;; 	  (cerberus:ap-req (cerberus:valid-ticket-p *krb5-keys* tok))
+;; 	  (otherwise (error 'rpc-auth-error :stat :auth-rejected))))
+;;     (error (e)
+;;       (frpc-log :info "GSS failed: ~A" e)
+;;       (error 'rpc-auth-error :stat :auth-rejected))))
+    
+;; (defun gss-authenticate-handle (host cred)
+;;   "Validate the handle belongs to the host, and that the credential is still valid."
+;;   (declare (type gss-cred cred))
+;;   (let ((c (find-gss-context (gss-cred-handle cred))))
+;;     ;; the request is valid when:
+;;     ;; 1. we have a context registerd for that handle
+;;     ;; 2. the host for that handle matches the requesting host
+;;     ;; 3. the seqno of the request is within the seqno window for the context
+;;     (let ((valid (and c 
+;; 		      (equalp host (gss-context-host c))
+;; 		      (<= (- (gss-cred-seqno cred) 
+;; 			     (gss-context-seqno c))
+;; 			 (gss-context-window c)))))
+;;       (cond
+;; 	(valid 
+;; 	 ;; when it is a valid request, update the context seqno if the 
+;; 	 ;; new seqno is greater than the previously highest seen seqno 
+;; 	 (when (> (gss-cred-seqno cred) (gss-context-seqno c))
+;; 	   (setf (gss-context-seqno c) (gss-cred-seqno cred)))
+;; 	 t)
+;; 	(t 
+;; 	 nil)))))
 
 
