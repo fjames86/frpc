@@ -236,7 +236,9 @@ TCP requests only."
 	   ;; the proc should (must?) be the nullproc, lets just assume it is
 	   ;; read the argument
 	   (let ((arg (%read-gss-init-arg input-stream)))
-	     ;; FIXME: authenticate it somehow?
+	     ;; FIXME: authenticate it somehow. Need a GSS library to parse the token 
+	     ;; and authenticate it. If we assume it's a Kerberos AP-REQ message then we can use 
+	     ;; Cerberus, but otherwise we can't. 
 	     
 	     ;; return the result 
 	     (pack #'%write-rpc-msg 
