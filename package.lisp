@@ -46,6 +46,7 @@
 	   #:*rpc-port*
 	   #:*rpc-msgid*
 	   #:make-msgid
+	   #:call-create-gss-context 
 
 	   ;; server
 	   #:make-rpc-server
