@@ -159,16 +159,35 @@ returned as an RPC status"
 		     (destructuring-bind (reader writer handler) h 
 		       ;; FIXME: if gss authentication is being used, the service levels :integrity and :privacy 
 		       ;; imply that the arguments are sent packed with a checksum (encrypted with :privacy)
-		       (let ((arg (read-xtype reader input-stream)))
-			 ;; execute the handler function with some specials bound to values
-			 ;; so that the user-defined handler knows who called it and what authentication was used
-			 ;; so that they can authorize access
-			 (let ((res (with-caller-binded (host port protocol auth)
-				      (funcall handler arg))))
-			   (%write-rpc-msg output-stream
-					   (make-rpc-response :accept :success
-							      :id id))
-			   (write-xtype writer output-stream res)))))))))))))
+		       (let (arg err)
+			 (cond
+			   ((and (eq (opaque-auth-flavour auth) :auth-gss)
+				 (eq (gss-cred-service (opaque-auth-data auth)) :integrity))
+			    ;; arg == gss-init-arg structure
+			    (let ((a (read-xtype 'gss-integ-data input-stream)))
+			      ;; FIXME: validate the checksum
+			      (setf arg (unpack reader (gss-integ-data-integ a)))))
+			   ((and (eq (opaque-auth-flavour auth) :auth-gss)
+				 (eq (gss-cred-service (opaque-auth-data auth)) :privacy))
+			    (let ((a (read-xtype 'gss-priv-data input-stream)))
+			      (declare (ignore a))
+			      ;; FIXME: decrypt the data
+			      (%write-rpc-msg output-stream
+					      (make-rpc-response :reject :auth-error
+								 :id id
+								 :auth-stat :gss-cred-problem))
+			      (setf err t))) 			   
+			   (t (setf arg (read-xtype reader input-stream))))
+			 (unless err
+			   ;; execute the handler function with some specials bound to values
+			   ;; so that the user-defined handler knows who called it and what authentication was used
+			   ;; so that they can authorize access
+			   (let ((res (with-caller-binded (host port protocol auth)
+					(funcall handler arg))))
+			     (%write-rpc-msg output-stream
+					     (make-rpc-response :accept :success
+								:id id))
+			     (write-xtype writer output-stream res))))))))))))))
     (error (e)
       (frpc-log :info "~A" e)
       (%write-rpc-msg output-stream
