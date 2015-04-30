@@ -131,15 +131,18 @@ returned as an RPC status"
 	     (cond	       
 	       ((and (eq (opaque-auth-flavour auth) :auth-gss)
 	       	     (eq (gss-cred-proc (opaque-auth-data auth)) :init))
+		;; FIXME: the RPC argument will be a gss-init-arg structure
+		;; This contains a GSS creation token. we should dispatch to 
+		;; a GSS library to parse it and generate a context handle,
+		;; which should be returned in the gss-init-res result
 		(%write-rpc-msg output-stream
 				(make-rpc-response :reject :auth-error 
 						   :id id
-						   :auth-stat :gss-context-problem)))
+						   :auth-stat :gss-cred-problem)))
 	       ;; 	;; GSS init requires special treatment!
 	       ;; 	;; it is sending a gss-init-arg structure as an argument
 	       ;; 	(let ((token (read-xtype 'gss-init-arg input-stream)))
-	       ;; 	  ;; process the token and validate it, return like a gss-init-res 
-	       ;; 	  ;; as if it was a normal rpc
+	       ;; 	  ;; process the token and validate it, return like a gss-init-res as if it was a normal rpc
 	       ;; 	  (%write-rpc-msg output-stream
 	       ;; 			  (make-rpc-response :accept :success
 	       ;; 					     :id id))
@@ -154,6 +157,8 @@ returned as an RPC status"
 							:id id)))
 		    (t 
 		     (destructuring-bind (reader writer handler) h 
+		       ;; FIXME: if gss authentication is being used, the service levels :integrity and :privacy 
+		       ;; imply that the arguments are sent packed with a checksum (encrypted with :privacy)
 		       (let ((arg (read-xtype reader input-stream)))
 			 ;; execute the handler function with some specials bound to values
 			 ;; so that the user-defined handler knows who called it and what authentication was used
