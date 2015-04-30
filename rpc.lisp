@@ -285,4 +285,17 @@
 	   *rpc-version* ,version)))
 
 
+;;(defgeneric authenticate (flavour value))
+;;(defmethod authenticate (flavour value) t)
 
+;; should define e.g.
+;; (defmethod authenticate ((flavour :auth-unix) value)
+;;   (member (auth-unix-uid value) '(0 1000 1001)))
+
+;; (defmethod authenticate ((flavour :auth-gss) cred)
+;;   (let ((handle (gss-cred-handle cred)))
+;;     ;; who was issued this handle, is it still value etc?
+;;     (let ((context (find-gss-context handle)))
+;;       (< (gss-context-timeout context) (get-universal-time)))))
+
+    
