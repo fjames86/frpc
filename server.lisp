@@ -128,9 +128,13 @@ returned as an RPC status"
 		  (proc (call-body-proc call))
 		  (auth (call-body-auth call)))
 	     ;; FIXME: check the authentication
-	     (cond
-	       ;; ((and (eq (opaque-auth-flavour auth) :auth-gss)
-	       ;; 	     (eq (gss-cred-proc (opaque-auth-data auth)) :init))
+	     (cond	       
+	       ((and (eq (opaque-auth-flavour auth) :auth-gss)
+	       	     (eq (gss-cred-proc (opaque-auth-data auth)) :init))
+		(%write-rpc-msg output-stream
+				(make-rpc-response :reject :auth-error 
+						   :id id
+						   :auth-stat :gss-context-problem)))
 	       ;; 	;; GSS init requires special treatment!
 	       ;; 	;; it is sending a gss-init-arg structure as an argument
 	       ;; 	(let ((token (read-xtype 'gss-init-arg input-stream)))
@@ -151,8 +155,9 @@ returned as an RPC status"
 		    (t 
 		     (destructuring-bind (reader writer handler) h 
 		       (let ((arg (read-xtype reader input-stream)))
-			 ;; FIXME: bind specials so that the handler knows who called it
-			 ;; what authentication they used etc
+			 ;; execute the handler function with some specials bound to values
+			 ;; so that the user-defined handler knows who called it and what authentication was used
+			 ;; so that they can authorize access
 			 (let ((res (with-caller-binded (host port protocol auth)
 				      (funcall handler arg))))
 			   (%write-rpc-msg output-stream
@@ -160,7 +165,7 @@ returned as an RPC status"
 							      :id id))
 			   (write-xtype writer output-stream res)))))))))))))
     (error (e)
-      (frpc-log "~A" e)
+      (frpc-log :info "~A" e)
       (%write-rpc-msg output-stream
 		      (make-rpc-response :accept :garbage-args)))))
 					 

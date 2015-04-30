@@ -272,6 +272,7 @@ received in that time. Note that it will return a list of (host port result) ins
 
 CONNECTION should be a TCP or UDP connection, as returned by RPC-CONNECT.
 "
+  (unless protocol (setf protocol :udp))
   (ecase protocol
     (:tcp
      (let ((conn (if connection 
@@ -423,7 +424,7 @@ Returns an OPAQUE-AUTH structure to be used in subsequent RPC calls.
 
 Typically the CONTEXT parameter will be a packed Kerberos AP-REQ buffer, wrapped with an OID. 
 E.g. as returned from a CERBERUS:PACK-INITIAL-CONTEXT-TOKEN call."
-  (declare (type (vector (unsigned-byte 8)) context)
+  (declare (type vector context)
 	   (type integer program version))
   (let ((res 
 	 (call-rpc #'%write-gss-init-arg
@@ -434,7 +435,9 @@ E.g. as returned from a CERBERUS:PACK-INITIAL-CONTEXT-TOKEN call."
 		   :program program
 		   :version version
 		   :auth (make-opaque-auth :auth-gss
-					   (make-gss-cred :proc :init))
+					   (make-gss-cred :proc :init
+							  :seqno 0
+							  :service :none))
 		   :protocol protocol
 		   :timeout timeout
 		   :connection connection)))
@@ -442,7 +445,7 @@ E.g. as returned from a CERBERUS:PACK-INITIAL-CONTEXT-TOKEN call."
 		      (make-gss-cred :proc :data
 				     :seqno 0
 				     :service :none
-				     :handle (gss-init-res-handle res)))))
+				     :handle nil)))) ;;(gss-init-res-handle res)))))
 
 
 
