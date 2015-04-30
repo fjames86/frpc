@@ -29,8 +29,8 @@
 (defvar *server* nil)
 
 (defun start ()
-  (setf *server* (make-rpc-server))
-  (start-rpc-server *server* :tcp-ports '(8000) :udp-ports '(8000)))
+  (setf *server* (make-rpc-server :tcp-ports '(8000) :udp-ports '(8000)))
+  (start-rpc-server *server*))
 
 (defun stop ()
   (stop-rpc-server *server*))

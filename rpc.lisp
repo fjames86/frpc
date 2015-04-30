@@ -47,18 +47,46 @@
 
 ;; structs
 
-(defxtype* opaque-auth ()
-  (:plist :flavour auth-flavour 
-	  :data (:varray* :octet 400)))
-(defun %make-opaque-auth (&key flavour data)
-  (list :flavour (or flavour :auth-null)
-	:data data))
+;; wrap the opaque-auth structure so that we can automatically decode the opaque data component 
+;; into the structure it represents, dispatching on the flavour
+;; by default, leave it alone 
+(defun make-opaque-auth (flavour data)
+  (list :flavour flavour :data data))
 (defun opaque-auth-flavour (auth)
   (getf auth :flavour))
 (defun opaque-auth-data (auth)
   (getf auth :data))
+(defun (setf opaque-auth-data) (value auth)
+  (setf (getf auth :data) value))
 
-(defparameter *default-opaque-auth* (%make-opaque-auth))
+(defxtype* %opaque-auth ()
+  (:plist :flavour auth-flavour 
+	  :data (:varray* :octet 400)))
+
+(defgeneric pack-auth-data (flavour data))
+(defmethod pack-auth-data (flavour data)
+  data)
+
+(defgeneric unpack-auth-data (flavour data))
+(defmethod unpack-auth-data (flavour data)
+  data)
+
+;; wrap the opaque auth so that we can unpack the data, dispatching on flavour
+(defxtype opaque-auth ()
+  ((stream)
+   (let ((auth (read-xtype '%opaque-auth stream)))
+     (setf (opaque-auth-data auth)
+	   (unpack-auth-data (opaque-auth-flavour auth)
+			     (opaque-auth-data auth)))
+     auth))
+  ((stream auth)
+   (write-xtype '%opaque-auth 
+		stream
+		(make-opaque-auth (opaque-auth-flavour auth)
+				  (pack-auth-data (opaque-auth-flavour auth)
+						  (opaque-auth-data auth))))))
+
+(defparameter *default-opaque-auth* (make-opaque-auth :auth-null nil))
 
 (defxstruct call-body ()
   (rpcvers :uint32 2) ;; must always be 2
@@ -94,13 +122,18 @@
      (:call call-body)
      (:reply reply-body))))
 
-(defparameter *rpc-msgid* 0)
+;; ----------------------------------
 
+(defparameter *rpc-msgid* 0
+  "Global incrementing message counter, used by the client to generate unique message IDs")
 (defun make-msgid ()
   (prog1 *rpc-msgid*
     (incf *rpc-msgid*)))
 
+;; -----------------------------------
+
 (defun make-rpc-request (program proc &key (version 0) auth verf id)
+  "Make an RPC message for a request."
   (unless auth (setf auth *default-opaque-auth*))
   (unless verf (setf verf *default-opaque-auth*))
 
@@ -113,6 +146,7 @@
 						   :verf verf))))
 
 (defun make-rpc-response (&key accept reject verf (id 0) (high 0) (low 0) auth-stat)
+  "Make an RPC message for a response."
   (unless verf (setf verf *default-opaque-auth*))
 
   (make-rpc-msg 
@@ -137,7 +171,7 @@
 	   (:auth-error (make-xunion :auth-error auth-stat))))))))
 	    
       
-;; ------ todo: implement the authentication stuff ------------
+;; -------------- authentication stuff ----------------
 
 ;; 9.1 null authentication
 
@@ -150,40 +184,46 @@
   (gid :uint32)
   (gids (:varray :uint32 16)))
 
+(defmethod pack-auth-data ((type (eql :auth-unix)) data)
+  (pack #'%write-auth-unix data))
+
+(defmethod unpack-auth-data ((type (eql :auth-unix)) data)
+  (unpack #'%read-auth-unix data))
+
 ;; 9.3 DES authentication
 
-(defxenum authdes-namekind 
-  (:adn-fullname 0)
-  (:adn-nickname 1))
+;; (defxenum authdes-namekind 
+;;   (:adn-fullname 0)
+;;   (:adn-nickname 1))
 
-(defxtype des-block ()
-  ((stream)
-   (read-fixed-array #'read-octet stream 8))
-  ((stream obj)
-   (write-fixed-array #'write-octet stream obj)))
-(defun make-des-block ()
-  (nibbles:make-octet-vector 8))
+;; (defxtype des-block ()
+;;   ((stream)
+;;    (read-fixed-array #'read-octet stream 8))
+;;   ((stream obj)
+;;    (write-fixed-array #'write-octet stream obj)))
+;; (defun make-des-block ()
+;;   (nibbles:make-octet-vector 8))
 
-(defxstruct authdes-fullname ()
-  (name :string)
-  (key des-block)
-  (window (:array :octet 4)))
+;; (defxstruct authdes-fullname ()
+;;   (name :string)
+;;   (key des-block)
+;;   (window (:array :octet 4)))
 
-(defxunion authdes-cred (authdes-namekind)
-  (:adn-fullname authdes-fullname (make-des-block))
-  (:adn-nickname :int32))
+;; (defxunion authdes-cred (authdes-namekind)
+;;   (:adn-fullname authdes-fullname (make-des-block))
+;;   (:adn-nickname :int32))
 
-(defxtype* authdes-timestamp ()
-  (:plist :seconds :uint32
-	  :useconds :uint32))
+;; (defxtype* authdes-timestamp ()
+;;   (:plist :seconds :uint32
+;; 	  :useconds :uint32))
 
-(defxstruct authdes-verf-client ()
-  (adv-timestamp des-block (make-des-block))
-  (adv-winverf (:array :octet 4) (nibbles:make-octet-vector 4)))
+;; (defxstruct authdes-verf-client ()
+;;   (adv-timestamp des-block (make-des-block))
+;;   (adv-winverf (:array :octet 4) (nibbles:make-octet-vector 4)))
 
-(defxstruct authdes-verf-server ()
-  (adv-timeverf des-block (make-des-block))
-  (adv-nickname :int32))
+;; (defxstruct authdes-verf-server ()
+;;   (adv-timeverf des-block (make-des-block))
+;;   (adv-nickname :int32))
 
 ;; 9.3.5 Diffie-Hellman 
 
@@ -226,35 +266,12 @@
 
 ;; ------------------------
 
-(defgeneric pack-auth-data (type data))
-(defmethod pack-auth-data (type data)
-  data)
-(defmethod pack-auth-data ((type (eql :auth-unix)) data)
-  (pack #'%write-auth-unix data))
+;; for gss
 (defmethod pack-auth-data ((type (eql :auth-gss)) data)
   (pack #'%write-gss-cred data))
 
-(defgeneric unpack-auth-data (type data))
-(defmethod unpack-auth-data (type data)
-  data)
-(defmethod unpack-auth-data ((type (eql :auth-unix)) data)
-  (unpack #'%read-auth-unix data))
 (defmethod unpack-auth-data ((type (eql :auth-gss)) data)
   (unpack #'%read-gss-cred data))
-
-(defun pack-opaque-auth (auth)
-  (list :flavour (opaque-auth-flavour auth)
-	:data (pack-auth-data (opaque-auth-flavour auth)
-			      (opaque-auth-data auth))))
-
-(defun unpack-opaque-auth (auth)
-  (list :flavour (opaque-auth-flavour auth)
-	:data (unpack-auth-data (opaque-auth-flavour auth)
-				(opaque-auth-data auth))))
-
-(defun make-opaque-auth (flavour data)
-  (pack-opaque-auth (%make-opaque-auth :flavour flavour
-				       :data data)))
 
 ;; ----------------------------------------
 
@@ -266,4 +283,6 @@
   `(eval-when (:compile-toplevel :load-toplevel :execute)
      (setf *rpc-program* ,program
 	   *rpc-version* ,version)))
+
+
 
