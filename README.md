@@ -262,7 +262,7 @@ The equivalent macros using FLET are WITH-READER and WITH-WRITER.
 
 ## 5. Authentication
 
-The authentication system that was used for the request is bound to **RPC-REMOTE-AUTH** special variable in the context 
+The authentication system that was used for the request is bound to *RPC-REMOTE-AUTH* special variable in the context 
 of an rpc handler function. This allows handlers to implemented *authorization*, i.e. determining whether the client
 is permitted to perform the action requested. 
 
