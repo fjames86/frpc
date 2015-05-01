@@ -18,5 +18,5 @@
    (:file "server" :depends-on ("client" "gss"))
    (:file "port-mapper" :depends-on ("server")))
   :depends-on (:alexandria :nibbles :flexi-streams 
-	       :usocket :bordeaux-threads :pounds :babel))
+	       :usocket :bordeaux-threads :pounds :babel :cerberus))
 

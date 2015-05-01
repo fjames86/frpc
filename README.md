@@ -260,12 +260,21 @@ The equivalent macros using FLET are WITH-READER and WITH-WRITER.
   (read-foobar f))
 ```
 
-## 5. Examples
+## 5. Authentication
+
+The authentication system that was used for the request is bound to **RPC-REMOTE-AUTH** special variable in the context 
+of an rpc handler function. This allows handlers to implemented *authorization*, i.e. determining whether the client
+is permitted to perform the action requested. 
+
+The authentication flavour, RPCSEC_GSS, requires special treatment. FRPC uses the package [cerberus](https://github.com/fjames86/cerberus)
+to implement Kerberos v5 authentication. This support is experimental.
+
+## 6. Examples
 
 I have typed in some simple example programs. 
 For more serious usages, see port-mapper.lisp or Nefarious, an NFS implementation in Common Lisp.
 
-## 6. Logging 
+## 7. Logging 
 
 Debug logging is provided by [pounds](https://github.com/fjames86/pounds). By default this will create a 2MB log file
 in your home directory named "frpc.log". You should change the path by modifying:
@@ -296,9 +305,9 @@ Users may also write to this log if they wish, you should simply use a different
 
 See the pounds documentation for more information on the logging system.
 
-## 7. Notes
+## 8. Notes
 
-* I've not really put any effort into properly handling authentication, either for the client or the server.
+* Authentication support is kind of basic and not well fleshed out. GSS (i.e. Kerberos) authentication should be supported.
 * At the moment, reading from TCP streams requires buffering the input to cope with reading multiple fragments. 
 A fragmented-stream type could be defined to wrap the underlying socket stream so that we can avoid the buffering on reads.
 You still need to buffer writes because you need to know how much you intend to write before you've written it.
@@ -308,7 +317,7 @@ were selected. This makes it impossible to inform the port mapper of where to di
 * UDP multicast?
 * The XDR serializer is probably not as efficient as it could be. 
 
-## 8. License
+## 9. License
 
 Released under the terms of the MIT license.
 

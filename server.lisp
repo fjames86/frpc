@@ -131,22 +131,30 @@ returned as an RPC status"
 	     (cond	       
 	       ((and (eq (opaque-auth-flavour auth) :auth-gss)
 	       	     (eq (gss-cred-proc (opaque-auth-data auth)) :init))
-		;; FIXME: the RPC argument will be a gss-init-arg structure
+		;; the RPC argument will be a gss-init-arg structure
 		;; This contains a GSS creation token. we should dispatch to 
 		;; a GSS library to parse it and generate a context handle,
 		;; which should be returned in the gss-init-res result
-		(%write-rpc-msg output-stream
-				(make-rpc-response :reject :auth-error 
-						   :id id
-						   :auth-stat :gss-cred-problem)))
-	       ;; 	;; GSS init requires special treatment!
-	       ;; 	;; it is sending a gss-init-arg structure as an argument
-	       ;; 	(let ((token (read-xtype 'gss-init-arg input-stream)))
-	       ;; 	  ;; process the token and validate it, return like a gss-init-res as if it was a normal rpc
-	       ;; 	  (%write-rpc-msg output-stream
-	       ;; 			  (make-rpc-response :accept :success
-	       ;; 					     :id id))
-	       ;; 	  (write-xtype 'gss-init-res res)))
+		(let ((token (read-xtype 'gss-init-arg input-stream)))
+		  ;; arg is a buffer containing a CERBERUS:INITIAL-CONTEXT-TOKEN 
+		  (let ((cxt (gss-authenticate host token)))
+		    (cond
+		      (cxt
+		       (frpc-log :info "Accepted GSS context from ~S" host)
+		       (%write-rpc-msg output-stream 
+				       (make-rpc-response :accept :success
+							  :id id))
+		       (%write-gss-init-res output-stream
+					    (make-gss-init-res :handle (gss-context-handle cxt)
+							       :major 0
+							       :minor 0
+							       :window 0
+							       :token nil)))
+		      (t 
+		       (%write-rpc-msg output-stream
+				       (make-rpc-response :reject :auth-error
+							  :id id
+							  :auth-stat :gss-cred-problem)))))))
 	       (t
 		;; lookup the handler
 		(let ((h (find-handler program version proc)))
@@ -166,17 +174,19 @@ returned as an RPC status"
 			    ;; arg == gss-init-arg structure
 			    (let ((a (read-xtype 'gss-integ-data input-stream)))
 			      ;; FIXME: validate the checksum
+			      (frpc-log :info "GSS Integrity message")
 			      (setf arg (unpack reader (gss-integ-data-integ a)))))
 			   ((and (eq (opaque-auth-flavour auth) :auth-gss)
 				 (eq (gss-cred-service (opaque-auth-data auth)) :privacy))
 			    (let ((a (read-xtype 'gss-priv-data input-stream)))
 			      (declare (ignore a))
-			      ;; FIXME: decrypt the data
+			      ;; FIXME: decrypt the data and unpack 
+			      (frpc-log :info "GSS privacy message")
 			      (%write-rpc-msg output-stream
 					      (make-rpc-response :reject :auth-error
 								 :id id
 								 :auth-stat :gss-cred-problem))
-			      (setf err t))) 			   
+			      (setf err t)))
 			   (t (setf arg (read-xtype reader input-stream))))
 			 (unless err
 			   ;; execute the handler function with some specials bound to values

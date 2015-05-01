@@ -83,5 +83,8 @@
 	   #:*frpc-log*
 	   #:*frpc-log-path*
 	   #:frpc-log
+
+	   ;; for gss security
+	   #:gss-init
 	   ))
 

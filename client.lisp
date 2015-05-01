@@ -445,7 +445,7 @@ E.g. as returned from a CERBERUS:PACK-INITIAL-CONTEXT-TOKEN call."
 		      (make-gss-cred :proc :data
 				     :seqno 0
 				     :service :none
-				     :handle nil)))) ;;(gss-init-res-handle res)))))
+				     :handle (gss-init-res-handle res)))))
 
 
 
