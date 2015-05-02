@@ -104,7 +104,7 @@
   "Make a cipher to use for encryption. If used to enrypt the initial client verifier,
 VERIFIER should be T. Otherwise VERIFIER should be nil."
   (ironclad:make-cipher :des
-			:mode (if verifier :cbc :ebc)
+			:mode (if verifier :cbc :ecb)
 			:key key
 			:initialization-vector (nibbles:make-octet-vector 8)))
 
@@ -118,12 +118,14 @@ VERIFIER should be T. Otherwise VERIFIER should be nil."
     (ironclad:decrypt cipher data result)
     result))
 
-(defun des-timestamp ()
+(defun des-timestamp (&optional seconds useconds)
   "Time since midnight March 1st 1970"
-  (list :seconds (- (get-universal-time)
-		    (encode-universal-time 0 0 0 1 3 1970 0))  ;; note: march 1st, not Jan 1st!
-	:useconds 0))
+  (list :seconds (or seconds 
+		     (- (get-universal-time)
+			(encode-universal-time 0 0 0 1 3 1970 0)))  ;; note: march 1st, not Jan 1st!
+	:useconds (or useconds 0)))
 
+;; I don't think this works
 (defun make-auth-des (&key fullname public-key conversation-key nickname window)
   "Make an AUTH-DES opaque-auth structure. If NICKNAME is provided then is should be used, otherwise 
 FULLNAME and KEY must be provided."
@@ -136,11 +138,37 @@ FULLNAME and KEY must be provided."
 			   (make-authdes-fullname 
 			    :name fullname
 			    :key (dh-encrypt c conversation-key)
-			    :window (dh-encrypt c 
-						(let ((v (nibbles:make-octet-vector 4)))
-						  (setf (nibbles:ub32ref/be v 0) 
-							(or window 0))
-						  v))))))))
+			    :window (subseq 
+				     (dh-encrypt c 
+						 (let ((v (nibbles:make-octet-vector 8))) ;; what to put here?
+						   (setf (nibbles:ub32ref/be v 0) 
+							 (or window 0))
+						   v))
+				     0 4)))))))
+
+
+(defun pack-and-encrypt (key timestamp window)
+  (let ((v (flexi-streams:with-output-to-sequence (s)
+	     (%write-authdes-timestamp s timestamp)
+	     (nibbles:write-ub32/be window s)
+	     (nibbles:write-ub32/be (1- window) s))))
+    (dh-encrypt (make-dh-cipher key t)
+		v)))
+
+(defun make-des-client-verifier (key window)
+  (let ((v (pack-and-encrypt key (des-timestamp) window)))
+    (make-authdes-verf-client :adv-timestamp (subseq v 0 8)
+			      :adv-winverf (subseq v 12 16))))
+
+(defun make-des-server-verifier (key timestamp window nickname)
+  (let ((v (pack-and-encrypt key 
+			     (des-timestamp (1- (getf timestamp :seconds))
+					    (getf timestamp :useconds))
+			     window)))
+    (make-authdes-verf-server :adv-timeverf (subseq v 0 8)
+			      :adv-nickname nickname)))
+
+
 
 (defvar *des-private-key* nil
   "The server's private key.")
