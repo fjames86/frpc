@@ -166,8 +166,9 @@ FULLNAME and KEY must be provided."
 
 (defun make-des-server-verifier (key timestamp nickname)
   (let ((v (dh-encrypt (make-dh-cipher key) 
-		       (pack #'%write-authdes-timestamp (des-timestamp (1- (getf timestamp :seconds))
-								       (getf timestamp :useconds))))))
+		       (pack #'%write-authdes-timestamp 
+			     (des-timestamp (1- (getf timestamp :seconds))
+					    (getf timestamp :useconds))))))
     (make-authdes-verf-server :adv-timeverf v
 			      :adv-nickname nickname)))
 
@@ -193,12 +194,6 @@ FULLNAME and KEY must be provided."
 			       (authdes-verf-server-adv-timeverf verf)))))
     (< (- (getf v :seconds) (getf (des-timestamp) :seconds))
        +des-timestamp-skew+)))
-
-
-
-
-
-
 
 
 
