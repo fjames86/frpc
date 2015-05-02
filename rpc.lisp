@@ -122,6 +122,16 @@
      (:call call-body)
      (:reply reply-body))))
 
+(defun rpc-msg-verifier (msg)
+  (let ((body (rpc-msg-body msg)))
+    (ecase (xunion-tag body)
+      (:call 
+       (let ((call (xunion-val body)))
+	 (call-body-verf call)))
+      (:reply 
+       (when (eq (xunion-tag (xunion-val body)) :msg-accepted)
+	 (accepted-reply-verf (xunion-val (xunion-val body))))))))
+
 ;; ----------------------------------
 
 (defparameter *rpc-msgid* 0
@@ -170,10 +180,30 @@
 	   (:rpc-mismatch (make-xunion :rpc-mismatch `(:high ,high :low ,low)))
 	   (:auth-error (make-xunion :auth-error auth-stat))))))))
 	    
-      
+(defun generate-program-number (&optional transient)
+  "Generate a program identifier in the user-defined range, as specified by the RFC.
+If TRANSIENT is true, a runtime program number is generated. These should be used by programs which
+need to generate program numbers at runtime."
+  (if transient 
+      (+ #x40000000 (random #x20000000))
+      (+ #x20000000 (random #x20000000))))
+
+
 ;; -------------- authentication stuff ----------------
 
+(defgeneric authenticate (flavour data verf)
+  (:documentation "Authenticate the transaction. 
+FLAVOUR is the authentication flavour, data is the authentication data. VEFF is the opaque-auth verifier.
+
+Returns a response verifier to be sent back to the client or nil in the case of failure."))
+
+;; default method for authentication rejects all requests
+(defmethod authenticate (flavour data verf) nil)
+
+
 ;; 9.1 null authentication
+(defmethod authenticate ((flavour (eql :auth-null)) data verf)
+  (make-opaque-auth :auth-null nil))
 
 ;; 9.2 UNIX authentication
 
@@ -190,7 +220,43 @@
 (defmethod unpack-auth-data ((type (eql :auth-unix)) data)
   (unpack #'%read-auth-unix data))
 
+(defvar *unix-contexts* (make-cyclic-buffer 10))
+(defstruct unix-context unix short)
+
+(defun add-unix-context (unix)
+  (let ((c (make-unix-context :unix unix
+			      :short (let ((v (nibbles:make-octet-vector 4)))
+				       (setf (nibbles:ub32ref/be v 0) (random (expt 2 32)))
+				       v))))
+    (cyclic-push *unix-contexts* c)
+    c))
+
+(defun find-unix-context (short)
+  (cyclic-find-if (lambda (c)
+		    (equalp (unix-context-short c) short))
+		  *unix-contexts*))
+
+(defmethod authenticate ((flavour (eql :auth-unix)) data verf)
+  (declare (ignore verf))
+  (let ((c (add-unix-context data)))
+    (make-opaque-auth :auth-short (unix-context-short c))))
+
+(defmethod authenticate ((flavour (eql :auth-short)) data verf)
+  (declare (ignore verf))
+  (let ((c (find-unix-context data)))
+    (if c
+	(make-opaque-auth :auth-null nil)
+	nil)))
+
 ;; 9.3 DES authentication
+
+;; For DES-based authentication, the first transaction is treated as follows:
+;; 1. client sends a verifier (authdes-verf-client). The timestamp slot is and encrypted timestamp 
+;; and the windows is the same timestamp -1, i.e. and encrypted (1- timestamp). 
+;; 2. The server will respond to the client with the same encrypted timestmap - 1. 
+;;
+;; All other transactions are authenticated by validating that an encrypted 
+;; timestamp is "close" to the current time
 
 ;; (defxenum authdes-namekind 
 ;;   (:adn-fullname 0)
@@ -210,24 +276,24 @@
 ;;   (window (:array :octet 4)))
 
 ;; (defxunion authdes-cred (authdes-namekind)
-;;   (:adn-fullname authdes-fullname (make-des-block))
-;;   (:adn-nickname :int32))
+;;   (:adn-fullname authdes-fullname)
+;;   (:adn-nickname :uint32))
 
 ;; (defxtype* authdes-timestamp ()
 ;;   (:plist :seconds :uint32
 ;; 	  :useconds :uint32))
 
 ;; (defxstruct authdes-verf-client ()
-;;   (adv-timestamp des-block (make-des-block))
-;;   (adv-winverf (:array :octet 4) (nibbles:make-octet-vector 4)))
+;;   (adv-timestamp des-block)
+;;   (adv-winverf (:array :octet 4)))
 
 ;; (defxstruct authdes-verf-server ()
-;;   (adv-timeverf des-block (make-des-block))
+;;   (adv-timeverf des-block)
 ;;   (adv-nickname :int32))
 
-;; 9.3.5 Diffie-Hellman 
+;; ;; 9.3.5 Diffie-Hellman 
 
-;; these constants are specified in the rfc
+;; ;; these constants are specified in the rfc
 ;; (defconstant +dh-base+ 3)
 ;; (defconstant +dh-modulus+ (parse-integer "d4a0ba0250b6fd2ec626e7efd637df76c716e22d0944b88b" 
 ;; 					 :radix 16))
@@ -253,16 +319,40 @@
 ;;   "Local private key, remote public key"
 ;;   (ironclad:make-cipher :des
 ;; 			:mode :cbc
-;; 			:key (dh-conversation-key (dh-common-key private publc))))
+;; 			:key (dh-conversation-key (dh-common-key private public))))
 
 ;; (defun dh-encrypt (cipher data)
 ;;   (let ((result (nibbles:make-octet-vector 8)))
 ;;     (ironclad:encrypt cipher data result)
 ;;     result))
+
 ;; (defun dh-decrypt (cipher data)
 ;;   (let ((result (nibbles:make-octet-vector 8)))
 ;;     (ironclad:decrypt cipher data result)
 ;;     result))
+
+
+;; (defvar *des-contexts* nil)
+;; (defstruct des-context 
+;;   fullname nickname timestamp window key)
+
+;; (defun add-des-context (fullname timetstamp window key)
+;;   (let ((c (make-des-context :fullname
+;; 			     :nickname (random (expt 2 32))
+;; 			     :timestamp timestamp
+;; 			     :window window
+;; 			     :key key)))
+;;     (push c *des-contexts*)
+;;     c))
+;; (defun rem-des-context (c)
+;;   (setf *des-contexts*
+;; 	(remove c *des-contexts*)))
+ 
+;; (defun des-timestamp ()
+;;   "Time since midnight March 1st 1970"
+;;   (- (get-universal-time)
+;;      (encode-universal-time 0 0 0 1 3 1970 0)))  ;; note: march 1st, not Jan 1st!
+
 
 ;; ------------------------
 
@@ -272,6 +362,11 @@
 
 (defmethod unpack-auth-data ((type (eql :auth-gss)) data)
   (unpack #'%read-gss-cred data))
+
+;; gss authentication requires special treatment, i.e. hard-coding
+;; this means this function is essentially redudant, but we need to fill it in anyway
+(defmethod authenticate ((flavour (eql :auth-gss)) data verf)
+  (make-opaque-auth :auth-null nil))
 
 ;; ----------------------------------------
 

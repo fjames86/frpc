@@ -126,7 +126,8 @@ returned as an RPC status"
 		  (program (call-body-prog call))
 		  (version (call-body-vers call))
 		  (proc (call-body-proc call))
-		  (auth (call-body-auth call)))
+		  (auth (call-body-auth call))
+		  (verf (call-body-verf call)))
 	     ;; FIXME: check the authentication
 	     (cond	       
 	       ((and (eq (opaque-auth-flavour auth) :auth-gss)
@@ -157,8 +158,17 @@ returned as an RPC status"
 							  :auth-stat :gss-cred-problem)))))))
 	       (t
 		;; lookup the handler
-		(let ((h (find-handler program version proc)))
+		(let ((h (find-handler program version proc))
+		      (resp-verf (authenticate (opaque-auth-flavour auth)
+					       (opaque-auth-data auth)
+					       verf)))
 		  (cond
+		    ((null resp-verf)
+		     ;; authentication failed
+		     (%write-rpc-msg output-stream
+				     (make-rpc-response :reject :auth-error
+							:id id
+							:auth-stat :auth-rejected)))
 		    ((not h)
 		     (%write-rpc-msg output-stream
 				     (make-rpc-response :accept :proc-unavail
@@ -196,7 +206,8 @@ returned as an RPC status"
 					(funcall handler arg))))
 			     (%write-rpc-msg output-stream
 					     (make-rpc-response :accept :success
-								:id id))
+								:id id
+								:verf resp-verf))
 			     (write-xtype writer output-stream res))))))))))))))
     (error (e)
       (frpc-log :info "~A" e)

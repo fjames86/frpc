@@ -8,6 +8,7 @@
 	   #:use-rpc-host
 	   #:defrpc
 	   #:find-handler
+	   #:generate-program-number
 
 	   ;; type definitions
 	   #:defxtype

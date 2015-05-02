@@ -123,9 +123,9 @@ the bytes read."
     ;; need to read the response back to a local stream, to account for the fragmenting
     (flexi-streams:with-input-from-sequence (input (read-fragmented-message stream))
       ;; read the response (throws error if failed)      
-      (nth-value 1 (read-response input result-type)))))
-;;      (multiple-value-bind (msg res) (read-response input result-type)
-;;	(values res msg)))))
+;;      (nth-value 1 (read-response input result-type)))))
+      (multiple-value-bind (msg res) (read-response input result-type)
+	(values res (rpc-msg-verifier msg))))))
 
 (defun collect-udp-replies (socket timeout result-type)
   "Wait TIMEOUT seconds, collecting as many UDP replies as arrive in that time."
@@ -236,8 +236,9 @@ the bytes read."
 		     (when (or (= count #xffffffff) (= count -1))
 		       (error "Error: recvfrom returned -1"))
 		     (let ((input (frpc.streams:make-buffer-stream buffer :end count)))
-;;		     (flexi-streams:with-input-from-sequence (input buffer :start 0 :end count)
-		       (nth-value 1 (read-response input result-type)))))
+;;		       (nth-value 1 (read-response input result-type))
+		       (multiple-value-bind (msg res) (read-response input result-type)
+			 (values res (rpc-msg-verifier msg))))))
 		   (error 'rpc-timeout-error))))
       (unless connection
 	(usocket:socket-close socket)))))
@@ -395,15 +396,18 @@ OPTIONS allow customization of the generated client function:
 		(gtrafo (gensym "TRAFO"))
 		(gcall (gensym "CALL")))
 	       (if transformer	       
-		   (destructuring-bind ((var) &body body) (cdr transformer)			 
+		   (destructuring-bind ((var &optional verf) &body body) (cdr transformer)			 
 		     `(flet ((,gcall () ,the-form)
-			     (,gtrafo (,var) ,@body))
+			     (,gtrafo ,(if verf `(,var ,verf) `(,var))
+			       ,@(when verf `((declare (ignorable ,verf))))
+			       ,@body))
 			(case protocol
 			  (:broadcast (mapcar (lambda (b)
 						(destructuring-bind (host port val) b
 						  (list host port (,gtrafo val))))
 					      (,gcall)))
-			  (otherwise (,gtrafo (,gcall))))))
+			  (otherwise (multiple-value-bind (res verf) (,gcall)
+				       (,gtrafo res verf))))))
 		   the-form)))
 
        ;; define a server handler if required
