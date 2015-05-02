@@ -10,18 +10,16 @@
 ;; and a time window, both encrypted in the server's public key. The window is the amount of time the 
 ;; credential should be valid for. 
 ;; In this initial request, the client ALSO sends a verifier which contains the current timestamp,
-;; the same window as in the authenticator, and the current timestamp -1. This structure is encrypted 
+;; the same window as in the authenticator, and the window -1. This structure is encrypted 
 ;; in DES CBC mode using the conversation key and null IV.
 ;; 2. The server decrypts the authenticator to extract the conversation key. This is then used 
-;; to decrypt the verifier. The server validates that the timestamp, window and timestamp-1 are 
+;; to decrypt the verifier. The server validates that the timestamp, window and window-1 are 
 ;; all consistent. It then assigns this client a nickname (a random number) and returns the same timestamp-1
 ;; (encrypted) and the nickname. 
 ;; 3. The client validates that the verifier the server responded with is valid by decrypting and checking the 
 ;; timestamp.
 ;; 4. All subsequent client requests now send an authenticator consisting just of the nickname. The 
 ;; verifier should now be the encryted timestamp and encrypted window verifier.
-
-
 
 (defxenum authdes-namekind 
   (:adn-fullname 0)

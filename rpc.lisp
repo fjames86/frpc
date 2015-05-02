@@ -208,6 +208,9 @@ Returns a response verifier to be sent back to the client or nil in the case of 
 (defmethod authenticate ((flavour (eql :auth-null)) data verf)
   (make-opaque-auth :auth-null nil))
 
+(defmethod pack-auth-data ((flavour (eql :auth-null)) data) nil)
+(defmethod unpack-auth-data ((flavour (eql :auth-null)) data) nil)
+
 ;; 9.2 UNIX authentication
 
 (defxstruct auth-unix ()
@@ -233,7 +236,9 @@ Returns a response verifier to be sent back to the client or nil in the case of 
 (defmethod unpack-auth-data ((type (eql :auth-unix)) data)
   (unpack #'%read-auth-unix data))
 
-(defvar *unix-contexts* (make-cyclic-buffer 10))
+(defvar *unix-contexts* (make-cyclic-buffer 10)
+  "Table of AUTH-UNIX contexts that have been granted.")
+
 (defstruct unix-context unix short)
 
 (defun add-unix-context (unix)

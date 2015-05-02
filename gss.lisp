@@ -114,7 +114,6 @@
   (:call-inaccessible-write #x02000000)
   (:call-bad-structure #x03000000))
 
-
 (defparameter *krb5-keys* nil
   "The application server's keylist (i.e. contents of a keytab file or equivalent).")
 

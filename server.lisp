@@ -136,7 +136,8 @@ returned as an RPC status"
 		;; This contains a GSS creation token. we should dispatch to 
 		;; a GSS library to parse it and generate a context handle,
 		;; which should be returned in the gss-init-res result
-		(let ((token (read-xtype 'gss-init-arg input-stream)))
+		(let ((token (coerce (read-xtype 'gss-init-arg input-stream)
+				     '(vector (unsigned-byte 8)))))
 		  ;; arg is a buffer containing a CERBERUS:INITIAL-CONTEXT-TOKEN 
 		  (let ((cxt (gss-authenticate host token)))
 		    (cond
@@ -151,7 +152,8 @@ returned as an RPC status"
 							       :minor 0
 							       :window 0
 							       :token nil)))
-		      (t 
+		      (t
+		       ;; no context granted... means was invalid token
 		       (%write-rpc-msg output-stream
 				       (make-rpc-response :reject :auth-error
 							  :id id
