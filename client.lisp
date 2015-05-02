@@ -407,7 +407,10 @@ OPTIONS allow customization of the generated client function:
 						  (list host port (,gtrafo val))))
 					      (,gcall)))
 			  (otherwise (multiple-value-bind (res verf) (,gcall)
-				       (,gtrafo res verf))))))
+				       ,@(unless verf `((declare (ignore verf))))
+				       ,(if verf
+					    `(,gtrafo res verf)
+					    `(,gtrafo res)))))))
 		   the-form)))
 
        ;; define a server handler if required

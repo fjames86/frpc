@@ -73,7 +73,8 @@
 	   #:make-opaque-auth
 	   #:opaque-auth-flavour
 	   #:opaque-auth-data
-	   #:make-auth-unix
+;;	   #:make-auth-unix
+	   #:make-unix
 	   #:auth-unix-stamp
 	   #:auth-unix-machine-name
 	   #:auth-unix-uid
