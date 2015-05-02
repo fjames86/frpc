@@ -262,12 +262,18 @@ The equivalent macros using FLET are WITH-READER and WITH-WRITER.
 
 ## 5. Authentication
 
-The authentication system that was used for the request is bound to *RPC-REMOTE-AUTH* special variable in the context 
-of an rpc handler function. This allows handlers to implemented *authorization*, i.e. determining whether the client
-is permitted to perform the action requested. 
+The authentication system that was used for the request is bound to *RPC-REMOTE-AUTH* special 
+variable in the context of an rpc handler function. This allows handlers to implemente *authorization*, 
+i.e. determining whether the client is permitted to perform the action requested. 
 
-The authentication flavour, RPCSEC_GSS, requires special treatment. FRPC uses the package [cerberus](https://github.com/fjames86/cerberus)
-to implement Kerberos v5 authentication. This support is experimental.
+Supported flavours:
+- [x] AUTH_NULL: i.e. no authentication
+- [x] AUTH_UNIX and AUTH_SHORT: uid/gid and machine name. Not really authentication as such, 
+but a simple tagging mechanism.
+- [ ] AUTH_DES: public-key exchange verified by encrypted timestamps (support in progress)
+- [ ] AUTH_GSS: GSS (i.e. Kerberos) authentication, supports authentication, integrity validation and privacy.
+ Uses the package [cerberus](https://github.com/fjames86/cerberus) to implement Kerberos v5 authentication.
+
 
 ## 6. Examples
 
@@ -276,13 +282,14 @@ For more serious usages, see port-mapper.lisp or Nefarious, an NFS implementatio
 
 ## 7. Logging 
 
-Debug logging is provided by [pounds](https://github.com/fjames86/pounds). By default this will create a 2MB log file
-in your home directory named "frpc.log". You should change the path by modifying:
+Debug logging is provided by [pounds](https://github.com/fjames86/pounds). By default this will 
+create a 2MB log file in your home directory named "frpc.log". You should change the path by modifying:
 
 ```
 (setf frpc:*frpc-log-path* (merge-pathnames (user-homedir-pathname) "foo.log"))
 ```
-The log is created on the first call to FRPC-LOG. 
+The log is created on the first call to FRPC-LOG, this is typically when you make your 
+first RPC call or start your RPC server.
 
 For debugging and development you may follow the log to see output as it arrives:
 ```
@@ -296,7 +303,7 @@ Users may also write to this log if they wish, you should simply use a different
 (let ((tag (babel:string-to-octets "MYLG")))
   (defun my-log (lvl format-control &rest args)
     (unless *frpc-log*		  
-      (frpc-log :info "Initialzing log"))
+      (frpc-log :info "Initializing log"))
     (pounds.log:write-message *frpc-log* 
     			      lvl 		      
 			      (apply #'format nil format-control args)
@@ -311,11 +318,11 @@ See the pounds documentation for more information on the logging system.
 * At the moment, reading from TCP streams requires buffering the input to cope with reading multiple fragments. 
 A fragmented-stream type could be defined to wrap the underlying socket stream so that we can avoid the buffering on reads.
 You still need to buffer writes because you need to know how much you intend to write before you've written it.
-* You can start listening on wildcard ports (by supplying 0 as a port number), but there is no way to find out what ports
-were selected. This makes it impossible to inform the port mapper of where to direct traffic.
-* Could make it easier to add more transports, e.g. using CL+SSL.
-* UDP multicast?
-* The XDR serializer is probably not as efficient as it could be. 
+* You can start listening on wildcard ports (by supplying 0 as a port number), but there is no way to find out what ports were selected. This makes it impossible to inform the port mapper of where to direct traffic. 
+* Could make it easier to add more transports, e.g. SSL/TLS stream, writing to shared memory etc. 
+Probably not much call for this.
+* UDP multicast? 
+* The XDR serializer is probably not as efficient as it could be, but who really cares if it works.
 
 ## 9. License
 
