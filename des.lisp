@@ -22,8 +22,8 @@
 ;; verifier should now be the encryted timestamp and encrypted window verifier.
 
 (defxenum authdes-namekind 
-  (:adn-fullname 0)
-  (:adn-nickname 1))
+  (:fullname 0)
+  (:nickname 1))
 
 (defxstruct authdes-fullname ()
   (name :string)
@@ -31,8 +31,8 @@
   (window (:array :octet 4))) ;; encrypted window
 
 (defxunion authdes-cred (authdes-namekind)
-  (:adn-fullname authdes-fullname)
-  (:adn-nickname :int32))
+  (:fullname authdes-fullname)
+  (:nickname :int32))
 
 ;; for verifiers
 (defxtype* authdes-timestamp ()
@@ -131,10 +131,10 @@ VERIFIER should be T. Otherwise VERIFIER should be nil."
 FULLNAME and KEY must be provided."
   (make-opaque-auth :auth-des 
 		    (if nickname
-			(make-xunion :adn-nickname nickname)
+			(make-xunion :nickname nickname)
 			(let ((c (make-dh-cipher public-key)))
 			  (make-xunion 
-			   :adn-fullname 
+			   :fullname 
 			   (make-authdes-fullname 
 			    :name fullname
 			    :key (dh-encrypt c conversation-key)
@@ -146,27 +146,61 @@ FULLNAME and KEY must be provided."
 						   v))
 				     0 4)))))))
 
+(defxtype* des-enc-block ((:reader read-des-enc-block) (:writer write-des-enc-block))
+  (:list authdes-timestamp
+	 :uint32 
+	 :uint32))
 
-(defun pack-and-encrypt (key timestamp window)
-  (let ((v (flexi-streams:with-output-to-sequence (s)
-	     (%write-authdes-timestamp s timestamp)
-	     (nibbles:write-ub32/be window s)
-	     (nibbles:write-ub32/be (1- window) s))))
-    (dh-encrypt (make-dh-cipher key t)
-		v)))
+(defun pack-des-enc-block (key timestamp window)
+  (dh-encrypt (make-dh-cipher key t)
+	      (pack #'write-des-enc-block (list timestamp window (1- window)))))
 
-(defun make-des-client-verifier (key window)
-  (let ((v (pack-and-encrypt key (des-timestamp) window)))
+(defun unpack-des-enc-block (key block)
+  (unpack #'read-des-enc-block 
+	  (dh-decrypt (make-dh-cipher key t) block)))
+
+(defun make-des-client-verifier (key timestamp window)
+  (let ((v (pack-des-enc-block key timestamp window)))
     (make-authdes-verf-client :adv-timestamp (subseq v 0 8)
 			      :adv-winverf (subseq v 12 16))))
 
-(defun make-des-server-verifier (key timestamp window nickname)
-  (let ((v (pack-and-encrypt key 
-			     (des-timestamp (1- (getf timestamp :seconds))
-					    (getf timestamp :useconds))
-			     window)))
-    (make-authdes-verf-server :adv-timeverf (subseq v 0 8)
+(defun make-des-server-verifier (key timestamp nickname)
+  (let ((v (dh-encrypt (make-dh-cipher key) 
+		       (pack #'%write-authdes-timestamp (des-timestamp (1- (getf timestamp :seconds))
+								       (getf timestamp :useconds))))))
+    (make-authdes-verf-server :adv-timeverf v
 			      :adv-nickname nickname)))
+
+;; allow 60 seconds difference
+(defconstant +des-timestamp-skew+ 60)
+
+(defun verify-des-client (key verf window)
+  (let ((v (dh-decrypt (make-dh-cipher key t)
+		       (flexi-streams:with-output-to-sequence (s)
+			 (write-sequence (authdes-verf-client-adv-timestamp verf) s)
+			 (nibbles:write-ub32/be window s)
+			 (write-sequence (authdes-verf-client-adv-winverf verf) s)))))
+    ;; check the timestamp
+    (let ((ts (unpack #'%read-authdes-timestamp (subseq v 0 8)))
+	  (wf (nibbles:ub32ref/be v 12)))
+      (and (= wf (1- window))
+	   (< (- (getf ts :seconds) (getf (des-timestamp) :seconds))
+	      +des-timestamp-skew+)))))
+
+(defun verify-des-server (key verf)
+  (let ((v (unpack #'%read-authdes-timestamp 
+		   (dh-decrypt (make-dh-cipher key)
+			       (authdes-verf-server-adv-timeverf verf)))))
+    (< (- (getf v :seconds) (getf (des-timestamp) :seconds))
+       +des-timestamp-skew+)))
+
+
+
+
+
+
+
+
 
 
 
@@ -200,15 +234,16 @@ FULLNAME and KEY must be provided."
 
 ;; client contexts -- basically information about which clients have been authenticated
 (defstruct des-context 
-  fullname nickname timestamp key)
+  fullname nickname timestamp key window)
 
 (defvar *des-contexts* (make-cyclic-buffer 10))
 
-(defun add-des-context (fullname timestamp key)
+(defun add-des-context (fullname timestamp key window)
   (let ((c (make-des-context :fullname fullname
 			     :nickname (random (expt 2 32))
 			     :timestamp timestamp
-			     :key key)))
+			     :key key
+			     :window window)))
     (cyclic-push *des-contexts* c)
     c))
 
