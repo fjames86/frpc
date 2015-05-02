@@ -5,14 +5,23 @@
 
 
 ;; 9.3 DES authentication
+;; Procress is as follows:
+;; 1. Client sends an authdes-cred (fullname) structure to the server. This contains the conversion key
+;; and a time window, both encrypted in the server's public key. The window is the amount of time the 
+;; credential should be valid for. 
+;; In this initial request, the client ALSO sends a verifier which contains the current timestamp,
+;; the same window as in the authenticator, and the current timestamp -1. This structure is encrypted 
+;; in DES CBC mode using the conversation key and null IV.
+;; 2. The server decrypts the authenticator to extract the conversation key. This is then used 
+;; to decrypt the verifier. The server validates that the timestamp, window and timestamp-1 are 
+;; all consistent. It then assigns this client a nickname (a random number) and returns the same timestamp-1
+;; (encrypted) and the nickname. 
+;; 3. The client validates that the verifier the server responded with is valid by decrypting and checking the 
+;; timestamp.
+;; 4. All subsequent client requests now send an authenticator consisting just of the nickname. The 
+;; verifier should now be the encryted timestamp and encrypted window verifier.
 
-;; For DES-based authentication, the first transaction is treated as follows:
-;; 1. client sends a verifier (authdes-verf-client). The timestamp slot is and encrypted timestamp 
-;; and the windows is the same timestamp -1, i.e. and encrypted (1- timestamp). 
-;; 2. The server will respond to the client with the same encrypted timestmap - 1. 
-;;
-;; All other transactions are authenticated by validating that an encrypted 
-;; timestamp is "close" to the current time
+
 
 (defxenum authdes-namekind 
   (:adn-fullname 0)
@@ -20,8 +29,8 @@
 
 (defxstruct authdes-fullname ()
   (name :string)
-  (key (:varray* :octet)) ;; encrypted conversion key
-  (window (:array :octet 4)))
+  (key (:varray* :octet)) ;; encrypted conversation key
+  (window (:array :octet 4))) ;; encrypted window
 
 (defxunion authdes-cred (authdes-namekind)
   (:adn-fullname authdes-fullname)
@@ -35,23 +44,12 @@
 ;; the verifier sent by the client
 (defxstruct authdes-verf-client ()
   (adv-timestamp (:varray* :octet)) ;; encrypted timestamp
-  (adv-winverf (:array :octet 4))) ;; encrypted window
+  (adv-winverf (:array :octet 4))) ;; encrypted (window - 1)
 
 ;; the verifier sent by the server 
 (defxstruct authdes-verf-server ()
-  (adv-timeverf (:varray* :octet)) ;; encrypted timestamp -1 
+  (adv-timeverf (:varray* :octet)) ;; encrypted (timestamp - 1)
   (adv-nickname :int32)) ;; nickname to be used for the conversation
-
-(defun make-auth-des-client-verifier (timestamp window)
-  (let ((v (nibbles:make-octet-vector 16)))
-    ;; pack the structure
-    (setf (nibbles:ub32ref/be v 0) (getf timestamp :seconds)
-	  (nibbles:ub32ref/be v 4) (getf timestamp :useconds)
-	  (nibbles:ub32ref/be v 8) window
-	  (nibbles:ub32ref/be v 12) (1- timestamp))
-    ;; FIXME: encrypt v
-    (make-authdes-verf-client :adv-timestamp (subseq v 0 8)
-			      :adv-winverf (subseq v 12 16))))
 
 ;; Diffie-Hellman encryption
 
@@ -68,6 +66,7 @@
     key))
 
 (defun dh-secret-key ()
+  "Generate a random secret key"
   (do ((secret 0)
        (i 0 (1+ i)))
       ((= i 8) secret)
@@ -145,12 +144,11 @@ FULLNAME and KEY must be provided."
 							(or window 0))
 						  v))))))))
 
-
-
 (defvar *des-private-key* nil
   "The server's private key.")
 
 (defun des-init (secret)
+  "Initialize the server with its secret key so it can accept DES authentication."
   (setf *des-private-key* secret))
 
 ;; need a database of public keys. Only clients which have an entry in this list may be authenticated
@@ -158,8 +156,7 @@ FULLNAME and KEY must be provided."
 (defvar *des-public-keys* nil
   "List of public keys for each client that may talk to the server.")
 
-(defstruct des-key
-  fullname key)
+(defstruct des-key fullname key)
 
 (defun add-des-public-key (fullname key)
   (push (make-des-key :fullname fullname
@@ -193,3 +190,4 @@ FULLNAME and KEY must be provided."
   (cyclic-find-if (lambda (c)
 		    (= (des-context-nickname c) nickname))
 		  *des-contexts*))
+
