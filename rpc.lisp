@@ -263,15 +263,15 @@ Returns a response verifier to be sent back to the client or nil in the case of 
 
 ;; 9.3 DES authentication
 
-(defmethod pack-auth-data ((flavour (eql :auth-des)) data)
-  (pack #'%write-authdes-cred data))
+;; (defmethod pack-auth-data ((flavour (eql :auth-des)) data)
+;;   (pack #'%write-authdes-cred data))
 
-(defmethod unpack-auth-data ((flavour (eql :auth-des)) data)
-  (unpack #'%read-authdes-cred data))
+;; (defmethod unpack-auth-data ((flavour (eql :auth-des)) data)
+;;   (unpack #'%read-authdes-cred data))
 
-;; FIXME: reject all auth-des requests for the moment
-(defmethod authenticate ((flavour (eql :auth-des)) data verf)
-  nil)
+;; ;; FIXME: reject all auth-des requests for the moment
+;; (defmethod authenticate ((flavour (eql :auth-des)) data verf)
+;;   nil)
 
 ;; GSS authentication 
 
