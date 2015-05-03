@@ -5,36 +5,46 @@
 
 
 ;; 9.3 DES authentication
-;; Procress is as follows:
-;; 1. Client sends an authdes-cred (fullname) structure to the server. This contains the conversion key
-;; and a time window, both encrypted in the server's public key. The window is the amount of time the 
-;; credential should be valid for. 
-;; In this initial request, the client ALSO sends a verifier which contains the current timestamp,
-;; the same window as in the authenticator, and the window -1. This structure is encrypted 
-;; in DES CBC mode using the conversation key and null IV.
-;; 2. The server decrypts the authenticator to extract the conversation key. This is then used 
-;; to decrypt the verifier. The server validates that the timestamp, window and window-1 are 
-;; all consistent. It then assigns this client a nickname (a random number) and returns the same timestamp-1
-;; (encrypted) and the nickname. 
-;; 3. The client validates that the verifier the server responded with is valid by decrypting and checking the 
-;; timestamp.
-;; 4. All subsequent client requests now send an authenticator consisting just of the nickname. The 
-;; verifier should now be the encryted timestamp and encrypted window verifier.
+;; Process is:
+;; 1. Client generates a random DES key to be used for the conversation. 
+;; 2. Client gets its local secret key and the public key of the server (by an unspecified mechanism)
+;; 3. Client computes the common key by combining its secret and the server's public keys.
+;; 4. Client encrypts the conversation key using the common key.
+;; 5. Client forms a 2-block array and packs it with the current timestamp (1 block), the "window" (1/2 block)
+;; and the "window - 1" (1/2 block). This is encrypted in DES CBC mode using the conversation key.
+;; 6. Client sends the authdes-fullname and authdes-verf-client authenticator and verifier to the server.
+;; 7. The server gets its secret key and the public key for the client and combines them to getthe common key.
+;; 8. The server decrypts to get the conversation key.
+;; 9. The server forms a 2-block array and decrypts using the conversation key. 
+;; 10. The server validates that the timestamp is within a "reasonable" skew of its own clock and that the 
+;; winverf = window - 1.
+;; 11. The server stores the conversation key, window, name etc in some local storage and assigns the client an
+;; integer "nickname". 
+;; 12. The server returns the nickname and the same timestamp - 1 second (encrypted) back to the client.
+;; 13. All subsequence client requests only send and encrypted timestamp (ECB mode) in the verifier, 
+;; and the nickname in the authenticator.
+;; 14. The server validates the timestamp is "within reasonable skew" and responds with the timestamp-1. 
+;; The server is free to flush the contexts whenever it wishes.
 
+
+
+;; ------------- the authenticator -------------
 (defxenum authdes-namekind 
   (:fullname 0)
   (:nickname 1))
 
+;; the client sends this to the server in the first request
 (defxstruct authdes-fullname ()
   (name :string)
   (key (:varray* :octet)) ;; encrypted conversation key
   (window (:array :octet 4))) ;; encrypted window
 
 (defxunion authdes-cred (authdes-namekind)
-  (:fullname authdes-fullname)
-  (:nickname :int32))
+  (:fullname authdes-fullname) ;; only used in the first request
+  (:nickname :int32)) ;; all other requests use the nickname 
 
-;; for verifiers
+;; ------------ the verifiers -------------------
+
 (defxtype* authdes-timestamp ()
   (:plist :seconds :uint32
 	  :useconds :uint32))
@@ -42,7 +52,7 @@
 ;; the verifier sent by the client
 (defxstruct authdes-verf-client ()
   (adv-timestamp (:varray* :octet)) ;; encrypted timestamp
-  (adv-winverf (:array :octet 4))) ;; encrypted (window - 1)
+  (adv-winverf (:array :octet 4))) ;; encrypted (window - 1) only used in the first request
 
 ;; the verifier sent by the server 
 (defxstruct authdes-verf-server ()
@@ -61,6 +71,16 @@
     (dotimes (i 24)
       (setf (aref key (- 24 i)) (logand number #xff)
 	    number (ash number -8)))
+    key))
+
+(defun dh-conversation-key ()
+  "Generate a random 56-bit (8-octet) DES key to be used as the conversation key"
+  (let ((key (nibbles:make-octet-vector 8)))
+    (dotimes (i 8)
+      (let ((n (random 256)))
+	(when (zerop (logcount n))
+	  (setf n (1+ n)))
+	(setf (aref key i) n)))
     key))
 
 (defun dh-secret-key ()
@@ -87,24 +107,21 @@
 
 (defun dh-common-key (secret public)
   "Generate the common key from the local private key and remote public key."
-  (discrete-expt-modulo public secret +dh-modulus+))
-
-(defun dh-conversation-key (common)
-  "Generate the 56-bit conversation key from the 192-bit common key."
-  (let ((bytes (nibbles:make-octet-vector 8)))
-    (setf (nibbles:ub64ref/be bytes 0) (ash common -64))
-    (dotimes (i 8)
-      (let ((parity (logcount (aref bytes i))))
-	(unless (zerop parity)
-	  (setf (aref bytes i)
-		(logior (aref bytes i) 1)))))
-    bytes))
-
-(defun make-dh-cipher (key &optional verifier)
+  (let ((common (discrete-expt-modulo public secret +dh-modulus+)))
+    (let ((bytes (nibbles:make-octet-vector 8)))
+      (setf (nibbles:ub64ref/be bytes 0) (ash common -64))
+      (dotimes (i 8)
+	(let ((parity (logcount (aref bytes i))))
+	  (unless (zerop parity)
+	    (setf (aref bytes i)
+		  (logior (aref bytes i) 1)))))
+    bytes)))
+    
+(defun make-dh-cipher (key &optional initial)			     
   "Make a cipher to use for encryption. If used to enrypt the initial client verifier,
 VERIFIER should be T. Otherwise VERIFIER should be nil."
   (ironclad:make-cipher :des
-			:mode (if verifier :cbc :ecb)
+			:mode (if initial :cbc :ecb)
 			:key key
 			:initialization-vector (nibbles:make-octet-vector 8)))
 
@@ -118,6 +135,14 @@ VERIFIER should be T. Otherwise VERIFIER should be nil."
     (ironclad:decrypt cipher data result)
     result))
 
+(defun dh-encrypt-conversation-key (common-key conv-key)
+  (let ((c (make-dh-cipher common-key)))
+    (dh-encrypt c conv-key)))
+
+(defun dh-decrypt-conversation-key (common-key data)
+  (let ((c (make-dh-cipher common-key)))
+    (dh-decrypt c data)))
+
 (defun des-timestamp (&optional seconds useconds)
   "Time since midnight March 1st 1970"
   (list :seconds (or seconds 
@@ -125,77 +150,68 @@ VERIFIER should be T. Otherwise VERIFIER should be nil."
 			(encode-universal-time 0 0 0 1 3 1970 0)))  ;; note: march 1st, not Jan 1st!
 	:useconds (or useconds 0)))
 
-;; I don't think this works
-(defun make-auth-des (&key fullname public-key conversation-key nickname window)
-  "Make an AUTH-DES opaque-auth structure. If NICKNAME is provided then is should be used, otherwise 
-FULLNAME and KEY must be provided."
-  (make-opaque-auth :auth-des 
-		    (if nickname
-			(make-xunion :nickname nickname)
-			(let ((c (make-dh-cipher public-key)))
-			  (make-xunion 
-			   :fullname 
-			   (make-authdes-fullname 
-			    :name fullname
-			    :key (dh-encrypt c conversation-key)
-			    :window (subseq 
-				     (dh-encrypt c 
-						 (let ((v (nibbles:make-octet-vector 8))) ;; what to put here?
-						   (setf (nibbles:ub32ref/be v 0) 
-							 (or window 0))
-						   v))
-				     0 4)))))))
-
 (defxtype* des-enc-block ((:reader read-des-enc-block) (:writer write-des-enc-block))
   (:list authdes-timestamp
-	 :uint32 
-	 :uint32))
+	 :uint32 ;; window
+	 :uint32)) ;; window-1
 
-(defun pack-des-enc-block (key timestamp window)
-  (dh-encrypt (make-dh-cipher key t)
-	      (pack #'write-des-enc-block (list timestamp window (1- window)))))
+;; make the initial client request 
+(defun des-initial-client-request (name secret public window)
+  "Returns (values auth verf). the authenticator and verifier to send to the server."
+  (let ((conversation (dh-conversation-key))
+	(common (dh-common-key secret public)))
+    ;; form a 2-block array and encrypt using the conversation key in CBC mode
+    (let ((v (dh-encrypt (make-dh-cipher conversation
+					 t)
+			 (pack #'write-des-enc-block (list (des-timestamp) window (1- window))))))
+      (values 
+       (make-authdes-fullname :name name
+			      :key (dh-encrypt-conversation-key common conversation)
+			      :window (subseq v 8 12))
+       (make-authdes-verf-client :adv-timestamp (subseq v 0 8)
+				 :adv-winverf (subseq v 12 16))))))
 
-(defun unpack-des-enc-block (key block)
-  (unpack #'read-des-enc-block 
-	  (dh-decrypt (make-dh-cipher key t) block)))
-
-(defun make-des-client-verifier (key timestamp window)
-  (let ((v (pack-des-enc-block key timestamp window)))
-    (make-authdes-verf-client :adv-timestamp (subseq v 0 8)
-			      :adv-winverf (subseq v 12 16))))
-
-(defun make-des-server-verifier (key timestamp nickname)
-  (let ((v (dh-encrypt (make-dh-cipher key) 
-		       (pack #'%write-authdes-timestamp 
-			     (des-timestamp (1- (getf timestamp :seconds))
-					    (getf timestamp :useconds))))))
-    (make-authdes-verf-server :adv-timeverf v
-			      :adv-nickname nickname)))
-
+  
 ;; allow 60 seconds difference
 (defconstant +des-timestamp-skew+ 60)
 
-(defun verify-des-client (key verf window)
-  (let ((v (dh-decrypt (make-dh-cipher key t)
-		       (flexi-streams:with-output-to-sequence (s)
-			 (write-sequence (authdes-verf-client-adv-timestamp verf) s)
-			 (nibbles:write-ub32/be window s)
-			 (write-sequence (authdes-verf-client-adv-winverf verf) s)))))
-    ;; check the timestamp
-    (let ((ts (unpack #'%read-authdes-timestamp (subseq v 0 8)))
-	  (wf (nibbles:ub32ref/be v 12)))
-      (and (= wf (1- window))
-	   (< (- (getf ts :seconds) (getf (des-timestamp) :seconds))
-	      +des-timestamp-skew+)))))
+;; server validates the client request
+(defun des-valid-client-request (secret public auth verf)
+  "This runs on the server and validates the initial client request."
+  (let ((common (dh-common-key secret public)))
+    ;; start by getting the converation key from the authenticator
+    (let ((conversation (dh-decrypt-conversation-key common (authdes-fullname-key auth))))
+      ;; now form the block and decrypt it
+      (let ((v (dh-decrypt (make-dh-cipher conversation t)
+			   (concatenate '(vector (unsigned-byte 8))
+					(authdes-verf-client-adv-timestamp verf)
+					(authdes-fullname-window auth)
+					(authdes-verf-client-adv-winverf verf)))))
+	;; unpack it 
+	(destructuring-bind (timestamp window winverf) (unpack #'read-des-enc-block v)
+	  ;; compare the timestamp and window
+	  ;; FIXME: if it is valid then return allocate and return context
+	  (and (< (abs (- (getf timestamp :seconds) (getf (des-timestamp) :seconds)))
+		  +des-timestamp-skew+)
+	       (= winverf (1- window))))))))
 
-(defun verify-des-server (key verf)
-  (let ((v (unpack #'%read-authdes-timestamp 
-		   (dh-decrypt (make-dh-cipher key)
-			       (authdes-verf-server-adv-timeverf verf)))))
-    (< (- (getf v :seconds) (getf (des-timestamp) :seconds))
-       +des-timestamp-skew+)))
+(defun des-client-verifier (conversation)
+  "Generates a DES verifier for normal transactions."
+  (let ((v (pack #'%write-authdes-timestamp (des-timestamp))))
+    (make-authdes-verf-client :adv-timestamp (dh-encrypt (make-dh-cipher conversation) v)
+			      :adv-winverf (nibbles:make-octet-vector 4))))
+
+(defun des-server-verifier (conversation timestamp nickname)
+  "Generate a DES verifier that the server responds with."
+  (let ((v (pack #'%write-authdes-timestamp 
+		 (des-timestamp (1- (getf timestamp :seconds))
+				(getf timestamp :useconds)))))
+    (make-authdes-verf-server :adv-timeverf (dh-encrypt (make-dh-cipher conversation) v)
+			      :adv-nickname nickname)))
 
 
+
+;; --------------------------------------------
 
 
 
@@ -211,7 +227,7 @@ FULLNAME and KEY must be provided."
 (defvar *des-public-keys* nil
   "List of public keys for each client that may talk to the server.")
 
-(defstruct des-key fullname key)
+(defstruct des-key fullname key nickname)
 
 (defun add-des-public-key (fullname key)
   (push (make-des-key :fullname fullname
