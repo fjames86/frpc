@@ -29,6 +29,7 @@
 
 
 ;; ------------- the authenticator -------------
+
 (defxenum authdes-namekind 
   (:fullname 0)
   (:nickname 1))
@@ -59,12 +60,15 @@
   (adv-timeverf (:varray* :octet)) ;; encrypted (timestamp - 1)
   (adv-nickname :int32)) ;; nickname to be used for the conversation
 
+;; -----------------------------------------------
+
 ;; Diffie-Hellman encryption
 
 ;; these constants are specified in the rfc
 (defconstant +dh-base+ 3)
 (defconstant +dh-modulus+ (parse-integer "d4a0ba0250b6fd2ec626e7efd637df76c716e22d0944b88b" 
 					 :radix 16))
+
 (defun dh-key (number)
   "Convert a number into a 192-bit DH key."
   (let ((key (nibbles:make-octet-vector 24)))
@@ -209,6 +213,11 @@ VERIFIER should be T. Otherwise VERIFIER should be nil."
     (make-authdes-verf-server :adv-timeverf (dh-encrypt (make-dh-cipher conversation) v)
 			      :adv-nickname nickname)))
 
+(defun des-valid-server-verifier (conversation timestamp verf)
+  "Check the timestamp is 1- the timestamp we sent"
+  (let ((v (authdes-verf-server-adv-timeverf verf)))
+    (let ((ts (unpack #'%read-authdes-timestamp (dh-decrypt (make-dh-cipher conversation) v))))
+      (= (1+ (getf ts :seconds) (getf timestamp :seconds))))))
 
 
 ;; --------------------------------------------
