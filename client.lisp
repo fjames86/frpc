@@ -78,8 +78,8 @@ the bytes read."
 (defclass rpc-client ()
   ((host :initarg :host :initform *rpc-host* :accessor rpc-client-host)
    (port :initarg :port :initform *rpc-port* :accessor rpc-client-port)
-   (program :initarg :program :initform 0 :accessor rpc-client-program)
-   (version :initarg :version :initform 0 :accessor rpc-client-version)
+   (program :initarg :program :initform nil :accessor rpc-client-program)
+   (version :initarg :version :initform nil :accessor rpc-client-version)
    (initial :initform t :accessor rpc-client-initial)
    (connection :initarg :connection :initform nil :accessor rpc-client-connection)
    (protocol :initarg :protocol :initform :udp :accessor rpc-client-protocol)
@@ -418,8 +418,8 @@ CLIENT should be an instance of RPC-CLIENT or its subclasses. This is the ONLY w
 	  port (rpc-client-port client)
 	  protocol (rpc-client-protocol client)
 	  timeout (rpc-client-timeout client)
-	  program (rpc-client-program client)
-	  version (rpc-client-version client)
+	  program (or program (rpc-client-program client) (error "Must provide a program"))
+	  version (or version (rpc-client-version client) (error "Must provide a version"))
 	  connection (rpc-client-connection client)))
 
   ;; when we're doing gss security levels :integrity or :privacy we need to modify the call args
@@ -474,7 +474,9 @@ CLIENT should be an instance of RPC-CLIENT or its subclasses. This is the ONLY w
 			:verf verf
 			:request-id request-id
 			:timeout timeout)))
-    (when client (verify client verf))
+    (when client 
+      (verify client verf)
+      (setf (rpc-client-initial client) nil))
     res))
 
 ;; FIXME: it would be nice to have some simple way of providing default values for
