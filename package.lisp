@@ -38,16 +38,17 @@
 	   #:pack
 	   #:unpack
 
-	   ;; client
+	   ;; connections 
 	   #:rpc-connect
 	   #:rpc-close
 	   #:with-rpc-connection
+
+	   ;; client
+	   #:rpc-client 
+	   #:rpc-client-initial
 	   #:call-rpc
 	   #:*rpc-host*
 	   #:*rpc-port*
-	   #:*rpc-msgid*
-	   #:make-msgid
-	   #:call-create-gss-context 
 
 	   ;; server
 	   #:make-rpc-server
@@ -55,7 +56,7 @@
 	   #:run-rpc-server
 	   #:stop-rpc-server
 	   
-	   ;; specials that are binded in the context of a handler
+	   ;; specials that are bound in the context of a handler
 	   #:*rpc-remote-host*
 	   #:*rpc-remote-port*
 	   #:*rpc-remote-protocol*
@@ -73,7 +74,9 @@
 	   #:make-opaque-auth
 	   #:opaque-auth-flavour
 	   #:opaque-auth-data
-	   #:make-unix
+
+	   ;; unix auth
+	   #:unix-client
 	   #:auth-unix-stamp
 	   #:auth-unix-machine-name
 	   #:auth-unix-uid
@@ -86,6 +89,7 @@
 	   #:frpc-log
 
 	   ;; for des security
+	   #:des-client
 	   #:des-init
 	   #:des-public-key
 	   #:des-conversation
@@ -93,6 +97,7 @@
 	   #:des-verf
 
 	   ;; for gss security
+	   #:gss-client
 	   #:gss-init
 
 	   ))

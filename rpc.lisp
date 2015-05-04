@@ -194,6 +194,7 @@ need to generate program numbers at runtime."
 
 ;; -------------- authentication stuff ----------------
 
+;; this is used by the server
 (defgeneric authenticate (flavour data verf)
   (:documentation "Authenticate the transaction. 
 FLAVOUR is the authentication flavour, data is the authentication data. VERF is the opaque-auth verifier.
@@ -202,7 +203,6 @@ Returns a response verifier to be sent back to the client or nil in the case of 
 
 ;; default method for authentication rejects all requests
 (defmethod authenticate (flavour data verf) nil)
-
 
 ;; 9.1 null authentication
 (defmethod authenticate ((flavour (eql :auth-null)) data verf)
@@ -219,16 +219,6 @@ Returns a response verifier to be sent back to the client or nil in the case of 
   (uid :uint32)
   (gid :uint32)
   (gids (:varray :uint32 16)))
-
-(defun make-unix (uid &optional gid gids)
-  "Make an AUTH-UNIX opaque auth structure."
-  (make-opaque-auth :auth-unix
-		    (make-auth-unix :stamp (- (get-universal-time) 
-					      (encode-universal-time 0 0 0 1 1 1970 0))
-				    :machine-name (machine-instance)
-				    :uid uid
-				    :gid (or gid 0)
-				    :gids gids)))
 
 (defmethod pack-auth-data ((type (eql :auth-unix)) data)
   (pack #'%write-auth-unix data))
@@ -295,6 +285,9 @@ Returns a response verifier to be sent back to the client or nil in the case of 
 (defmethod authenticate ((flavour (eql :auth-gss)) data verf)
   (make-opaque-auth :auth-null nil))
 
+
+
+
 ;; ----------------------------------------
 
 ;; these are used to keep track of the current program that is being compiled
@@ -305,4 +298,5 @@ Returns a response verifier to be sent back to the client or nil in the case of 
   `(eval-when (:compile-toplevel :load-toplevel :execute)
      (setf *rpc-program* ,program
 	   *rpc-version* ,version)))
+
 

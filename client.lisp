@@ -73,6 +73,139 @@ the bytes read."
      (setf *default-rpc-host* ,host
 	   *default-rpc-port* ,port)))
 
+;; ------------- default/null authentication ---------------
+
+(defclass rpc-client ()
+  ((host :initarg :host :initform *rpc-host* :accessor rpc-client-host)
+   (port :initarg :port :initform *rpc-port* :accessor rpc-client-port)
+   (program :initarg :program :initform 0 :accessor rpc-client-program)
+   (version :initarg :version :initform 0 :accessor rpc-client-version)
+   (initial :initform t :accessor rpc-client-initial)
+   (connection :initarg :connection :initform nil :accessor rpc-client-connection)
+   (protocol :initarg :protocol :initform :udp :accessor rpc-client-protocol)
+   (timeout :initarg :timeout :initform 1 :accessor rpc-client-timeout)))
+
+(defgeneric rpc-client-auth (client)
+  (:documentation "The authenticator to use for the client request."))
+
+(defgeneric rpc-client-verf (client)
+  (:documentation "The verifier to use for the client request."))
+
+(defgeneric verify (client verf)
+  (:documentation "Verify the response received from the server."))
+
+
+;; default methods for auth-null flavour authentication 
+(defmethod rpc-client-auth ((client rpc-client))
+  (make-opaque-auth :auth-null nil))
+
+(defmethod rpc-client-verf ((client rpc-client))
+  (make-opaque-auth :auth-null nil))
+
+(defmethod verify ((client rpc-client) verf) t)
+
+;; ---------------- unix ----------------
+
+(defclass unix-client (rpc-client)
+  ((uid :initarg :uid :initform 0 :accessor unix-client-uid)
+   (gid :initarg :gid :initform 0 :accessor unix-client-gid)
+   (gids :initarg :gids :initform nil :accessor unix-client-gids)
+   (nickname :initform nil :accessor unix-client-nickname)))
+
+(defmethod rpc-client-auth ((client unix-client))
+  (if (rpc-client-initial client)
+      (make-opaque-auth :auth-unix
+			(make-auth-unix :stamp (- (get-universal-time) 
+						  (encode-universal-time 0 0 0 1 1 1970 0))
+					:machine-name (machine-instance)
+					:uid (unix-client-uid client)
+					:gid (unix-client-gid client)
+					:gids (unix-client-gids client)))
+      (make-opaque-auth :auth-short 
+			(unix-client-nickname client))))
+
+(defmethod verify ((client unix-client) verf)
+  (when (eq (opaque-auth-flavour verf) :auth-short)
+    (setf (unix-client-nickname client) (opaque-auth-data verf)))
+  t)
+
+;; ----------------- des -----------------
+
+(defclass des-client (rpc-client)
+  ((name :initarg :name :accessor des-client-name)
+   (secret :initarg :secret :accessor des-client-secret)
+   (public :initarg :public :accessor des-client-public)
+   (key :initarg :key :accessor des-client-key)
+   (window :initarg :window :accessor des-client-window)
+   (nickname :initform nil :accessor des-client-nickname)
+   (timestamp :initform nil :accessor des-client-timestamp))) ;; timestamp used in request
+
+(defmethod rpc-client-auth ((client des-client))
+  ;; if initial request then send a fullname cred, otherwise send a nickname 
+  (if (rpc-client-initial client)
+      (let ((timestamp (des-timestamp)))
+	;; store the timestamp so we can compare with the response timestamp
+	(setf (des-client-timestamp client) timestamp)
+	(des-initial-auth (des-client-key client)
+			  (des-client-name client)
+			  (des-client-secret client)
+			  (des-client-public client)
+			  (des-client-window client)
+			  timestamp))
+      (des-auth (des-client-nickname client))))
+
+(defmethod rpc-client-verf ((client des-client))
+  (if (rpc-client-initial client)
+      (des-initial-verf (des-client-key client) 
+			(des-client-window client)
+			(des-client-timestamp client))
+      (des-verf (des-client-key client))))
+
+(defmethod verify ((client des-client) verf)
+  (let ((v (unpack #'%read-authdes-verf-server (opaque-auth-data verf))))
+    (unless (des-valid-server-verifier (des-client-key client)
+				       (des-client-timestamp client)
+				       v)
+      (error "Invalid DES verifier"))))
+
+;; ----------------- gss ---------------
+
+(defclass gss-client (rpc-client)
+  ((context :initarg :context :accessor gss-client-context)
+   (handle :initform nil :accessor gss-client-handle)
+   (seqno :initform 0 :accessor gss-client-seqno)
+   (service :initarg :service :initform :none :accessor gss-client-service)))
+   
+(defmethod rpc-client-auth ((client gss-client))
+  (when (rpc-client-initial client)
+    (let ((res 
+	   (call-rpc #'%write-gss-init-arg
+		     (gss-client-context client)
+		     #'%read-gss-init-res
+		     :host (rpc-client-host client)
+		     :port (rpc-client-port client)
+		     :program (rpc-client-program client)
+		     :version (rpc-client-version client)
+		     :auth (make-opaque-auth :auth-gss
+					     (make-gss-cred :proc :init
+							    :seqno (gss-client-seqno client)
+							    :service :none))
+		     :protocol (rpc-client-protocol client)
+		     :timeout (rpc-client-timeout client)
+		     :connection (rpc-client-connection client))))
+      ;; store the handle for future requests
+      (setf (gss-client-handle client) (gss-init-res-handle res)
+	    (rpc-client-initial client) nil)))
+  ;; increment the seqno
+  (incf (gss-client-seqno client))
+  ;; return authenticator
+  (make-opaque-auth :auth-gss
+		    (make-gss-cred :proc :data
+				   :seqno (gss-client-seqno client)
+				   :service :none
+				   :handle (gss-client-handle client))))
+
+;; ---------------------------------------------------------
 
 (defun rpc-connect (host port &optional (protocol :udp))
   "Establish a connection to the rpc server."
@@ -245,7 +378,7 @@ the bytes read."
 
 (defun call-rpc (arg-type arg result-type 
 		 &key (host *rpc-host*) (port *rpc-port*) (program 0) (version 0) (proc 0) 
-		   auth verf request-id (protocol :udp) (timeout 1) connection)
+		   auth verf request-id (protocol :udp) (timeout 1) connection client)
   "Establish a connection and execute an RPC to a remote machine. Returns the value decoded by the RESULT-TYPE.
 This function will block until a reply is received or the request times out.
 
@@ -272,49 +405,77 @@ PROTOCOL should be :TCP, :UDP or :BROADCAST. :TCP is the default, and will block
 received in that time. Note that it will return a list of (host port result) instead of just the result.
 
 CONNECTION should be a TCP or UDP connection, as returned by RPC-CONNECT.
+
+CLIENT should be an instance of RPC-CLIENT or its subclasses. This is the ONLY way to authenticate.
 "
   (unless protocol (setf protocol :udp))
-  (ecase protocol
-    (:tcp
-     (let ((conn (if connection 
-		     connection
-		     (rpc-connect host port :tcp))))
-       ;; if timeout specified then set the socket option
-       (when timeout
-	 (setf (usocket:socket-option conn :receive-timeout) timeout))
 
-       (unwind-protect 
-	  (call-rpc-server conn arg-type arg result-type 
-			   :request-id request-id
-			   :program program
-			   :version version
-			   :proc proc
-			   :auth auth
-			   :verf verf)
-	 (unless connection 
-	   (rpc-close conn)))))
-    (:udp
-     (call-rpc-udp host arg-type arg result-type
-		   :port port
-		   :request-id request-id
-		   :program program
-		   :version version
-		   :proc proc
-		   :auth auth
-		   :verf verf
-		   :timeout timeout
-		   :connection connection))
-    (:broadcast
-     (broadcast-rpc arg-type arg result-type
-		    :host host
-		    :port port
-		    :program program
-		    :version version
-		    :proc proc
-		    :auth auth
-		    :verf verf
-		    :request-id request-id
-		    :timeout timeout))))
+  ;; when a client is provided use it to fill in authenticator and verifier
+  (when client
+    (setf auth (rpc-client-auth client)
+	  verf (rpc-client-verf client)
+	  host (rpc-client-host client)
+	  port (rpc-client-port client)
+	  protocol (rpc-client-protocol client)
+	  timeout (rpc-client-timeout client)
+	  program (rpc-client-program client)
+	  version (rpc-client-version client)
+	  connection (rpc-client-connection client)))
+
+  ;; when we're doing gss security levels :integrity or :privacy we need to modify the call args
+  (when (typep client 'gss-client)
+    (case (gss-client-service client)
+      (:integrity 
+       ;; pack and checksum the argument
+       (error "GSS Integrity level not yet supported"))
+      (:privacy 
+       ;; pack, checksum and encrypt 
+       (error "GSS Privacy level not yet supported"))))
+
+  (multiple-value-bind (res verf) 
+      (ecase protocol
+	(:tcp
+	 (let ((conn (if connection 
+			 connection
+			 (rpc-connect host port :tcp))))
+	   ;; if timeout specified then set the socket option
+	   (when timeout
+	     (setf (usocket:socket-option conn :receive-timeout) timeout))
+	   
+	   (unwind-protect 
+		(call-rpc-server conn arg-type arg result-type 
+				 :request-id request-id
+				 :program program
+				 :version version
+				 :proc proc
+				 :auth auth
+				 :verf verf)
+	     (unless connection 
+	       (rpc-close conn)))))
+	(:udp
+	 (call-rpc-udp host arg-type arg result-type
+		       :port port
+		       :request-id request-id
+		       :program program
+		       :version version
+		       :proc proc
+		       :auth auth
+		       :verf verf
+		       :timeout timeout
+		       :connection connection))
+	(:broadcast
+	 (broadcast-rpc arg-type arg result-type
+			:host host
+			:port port
+			:program program
+			:version version
+			:proc proc
+			:auth auth
+			:verf verf
+			:request-id request-id
+			:timeout timeout)))
+    (when client (verify client verf))
+    res))
 
 ;; FIXME: it would be nice to have some simple way of providing default values for
 ;; the arguments. in many cases you typically want to be using the same host, port, protocol 
@@ -369,7 +530,7 @@ OPTIONS allow customization of the generated client function:
 			       `(,@params &key))))
 			(t 
 			 '(arg &key)))
-		     (host ,*default-rpc-host*) (port ,*default-rpc-port*) auth verf request-id (protocol :udp) (timeout 1) connection)
+		     (host ,*default-rpc-host*) (port ,*default-rpc-port*) auth verf request-id (protocol :udp) (timeout 1) connection client)
 	 ,@(when (assoc :documentation options) (cdr (assoc :documentation options)))
 	 ,(let ((the-form `(call-rpc (function ,arg-writer)
                                      ,(cond
@@ -391,26 +552,21 @@ OPTIONS allow customization of the generated client function:
                                      :request-id request-id
                                      :protocol protocol
                                      :timeout timeout
-				     :connection connection))
+				     :connection connection
+				     :client client))
 		(transformer (assoc :transformer options))
 		(gtrafo (gensym "TRAFO"))
 		(gcall (gensym "CALL")))
 	       (if transformer	       
-		   (destructuring-bind ((var &optional verf) &body body) (cdr transformer)			 
+		   (destructuring-bind ((var) &body body) (cdr transformer)			 
 		     `(flet ((,gcall () ,the-form)
-			     (,gtrafo ,(if verf `(,var ,verf) `(,var))
-			       ,@(when verf `((declare (ignorable ,verf))))
-			       ,@body))
+			     (,gtrafo (,var) ,@body))
 			(case protocol
 			  (:broadcast (mapcar (lambda (b)
 						(destructuring-bind (host port val) b
 						  (list host port (,gtrafo val))))
 					      (,gcall)))
-			  (otherwise (multiple-value-bind (res verf) (,gcall)
-				       ,@(unless verf `((declare (ignore verf))))
-				       ,(if verf
-					    `(,gtrafo res verf)
-					    `(,gtrafo res)))))))
+			  (otherwise (,gtrafo (,gcall))))))
 		   the-form)))
 
        ;; define a server handler if required
@@ -420,39 +576,4 @@ OPTIONS allow customization of the generated client function:
 			    (function ,arg-reader) 
 			    (function ,res-writer) 
 			    ,handler))))))))
-
-;; to initiate a gss context creation
-(defun call-create-gss-context (context program version 
-				&key (host *rpc-host*) (port *rpc-port*) 
-				  protocol (timeout 1) connection)
-  "Initiate a GSS context with the RPC server. 
-
-Returns an OPAQUE-AUTH structure to be used in subsequent RPC calls.
-
-Typically the CONTEXT parameter will be a packed Kerberos AP-REQ buffer, wrapped with an OID. 
-E.g. as returned from a CERBERUS:PACK-INITIAL-CONTEXT-TOKEN call."
-  (declare (type vector context)
-	   (type integer program version))
-  (let ((res 
-	 (call-rpc #'%write-gss-init-arg
-		   context
-		   #'%read-gss-init-res
-		   :host host
-		   :port port
-		   :program program
-		   :version version
-		   :auth (make-opaque-auth :auth-gss
-					   (make-gss-cred :proc :init
-							  :seqno 0
-							  :service :none))
-		   :protocol protocol
-		   :timeout timeout
-		   :connection connection)))
-    (make-opaque-auth :auth-gss
-		      (make-gss-cred :proc :data
-				     :seqno 0
-				     :service :none
-				     :handle (gss-init-res-handle res)))))
-
-
 

@@ -330,22 +330,6 @@ VERIFIER should be T. Otherwise VERIFIER should be nil."
 			    (make-authdes-verf-client :adv-timestamp (subseq v 0 8)
 						      :adv-winverf (subseq v 12 16))))))
 
-(defun des-initial-request (name client-secret server-public conversation window program version 
-			    &key (host *rpc-host*) (port *rpc-port*) (protocol :udp) (timeout 1) connection)
-  (let* ((timestamp (des-timestamp))
-	 (auth (des-initial-auth conversation name client-secret server-public window timestamp))
-	 (verf (des-initial-verf conversation window timestamp)))
-    (call-rpc :void nil :void 
-	      :host host
-	      :port port
-	      :program program
-	      :version version
-	      :auth auth
-	      :verf verf
-	      :protocol protocol
-	      :timeout timeout
-	      :connection connection)))
-
 (defun des-auth (nickname)
   "Make a DES authenticator for subsequence client calls."
   (make-opaque-auth :auth-des
