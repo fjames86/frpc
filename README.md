@@ -309,10 +309,15 @@ This is the default mechanism and requires no special treatment.
 ### 5.3 AUTH-DES
 
 ```
-;; the client acquires its secret key and the server's public key
+;; for this example, we explicitly define the secret keys
+;; in reality, only the client knows its secret key, only the server knows its secret key
 CL-USER> (defvar *client-secret* 123123211212320)
 *CLIENT-SECRET*
-CL-USER> (defvar *server-public* (frpc:des-public *server-secret*))
+CL-USER> (defvar *server-secret* 66554433223432)
+*SERVER-SECRET*
+
+;; the client acquires its secret key and the server's public key
+CL-USER> (defvar *server-public* (frpc:des-public *server-secret*)) 
 *SERVER-PUBLIC*
 ;; allocate a client 
 CL-USER> (defvar *client* (make-instance 'frpc:des-client :secret *client-secret* :public *server-public* :name "xxxx"))
@@ -320,15 +325,14 @@ CL-USER> (defvar *client* (make-instance 'frpc:des-client :secret *client-secret
 ;; first call uses fullname authentication
 CL-USER> (pmap:call-null :client *client*)
 NIL
-;; subsequence calls use an allocated nickname
+;; subsequent calls use an allocated nickname
 CL-USER> (pmap:call-null :client *client*)
 
 ;; the server acquires its secret key and the client's public key 
-CL-USER> (defvar *server-secret* 66554433223432)
-*SERVER-SECRET*
 CL-USER> (defvar *client-public* (frpc:des-public *client-secret*))
 *CLIENT-PUBLIC*
 ;; initializes itself and is ready to accept DES requests
+;; note: the server will only be able to accept requests from the clients listed here
 CL-USER> (frpc:des-init *server-secret* (list (frpc:des-public-key "xxxx" *client-public*)))
 (#S(FRPC::DES-KEY
     :FULLNAME "xxxx"
@@ -369,6 +373,10 @@ this should reallocate a new nickname.
 CL-USER> (setf (frpc:rpc-client-initial *client*) t)
 ```
 
+### 5.6 Authorization
+When server handlers are executed, the special variable *RPC-REMOTE-AUTH* is bound to the authenticator 
+that was used in the request. This allows the server to decide whether to honour the request or 
+to signal an RPC-AUTH-ERROR instead. 
 
 ## 6. Examples
 

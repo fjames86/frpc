@@ -204,6 +204,8 @@ returned as an RPC status"
 			   ;; execute the handler function with some specials bound to values
 			   ;; so that the user-defined handler knows who called it and what authentication was used
 			   ;; so that they can authorize access
+			   ;; FIXME: in the case of DES and GSS, perhaps the auth should be bound to the context 
+			   ;; struct instead because the bare auth doesn't provide much information?
 			   (let ((res (with-caller-binded (host port protocol auth)
 					(funcall handler arg))))
 			     (%write-rpc-msg output-stream
