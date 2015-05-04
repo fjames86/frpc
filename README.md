@@ -288,7 +288,7 @@ This is the default mechanism and requires no special treatment.
 ;; the first call uses AUTH-UNIX and if successful will recive a nickname
 (pmap:call-null :client *client*)
 
-;; subsequence calls use AUTH-SHORT i.e. the nickname
+;; subsequent calls use AUTH-SHORT i.e. the nickname
 (pmap:call-null :client *client*)
 
 ```
@@ -299,7 +299,7 @@ This is the default mechanism and requires no special treatment.
 ;; the client acquires its secret key and the server's public key
 CL-USER> (defvar *client-secret* 123123211212320)
 *CLIENT-SECRET*
-CL-USER> (defvar *server-public* (frpc::des-public *server-secret*))
+CL-USER> (defvar *server-public* (frpc:des-public *server-secret*))
 *SERVER-PUBLIC*
 ;; allocate a client 
 CL-USER> (defvar *client* (make-instance 'frpc:des-client :secret *client-secret* :public *server-public* :name "xxxx"))
@@ -313,7 +313,7 @@ CL-USER> (pmap:call-null :client *client*)
 ;; the server acquires its secret key and the client's public key 
 CL-USER> (defvar *server-secret* 66554433223432)
 *SERVER-SECRET*
-CL-USER> (defvar *client-public* (frpc::des-public *client-secret*))
+CL-USER> (defvar *client-public* (frpc:des-public *client-secret*))
 *CLIENT-PUBLIC*
 ;; initializes itself and is ready to accept DES requests
 CL-USER> (frpc:des-init *server-secret* (list (frpc:des-public-key "xxxx" *client-public*)))
@@ -328,12 +328,12 @@ CL-USER> (frpc:des-init *server-secret* (list (frpc:des-public-key "xxxx" *clien
 Kerberos support provided by [cerberus](https://github.com/fjames86/cerberus).
 
 ```
-;; client gets a TGT and crednetials, stores the credentials in *CREDENTIALS* (see cerberus documentation for details)
+;; Client gets a TGT and credentials by communication with the KDC
+;; Stores the credentials in *CREDENTIALS* (see cerberus documentation for details)
 
 ;; client generates a context 
 CL-USER> (defvar *context* (cerberus:pack-initial-context-token (cerberus:make-ap-request *credentials*)))
-;; allocate a client. NOTE: you MUST supply the program and version for GSS because authentication requires
-;; communication with the RPC server.
+;; allocate a client
 CL-USER> (defvar *client* (make-instance 'frpc:gss-client :context *context* :program 10000000 :version 2))
 ;; should now have a handle and be ready for calls
 CL-USER> (pmap:call-null :client *client*)
@@ -344,6 +344,14 @@ CL-USER> (frpc:gss-init *keylist*)
 
 ```
 
+### 5.5 Reauthentication
+RPC servers are free to flush their tables of allocated nicknames/handles. When this happens you will 
+receive a RPC-AUTH-ERROR (AUTH-REJECTED) error. You should set your client back to its initial state and retry,
+this should reallocate a new nickname.
+
+```
+CL-USER> (setf (frpc:rpc-client-initial *client*) t)
+```
 
 
 ## 6. Examples
