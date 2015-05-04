@@ -87,6 +87,7 @@
 
 	   ;; for des security
 	   #:des-init
+	   #:des-public-key
 	   #:des-initial-request-auth
 
 	   ;; for gss security

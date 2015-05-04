@@ -276,9 +276,9 @@ Returns a response verifier to be sent back to the client or nil in the case of 
   ;; start by parsing the data 
   (let ((auth (unpack #'%read-authdes-cred data))
 	(v (unpack #'%read-authdes-verf-client (opaque-auth-data verf))))
-    (handler-case (des-valid-client-request auth v)
+    (handler-case (des-valid-client-request (xunion-val auth) v)
       (error (e)
-	(frpc-log :info "DES authentication failed: ~S" e)
+	(frpc-log :info "DES authentication failed: ~A" e)
 	nil))))
 
 ;; GSS authentication 

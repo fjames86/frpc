@@ -112,7 +112,7 @@
   "Generate the common key from the local private key and remote public key."
   (let ((common (discrete-expt-modulo public secret +dh-modulus+)))
     (let ((bytes (nibbles:make-octet-vector 8)))
-      (setf (nibbles:ub64ref/be bytes 0) (ash common -64))
+      (setf (nibbles:ub64ref/be bytes 0) (mod (ash common -64) (expt 2 64)))
       (dotimes (i 8)
 	(let ((parity (logcount (aref bytes i))))
 	  (unless (zerop parity)
@@ -204,7 +204,7 @@ VERIFIER should be T. Otherwise VERIFIER should be nil."
 (defvar *des-public-keys* nil
   "List of public keys for each client that may talk to the server.")
 
-(defstruct des-key fullname key nickname)
+(defstruct des-key fullname key)
 
 (defun find-des-public-key (fullname)
   (let ((d (find-if (lambda (d)
@@ -212,6 +212,11 @@ VERIFIER should be T. Otherwise VERIFIER should be nil."
 		    *des-public-keys*)))
     (when d 
       (des-key-key d))))
+
+(defun des-public-key (name secret)
+  "Make a DES public key to pass to DES-INIT"
+  (make-des-key :fullname name 
+		:key (dh-public-key secret)))
 
 (defun des-init (secret public-keys)
   "Initialize the server with its secret key so it can accept DES authentication."
@@ -249,7 +254,10 @@ VERIFIER should be T. Otherwise VERIFIER should be nil."
 			(error "No public key for ~A" (authdes-fullname-name auth))))
 	    (common (dh-common-key *des-private-key* public)))
        ;; start by getting the converation key from the authenticator
-       (let ((conversation (dh-decrypt-conversation-key common (authdes-fullname-key auth))))
+       (let ((conversation (concatenate '(vector (unsigned-byte 8))
+					(dh-decrypt-conversation-key common 
+								     (concatenate '(vector (unsigned-byte 8))
+										  (authdes-fullname-key auth))))))
 	 ;; now form the block and decrypt it
 	 (let ((v (dh-decrypt (make-dh-cipher conversation t)
 			      (concatenate '(vector (unsigned-byte 8))
@@ -260,16 +268,16 @@ VERIFIER should be T. Otherwise VERIFIER should be nil."
 	   (destructuring-bind (timestamp window winverf) (unpack #'read-des-enc-block v)
 	     ;; compare the timestamp and window
 	     ;; if it is valid then return allocate and return a context
-	     (when 
-		 (and (< (abs (- (getf timestamp :seconds) 
+	     (if (and (< (abs (- (getf timestamp :seconds) 
 				 (getf (des-timestamp) :seconds)))
 			 window)
 		      (= winverf (1- window)))
-	       (let ((context (add-des-context (authdes-fullname-name auth)
-					       timestamp
-					       conversation
-					       window)))
-		 (des-server-verifier conversation timestamp (des-context-nickname context)))))))))
+		 (let ((context (add-des-context (authdes-fullname-name auth)
+						 timestamp
+						 conversation
+						 window)))
+		   (des-server-verifier conversation timestamp (des-context-nickname context)))
+		 (error "Invalid timestamp ~A window ~A winverf ~A" timestamp window winverf)))))))
     (integer 
      ;; this is a nickname, lookup the context 
      (let ((context (find-des-context auth)))
@@ -302,7 +310,8 @@ VERIFIER should be T. Otherwise VERIFIER should be nil."
 	(common (dh-common-key client-secret server-public)))
     ;; form a 2-block array and encrypt using the conversation key in CBC mode
     (let ((v (dh-encrypt (make-dh-cipher conversation t)
-			 (pack #'write-des-enc-block (list (des-timestamp) window (1- window))))))
+			 (concatenate '(vector (unsigned-byte 8))
+				      (pack #'write-des-enc-block (list (des-timestamp) window (1- window)))))))
       (values 
        (make-opaque-auth :auth-des
 			 (pack #'%write-authdes-cred 
