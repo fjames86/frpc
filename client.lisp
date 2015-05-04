@@ -92,7 +92,7 @@ the bytes read."
   (:documentation "The verifier to use for the client request."))
 
 (defgeneric verify (client verf)
-  (:documentation "Verify the response received from the server."))
+  (:documentation "Verify the response received from the server. Signals an error on failure."))
 
 
 ;; default methods for auth-null flavour authentication 
@@ -166,7 +166,7 @@ the bytes read."
     (unless (des-valid-server-verifier (des-client-key client)
 				       (des-client-timestamp client)
 				       v)
-      (error "Invalid DES verifier"))))
+      (error 'rpc-error :description "Invalid DES verifier"))))
 
 ;; ----------------- gss ---------------
 
@@ -205,10 +205,15 @@ the bytes read."
 				   :service :none
 				   :handle (gss-client-handle client))))
 
+;; the client does not send a verifier 
+
+;; if mutual authentication was requested, there may be a verifier returned
+
+
 ;; ---------------------------------------------------------
 
 (defun rpc-connect (host port &optional (protocol :udp))
-  "Establish a connection to the rpc server."
+  "Establish a connection to the rpc server. MUST be closed with a call to RPC-CLOSE."
   (ecase protocol
     (:udp 
      (usocket:socket-connect host port
@@ -477,9 +482,11 @@ CLIENT should be an instance of RPC-CLIENT or its subclasses. This is the ONLY w
 			:verf verf
 			:request-id request-id
 			:timeout timeout)))
+    ;; verify the response 
     (when client 
       (verify client verf)
       (setf (rpc-client-initial client) nil))
+    ;; return the result 
     res))
 
 ;; FIXME: it would be nice to have some simple way of providing default values for
