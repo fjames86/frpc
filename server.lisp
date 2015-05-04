@@ -212,7 +212,7 @@ returned as an RPC status"
 								:verf resp-verf))
 			     (write-xtype writer output-stream res))))))))))))))
     (error (e)
-      (frpc-log :info "~A" e)
+      (frpc-log :info "error processing: ~S" e)
       (%write-rpc-msg output-stream
 		      (make-rpc-response :accept :garbage-args)))))
 					 
@@ -299,7 +299,7 @@ TIMEOUT should be an integer specifying the maximum time TCP connections should 
 		      (error (e)
 			;; windows is known to throw an error on receive if there was no-one 
 			;; listening on the port the previous UDP packet was sent to.
-			(frpc-log :info "~A" e))))
+			(frpc-log :info "error handling udp: ~S" e))))
 		   (usocket:stream-usocket 
 		    ;; a TCP connection is ready to read 
 		    (let ((c (find socket connections :key #'rpc-connection-conn)))

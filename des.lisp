@@ -268,16 +268,15 @@ VERIFIER should be T. Otherwise VERIFIER should be nil."
 	   (destructuring-bind (timestamp window winverf) (unpack #'read-des-enc-block v)
 	     ;; compare the timestamp and window
 	     ;; if it is valid then return allocate and return a context
-	     (if (and (< (abs (- (getf timestamp :seconds) 
-				 (getf (des-timestamp) :seconds)))
-			 window)
-		      (= winverf (1- window)))
+	     (let ((ts (getf (des-timestamp) :seconds)))
+	       (if (and (< (abs (- (getf timestamp :seconds) ts)) window)
+			(= winverf (1- window)))
 		 (let ((context (add-des-context (authdes-fullname-name auth)
 						 timestamp
 						 conversation
 						 window)))
 		   (des-server-verifier conversation timestamp (des-context-nickname context)))
-		 (error "Invalid timestamp ~A window ~A winverf ~A" timestamp window winverf)))))))
+		 (error "Invalid timestamp ~A:~A window ~A:~A" timestamp ts window winverf))))))))
     (integer 
      ;; this is a nickname, lookup the context 
      (let ((context (find-des-context auth)))
@@ -302,26 +301,60 @@ VERIFIER should be T. Otherwise VERIFIER should be nil."
 				  (des-context-nickname context)))
 	   (error "No context for nickname ~A" auth))))))
 
-	 
-;; generate initial request authenticator and verifier
-(defun des-initial-request-auth (name client-secret server-public window)
-  "Returns (values auth verf). the authenticator and verifier to send to the server."
-  (let ((conversation (dh-conversation-key))
-	(common (dh-common-key client-secret server-public)))
+(defun des-conversation ()
+  "Make a random conversation key."
+  (dh-conversation-key))
+
+(defun des-initial-auth (conversation name client-secret server-public window timestamp)
+  "Make a DES authenticator for initial requets."
+  (let ((common (dh-common-key client-secret server-public)))
     ;; form a 2-block array and encrypt using the conversation key in CBC mode
     (let ((v (dh-encrypt (make-dh-cipher conversation t)
 			 (concatenate '(vector (unsigned-byte 8))
-				      (pack #'write-des-enc-block (list (des-timestamp) window (1- window)))))))
-      (values 
-       (make-opaque-auth :auth-des
-			 (pack #'%write-authdes-cred 
-			       (make-xunion :fullname 
-					    (make-authdes-fullname :name name
-								   :key (dh-encrypt-conversation-key common conversation)
-								   :window (subseq v 8 12)))))
-       (make-opaque-auth :auth-des
-			 (pack #'%write-authdes-verf-client 
-			       (make-authdes-verf-client :adv-timestamp (subseq v 0 8)
-							 :adv-winverf (subseq v 12 16))))))))
+				      (pack #'write-des-enc-block (list timestamp window (1- window)))))))
+      (make-opaque-auth :auth-des
+			(pack #'%write-authdes-cred 
+			      (make-xunion :fullname 
+					   (make-authdes-fullname :name name
+								  :key (dh-encrypt-conversation-key common conversation)
+								  :window (subseq v 8 12))))))))
 
+(defun des-initial-verf (conversation window timestamp)
+  "Make a DES verifier for initial requests."
+  ;; form a 2-block array and encrypt using the conversation key in CBC mode
+  (let ((v (dh-encrypt (make-dh-cipher conversation t)
+		       (concatenate '(vector (unsigned-byte 8))
+				    (pack #'write-des-enc-block (list timestamp window (1- window)))))))
+    (make-opaque-auth :auth-des
+		      (pack #'%write-authdes-verf-client 
+			    (make-authdes-verf-client :adv-timestamp (subseq v 0 8)
+						      :adv-winverf (subseq v 12 16))))))
 
+(defun des-initial-request (name client-secret server-public conversation window program version 
+			    &key (host *rpc-host*) (port *rpc-port*) (protocol :udp) (timeout 1) connection)
+  (let* ((timestamp (des-timestamp))
+	 (auth (des-initial-auth conversation name client-secret server-public window timestamp))
+	 (verf (des-initial-verf conversation window timestamp)))
+    (call-rpc :void nil :void 
+	      :host host
+	      :port port
+	      :program program
+	      :version version
+	      :auth auth
+	      :verf verf
+	      :protocol protocol
+	      :timeout timeout
+	      :connection connection)))
+
+(defun des-auth (nickname)
+  "Make a DES authenticator for subsequence client calls."
+  (make-opaque-auth :auth-des
+		    (pack #'%write-authdes-cred 
+			  (make-xunion :nickname nickname))))
+
+(defun des-verf (conversation)
+  "Make a DES verifier for subsequence client calls."
+  (make-opaque-auth :auth-des
+		    (pack #'%write-authdes-verf-client 
+			  (make-authdes-verf-client :adv-timestamp (encrypt-des-timestamp conversation)
+						    :adv-winverf (nibbles:make-octet-vector 4)))))
