@@ -314,3 +314,5 @@ VERIFIER should be T. Otherwise VERIFIER should be nil."
 			 (pack #'%write-authdes-verf-client 
 			       (make-authdes-verf-client :adv-timestamp (subseq v 0 8)
 							 :adv-winverf (subseq v 12 16))))))))
+
+

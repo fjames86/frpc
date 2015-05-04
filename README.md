@@ -230,14 +230,14 @@ Define structures using
 
 Where the FORM is:
 * a symbol, naming another xtype
-* (:list &rest forms) 
-* (:alist &rest (tag form))
-* (:plist &rest key form)
-* (:struct struct-name &rest (slot-name form))
-* (:union enum-name &rest (enum-keys form)) 
-* (:array form length) 
-* (:varray form &optional length) 
-* (:varray* form &optional length)
+* (:list &rest forms) ::= a list of objects of each type 
+* (:alist &rest (tag form)) ::= an alist of objects keyed on the tag
+* (:plist &rest key form) ::= a plist of objects keyed on the key
+* (:struct struct-name &rest (slot-name form)) ::= a structure with each slot of type form
+* (:union enum-name &rest (enum-keys form))  ::= a union discriminated on the enum-name
+* (:array form length) ::= a fixed-size array
+* (:varray form &optional length) ::= a variable sized array, expands to a list of objects
+* (:varray* form &optional length) ::= a variable sized array, expands to a vector of objects
 
 These rules can be applied recursively. 
 
@@ -267,12 +267,15 @@ variable in the context of an rpc handler function. This allows handlers to impl
 i.e. determining whether the client is permitted to perform the action requested. 
 
 Supported flavours:
-- [x] AUTH_NULL: i.e. no authentication
-- [x] AUTH_UNIX and AUTH_SHORT: uid/gid and machine name. Not really authentication as such, 
+- [x] AUTH-NULL: i.e. no authentication
+- [x] AUTH-UNIX and AUTH-SHORT: uid/gid and machine name. Not really authentication as such, 
 but a simple tagging mechanism.
-- [ ] AUTH_DES: public-key exchange verified by encrypted timestamps (support in progress)
-- [ ] AUTH_GSS: GSS (i.e. Kerberos) authentication, supports authentication, integrity validation and privacy.
- Uses the package [cerberus](https://github.com/fjames86/cerberus) to implement Kerberos v5 authentication.
+- [ ] AUTH-DES: public-key exchange verified by encrypted timestamps. This requires both the client 
+and server have access to the public keys for each other. Traditionally this is implemented using some shared
+repository accessable via RPC (usually NIS or NIS+), however frpc does not assume such a repository is available.
+Key management is left as an exercise for future development.
+- [ ] AUTH-GSS: GSS (i.e. Kerberos) authentication, supports authentication, integrity validation and privacy.
+Uses the package [cerberus](https://github.com/fjames86/cerberus) to implement Kerberos v5 authentication.
 
 
 ## 6. Examples
@@ -314,15 +317,16 @@ See the pounds documentation for more information on the logging system.
 
 ## 8. Notes
 
-* Authentication support is kind of basic and not well fleshed out. GSS (i.e. Kerberos) authentication should be supported.
-* At the moment, reading from TCP streams requires buffering the input to cope with reading multiple fragments. 
-A fragmented-stream type could be defined to wrap the underlying socket stream so that we can avoid the buffering on reads.
+* Authentication support is kind of basic and not well fleshed out. GSS (i.e. Kerberos) authentication should be fully supported, including 
+integrity and privacy levels.
+* At the moment, reading from TCP streams requires buffering the input to cope with reading multiple fragments. This is REALLY bad if
+large payloads are sent. A fragmented-stream type could be defined to wrap the underlying socket stream so that we can avoid the buffering on reads.
 You still need to buffer writes because you need to know how much you intend to write before you've written it.
-* You can start listening on wildcard ports (by supplying 0 as a port number), but there is no way to find out what ports were selected. This makes it impossible to inform the port mapper of where to direct traffic. 
-* Could make it easier to add more transports, e.g. SSL/TLS stream, writing to shared memory etc. 
-Probably not much call for this.
+* You can start listening on wildcard ports (by supplying 0 as a port number), but there is no way to find out what ports were selected. 
+This makes it impossible to inform the port mapper of where to direct traffic. 
+* Could make it easier to add more transports, e.g. SSL/TLS stream, writing to shared memory etc. Probably not much call for this though.
 * UDP multicast? 
-* The XDR serializer is probably not as efficient as it could be, but who really cares if it works.
+* The XDR serializer is probably not as efficient as it could be, but who really cares so long as it works.
 
 ## 9. License
 
