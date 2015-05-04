@@ -186,14 +186,14 @@ returned as an RPC status"
 			    ;; arg == gss-init-arg structure
 			    (let ((a (read-xtype 'gss-integ-data input-stream)))
 			      ;; FIXME: validate the checksum
-			      (frpc-log :info "GSS Integrity message")
+			      (frpc-log :info "GSS Integrity message -- not yet supported")
 			      (setf arg (unpack reader (gss-integ-data-integ a)))))
 			   ((and (eq (opaque-auth-flavour auth) :auth-gss)
 				 (eq (gss-cred-service (opaque-auth-data auth)) :privacy))
 			    (let ((a (read-xtype 'gss-priv-data input-stream)))
 			      (declare (ignore a))
 			      ;; FIXME: decrypt the data and unpack 
-			      (frpc-log :info "GSS privacy message")
+			      (frpc-log :info "GSS privacy message -- not yet supported")
 			      (%write-rpc-msg output-stream
 					      (make-rpc-response :reject :auth-error
 								 :id id
