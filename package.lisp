@@ -85,8 +85,11 @@
 	   #:*frpc-log-path*
 	   #:frpc-log
 
-	   ;; for gss security
+	   ;; for des security
 	   #:des-init
+	   #:des-initial-request-auth
+
+	   ;; for gss security
 	   #:gss-init
 
 	   ))
