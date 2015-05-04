@@ -91,6 +91,7 @@
 	   ;; for des security
 	   #:des-client
 	   #:des-init
+	   #:des-public
 	   #:des-public-key
 	   #:des-conversation
 	   #:des-auth

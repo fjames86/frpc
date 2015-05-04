@@ -135,7 +135,7 @@ the bytes read."
   ((name :initarg :name :accessor des-client-name)
    (secret :initarg :secret :accessor des-client-secret)
    (public :initarg :public :accessor des-client-public)
-   (key :initarg :key :accessor des-client-key)
+   (key :initarg :key :initform (des-conversation) :accessor des-client-key)
    (window :initarg :window :accessor des-client-window)
    (nickname :initform nil :accessor des-client-nickname)
    (timestamp :initform nil :accessor des-client-timestamp))) ;; timestamp used in request

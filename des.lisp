@@ -153,12 +153,13 @@ VERIFIER should be T. Otherwise VERIFIER should be nil."
 			(encode-universal-time 0 0 0 1 3 1970 0)))  ;; note: march 1st, not Jan 1st!
 	:useconds (or useconds 0)))
 
-(defun encrypt-des-timestamp (key &optional timestamp)
-  (let ((v (pack #'%write-authdes-timestamp (or timestamp (des-timestamp)))))
+(defun encrypt-des-timestamp (key &optional timestamp)  
+  (let ((v (concatenate '(vector (unsigned-byte 8))
+			(pack #'%write-authdes-timestamp (or timestamp (des-timestamp))))))
     (dh-encrypt (make-dh-cipher key) v)))
 
 (defun decrypt-des-timestamp (key buffer)
-  (let ((v (dh-decrypt (make-dh-cipher key) buffer)))
+  (let ((v (dh-decrypt (make-dh-cipher key) (concatenate '(vector (unsigned-byte 8)) buffer))))
     (unpack #'%read-authdes-timestamp v)))
 
 (defxtype* des-enc-block ((:reader read-des-enc-block) (:writer write-des-enc-block))
@@ -213,10 +214,13 @@ VERIFIER should be T. Otherwise VERIFIER should be nil."
     (when d 
       (des-key-key d))))
 
-(defun des-public-key (name secret)
+(defun des-public (secret)
+  (dh-public-key secret))
+
+(defun des-public-key (name public)
   "Make a DES public key to pass to DES-INIT"
   (make-des-key :fullname name 
-		:key (dh-public-key secret)))
+		:key public))
 
 (defun des-init (secret public-keys)
   "Initialize the server with its secret key so it can accept DES authentication."
@@ -233,7 +237,7 @@ VERIFIER should be T. Otherwise VERIFIER should be nil."
 
 (defun add-des-context (fullname timestamp key window)
   (let ((c (make-des-context :fullname fullname
-			     :nickname (random (expt 2 32))
+			     :nickname (random (expt 2 31))
 			     :timestamp timestamp
 			     :key key
 			     :window window)))
