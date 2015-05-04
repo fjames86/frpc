@@ -277,6 +277,74 @@ Key management is left as an exercise for future development.
 - [ ] AUTH-GSS: GSS (i.e. Kerberos) authentication, supports authentication, integrity validation and privacy.
 Uses the package [cerberus](https://github.com/fjames86/cerberus) to implement Kerberos v5 authentication.
 
+### 5.1 AUTH-NULL 
+This is the default mechanism and requires no special treatment.
+
+
+### 5.2 AUTH-UNIX 
+```
+(defvar *client* (make-instance 'frpc:unix-client :uid 1000 :gid 1001 :gids '(1002 1005)))
+
+;; the first call uses AUTH-UNIX and if successful will recive a nickname
+(pmap:call-null :client *client*)
+
+;; subsequence calls use AUTH-SHORT i.e. the nickname
+(pmap:call-null :client *client*)
+
+```
+
+### 5.3 AUTH-DES
+
+```
+;; the client acquires its secret key and the server's public key
+CL-USER> (defvar *client-secret* 123123211212320)
+*CLIENT-SECRET*
+CL-USER> (defvar *server-public* (frpc::des-public *server-secret*))
+*SERVER-PUBLIC*
+;; allocate a client 
+CL-USER> (defvar *client* (make-instance 'frpc:des-client :secret *client-secret* :public *server-public* :name "xxxx"))
+*CLIENT2*
+;; first call uses fullname authentication
+CL-USER> (pmap:call-null :client *client*)
+NIL
+;; subsequence calls use an allocated nickname
+CL-USER> (pmap:call-null :client *client*)
+
+;; the server acquires its secret key and the client's public key 
+CL-USER> (defvar *server-secret* 66554433223432)
+*SERVER-SECRET*
+CL-USER> (defvar *client-public* (frpc::des-public *client-secret*))
+*CLIENT-PUBLIC*
+;; initializes itself and is ready to accept DES requests
+CL-USER> (frpc:des-init *server-secret* (list (frpc:des-public-key "xxxx" *client-public*)))
+(#S(FRPC::DES-KEY
+    :FULLNAME "xxxx"
+    :KEY 3213052535315436189492383973955265165447190102893452033197))
+
+```
+
+### 5.4 AUTH-GSS (Kerberos)
+
+Kerberos support provided by [cerberus](https://github.com/fjames86/cerberus).
+
+```
+;; client gets a TGT and crednetials, stores the credentials in *CREDENTIALS* (see cerberus documentation for details)
+
+;; client generates a context 
+CL-USER> (defvar *context* (cerberus:pack-initial-context-token (cerberus:make-ap-request *credentials*)))
+;; allocate a client. NOTE: you MUST supply the program and version for GSS because authentication requires
+;; communication with the RPC server.
+CL-USER> (defvar *client* (make-instance 'frpc:gss-client :context *context* :program 10000000 :version 2))
+;; should now have a handle and be ready for calls
+CL-USER> (pmap:call-null :client *client*)
+
+;; server initializes itself with its keylist (i.e. contents of keytab file)
+CL-USER> (defvar *keylist* (cerberus:generate-keylist "username" "password" "realm"))
+CL-USER> (frpc:gss-init *keylist*)
+
+```
+
+
 
 ## 6. Examples
 
