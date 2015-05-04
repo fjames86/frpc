@@ -101,7 +101,7 @@ TIMEOUT specifies the duration (in seconds) that a TCP connection should remain 
 	       (handler-case (usocket:socket-close (rpc-connection-conn c))
 		 (error (e)
 		   ;; this can happen if it's already been closed by the remote peer
-		   (frpc-log :info "Couldn't close connection: ~S" e)))
+		   (frpc-log :info "Couldn't close connection: ~A" e)))
 	       nil)
 	      (t 
 	       (list c))))
@@ -212,7 +212,7 @@ returned as an RPC status"
 								:verf resp-verf))
 			     (write-xtype writer output-stream res))))))))))))))
     (error (e)
-      (frpc-log :info "error processing: ~S" e)
+      (frpc-log :info "error processing: ~A" e)
       (%write-rpc-msg output-stream
 		      (make-rpc-response :accept :garbage-args)))))
 					 
@@ -299,7 +299,7 @@ TIMEOUT should be an integer specifying the maximum time TCP connections should 
 		      (error (e)
 			;; windows is known to throw an error on receive if there was no-one 
 			;; listening on the port the previous UDP packet was sent to.
-			(frpc-log :info "error handling udp: ~S" e))))
+			(frpc-log :info "error handling udp: ~A" e))))
 		   (usocket:stream-usocket 
 		    ;; a TCP connection is ready to read 
 		    (let ((c (find socket connections :key #'rpc-connection-conn)))

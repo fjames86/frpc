@@ -382,45 +382,48 @@ the bytes read."
   "Establish a connection and execute an RPC to a remote machine. Returns the value decoded by the RESULT-TYPE.
 This function will block until a reply is received or the request times out.
 
-ARG-TYPE should be either a reader function or a symbol naming a valid XTYPE. 
+ARG-TYPE should be either a writer function or a symbol naming a valid XTYPE. 
 
 ARG should be a value which can be passed to the ARG-TYPE function.
 
-RESULT-TYPE should be either a writer function or a symbol naming a valid XTYPE.
+RESULT-TYPE should be either a reader function or a symbol naming a valid XTYPE.
 
 HOST and PORT name the server to send the message to.
 
-PROGRAM, VERSION and PROC define the RPC procedure.
+PROGRAM, VERSION and PROC define the RPC procedure to call.
 
-If provided, AUTH and VERF should be OPAQUE-AUTH structures, as returned from MAKE-OPAQUE-AUTH.
+If provided, AUTH and VERF should be OPAQUE-AUTH structures, as returned from MAKE-OPAQUE-AUTH. These are used to authenticate
+the request. Note: do not use these unless you understand what you are doing. 
+The easy way to authenticate requests is to provide a CLIENT parameter (see below).
 
-If provided, REQUEST-ID should be an integer specifying the message ID to use. If not provided, the current value of *rpc-msgid* will be used,
-*rpc-msgid* will then be incremented.
+If provided, REQUEST-ID should be an integer specifying the message ID to use. If not provided an incrementing seqno will be used.
+Generally there is no reason for users to provide this parameter.
 
-If TIMEOUT is specified, it will be set as the RECEIVE-TIMEOUT (is using TCP) or to control waiting for UDP responses.
+If TIMEOUT is specified, it will be set as the RECEIVE-TIMEOUT (is using TCP) or to time to wait for UDP responses.
 
-PROTOCOL should be :TCP, :UDP or :BROADCAST. :TCP is the default, and will block until a reply is recieved.
-:UDP will wait for up to TIMEOUT seconds for a reply and will raise an RPC-TIMEOUT-ERROR if it doesn't receive one.
+PROTOCOL should be :TCP, :UDP or :BROADCAST. :UDP is the default, and will block until TIMEOUT seconds for a reply 
+and will raise an RPC-TIMEOUT-ERROR if it doesn't receive one. Specify TIMEOUT to NIL to return immediately and not await 
+a response.
+:TCP will block until a response it received.
 :BROADCAST should be used for UDP broadcasts. The client will wait for up to TIMEOUT seconds and collect all the repsonses
 received in that time. Note that it will return a list of (host port result) instead of just the result.
 
 CONNECTION should be a TCP or UDP connection, as returned by RPC-CONNECT.
 
-CLIENT should be an instance of RPC-CLIENT or its subclasses. This is the ONLY way to authenticate.
+CLIENT should be an instance of RPC-CLIENT or its subclasses. This is the ONLY way to authenticate calls.
 "
-  (unless protocol (setf protocol :udp))
-
   ;; when a client is provided use it to fill in authenticator and verifier
+  ;; fill out the other parameters with values from the client 
   (when client
-    (setf auth (rpc-client-auth client)
-	  verf (rpc-client-verf client)
-	  host (rpc-client-host client)
-	  port (rpc-client-port client)
-	  protocol (rpc-client-protocol client)
-	  timeout (rpc-client-timeout client)
+    (setf auth (rpc-client-auth client) ;; generate an authenticator
+	  verf (rpc-client-verf client) ;; generate a verifier 
+	  host (or host (rpc-client-host client))
+	  port (or port (rpc-client-port client))
+	  protocol (or protocol (rpc-client-protocol client))
+	  timeout (or timeout (rpc-client-timeout client))
 	  program (or program (rpc-client-program client) (error "Must provide a program"))
 	  version (or version (rpc-client-version client) (error "Must provide a version"))
-	  connection (rpc-client-connection client)))
+	  connection (or connection (rpc-client-connection client))))
 
   ;; when we're doing gss security levels :integrity or :privacy we need to modify the call args
   (when (typep client 'gss-client)

@@ -270,12 +270,25 @@ Supported flavours:
 - [x] AUTH-NULL: i.e. no authentication
 - [x] AUTH-UNIX and AUTH-SHORT: uid/gid and machine name. Not really authentication as such, 
 but a simple tagging mechanism.
-- [ ] AUTH-DES: public-key exchange verified by encrypted timestamps. This requires both the client 
+- [x] AUTH-DES: public-key exchange verified by encrypted timestamps. This requires both the client 
 and server have access to the public keys for each other. Traditionally this is implemented using some shared
 repository accessable via RPC (usually NIS or NIS+), however frpc does not assume such a repository is available.
 Key management is left as an exercise for future development.
 - [ ] AUTH-GSS: GSS (i.e. Kerberos) authentication, supports authentication, integrity validation and privacy.
 Uses the package [cerberus](https://github.com/fjames86/cerberus) to implement Kerberos v5 authentication.
+
+
+To use client authentication you must create an instance of a subclass of RPC-CLIENT (see below). This can
+also be used as a "bag" of default values for the CALL-RPC keyword parameters.
+
+```
+;; allocate a client 
+CL-USER> (defvar *client* (make-instance 'frpc:rpc-client :host "10.1.1.1" :port 123 :protocol :udp :timeout 1))
+
+;; use it to perform an RPC
+CL-USER> (pmap:call-null :client *client*)
+
+```
 
 ### 5.1 AUTH-NULL 
 This is the default mechanism and requires no special treatment.
