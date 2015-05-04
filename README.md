@@ -327,6 +327,9 @@ CL-USER> (frpc:des-init *server-secret* (list (frpc:des-public-key "xxxx" *clien
 
 Kerberos support provided by [cerberus](https://github.com/fjames86/cerberus).
 
+Please note: RPCSEC_GSS provides both integrity (checksumming) and privacy (encryption) of 
+the call arguments/results. This is not currently supported by frpc.
+
 ```
 ;; Client gets a TGT and credentials by communication with the KDC
 ;; Stores the credentials in *CREDENTIALS* (see cerberus documentation for details)
