@@ -86,6 +86,7 @@
 	   #:frpc-log
 
 	   ;; for gss security
+	   #:des-init
 	   #:gss-init
 
 	   ))

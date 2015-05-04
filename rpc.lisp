@@ -268,15 +268,18 @@ Returns a response verifier to be sent back to the client or nil in the case of 
 
 ;; 9.3 DES authentication
 
-;; (defmethod pack-auth-data ((flavour (eql :auth-des)) data)
-;;   (pack #'%write-authdes-cred data))
+;; DES authentication is different to the other flavours because its authenticator and verifier structures
+;; do not match. This means we can't define a functions to pack/unpack its data. We therefore leave it as
+;; an opaque buffer and parse it as required.
 
-;; (defmethod unpack-auth-data ((flavour (eql :auth-des)) data)
-;;   (unpack #'%read-authdes-cred data))
-
-;; ;; FIXME: reject all auth-des requests for the moment
-;; (defmethod authenticate ((flavour (eql :auth-des)) data verf)
-;;   nil)
+(defmethod authenticate ((flavour (eql :auth-des)) data verf)
+  ;; start by parsing the data 
+  (let ((auth (unpack #'%read-authdes-cred data))
+	(v (unpack #'%read-authdes-verf-client (opaque-auth-data verf))))
+    (handler-case (des-valid-client-request auth v)
+      (error (e)
+	(frpc-log :info "DES authentication failed: ~S" e)
+	nil))))
 
 ;; GSS authentication 
 

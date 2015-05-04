@@ -16,14 +16,13 @@
 ;; 7. The server gets its secret key and the public key for the client and combines them to getthe common key.
 ;; 8. The server decrypts to get the conversation key.
 ;; 9. The server forms a 2-block array and decrypts using the conversation key. 
-;; 10. The server validates that the timestamp is within a "reasonable" skew of its own clock and that the 
-;; winverf = window - 1.
+;; 10. The server validates that the timestamp is within the window and that winverf = window - 1.
 ;; 11. The server stores the conversation key, window, name etc in some local storage and assigns the client an
 ;; integer "nickname". 
 ;; 12. The server returns the nickname and the same timestamp - 1 second (encrypted) back to the client.
 ;; 13. All subsequence client requests only send and encrypted timestamp (ECB mode) in the verifier, 
 ;; and the nickname in the authenticator.
-;; 14. The server validates the timestamp is "within reasonable skew" and responds with the timestamp-1. 
+;; 14. The server validates the timestamp is within the window and responds with the timestamp-1. 
 ;; The server is free to flush the contexts whenever it wishes.
 
 
@@ -154,6 +153,14 @@ VERIFIER should be T. Otherwise VERIFIER should be nil."
 			(encode-universal-time 0 0 0 1 3 1970 0)))  ;; note: march 1st, not Jan 1st!
 	:useconds (or useconds 0)))
 
+(defun encrypt-des-timestamp (key &optional timestamp)
+  (let ((v (pack #'%write-authdes-timestamp (or timestamp (des-timestamp)))))
+    (dh-encrypt (make-dh-cipher key) v)))
+
+(defun decrypt-des-timestamp (key buffer)
+  (let ((v (dh-decrypt (make-dh-cipher key) buffer)))
+    (unpack #'%read-authdes-timestamp v)))
+
 (defxtype* des-enc-block ((:reader read-des-enc-block) (:writer write-des-enc-block))
   (:list authdes-timestamp
 	 :uint32 ;; window
@@ -175,61 +182,34 @@ VERIFIER should be T. Otherwise VERIFIER should be nil."
        (make-authdes-verf-client :adv-timestamp (subseq v 0 8)
 				 :adv-winverf (subseq v 12 16))))))
 
-  
-;; allow 60 seconds difference
-(defconstant +des-timestamp-skew+ 60)
-
-;; server validates the client request
-(defun des-valid-client-request (secret public auth verf)
-  "This runs on the server and validates the initial client request."
-  (let ((common (dh-common-key secret public)))
-    ;; start by getting the converation key from the authenticator
-    (let ((conversation (dh-decrypt-conversation-key common (authdes-fullname-key auth))))
-      ;; now form the block and decrypt it
-      (let ((v (dh-decrypt (make-dh-cipher conversation t)
-			   (concatenate '(vector (unsigned-byte 8))
-					(authdes-verf-client-adv-timestamp verf)
-					(authdes-fullname-window auth)
-					(authdes-verf-client-adv-winverf verf)))))
-	;; unpack it 
-	(destructuring-bind (timestamp window winverf) (unpack #'read-des-enc-block v)
-	  ;; compare the timestamp and window
-	  ;; FIXME: if it is valid then return allocate and return context
-	  (and (< (abs (- (getf timestamp :seconds) (getf (des-timestamp) :seconds)))
-		  +des-timestamp-skew+)
-	       (= winverf (1- window))))))))
-
 (defun des-client-verifier (conversation)
   "Generates a DES verifier for normal transactions."
-  (let ((v (pack #'%write-authdes-timestamp (des-timestamp))))
-    (make-authdes-verf-client :adv-timestamp (dh-encrypt (make-dh-cipher conversation) v)
-			      :adv-winverf (nibbles:make-octet-vector 4))))
+    (make-authdes-verf-client :adv-timestamp (encrypt-des-timestamp conversation)
+			      :adv-winverf (nibbles:make-octet-vector 4))) ;; unused, just 0 octets
 
 (defun des-server-verifier (conversation timestamp nickname)
   "Generate a DES verifier that the server responds with."
-  (let ((v (pack #'%write-authdes-timestamp 
-		 (des-timestamp (1- (getf timestamp :seconds))
-				(getf timestamp :useconds)))))
-    (make-authdes-verf-server :adv-timeverf (dh-encrypt (make-dh-cipher conversation) v)
-			      :adv-nickname nickname)))
+  (make-authdes-verf-server :adv-timeverf 
+			    (encrypt-des-timestamp conversation
+						   (des-timestamp (1- (getf timestamp :seconds))
+								  (getf timestamp :useconds)))
+			    :adv-nickname 
+			    nickname))
 
 (defun des-valid-server-verifier (conversation timestamp verf)
   "Check the timestamp is 1- the timestamp we sent"
-  (let ((v (authdes-verf-server-adv-timeverf verf)))
-    (let ((ts (unpack #'%read-authdes-timestamp (dh-decrypt (make-dh-cipher conversation) v))))
-      (= (1+ (getf ts :seconds) (getf timestamp :seconds))))))
+  (let ((ts (decrypt-des-timestamp conversation 
+				   (authdes-verf-server-adv-timeverf verf))))
+    (= (1+ (getf ts :seconds)) 
+       (getf timestamp :seconds))))
 
 
-;; --------------------------------------------
+;; ----------------------------------------------------
 
 
 
 (defvar *des-private-key* nil
   "The server's private key.")
-
-(defun des-init (secret)
-  "Initialize the server with its secret key so it can accept DES authentication."
-  (setf *des-private-key* secret))
 
 ;; need a database of public keys. Only clients which have an entry in this list may be authenticated
 ;; because we need to know their public key 
@@ -238,11 +218,6 @@ VERIFIER should be T. Otherwise VERIFIER should be nil."
 
 (defstruct des-key fullname key nickname)
 
-(defun add-des-public-key (fullname key)
-  (push (make-des-key :fullname fullname
-		      :key key)
-	*des-public-keys*))
-
 (defun find-des-public-key (fullname)
   (let ((d (find-if (lambda (d)
 		      (string-equal (des-key-fullname d) fullname))
@@ -250,13 +225,18 @@ VERIFIER should be T. Otherwise VERIFIER should be nil."
     (when d 
       (des-key-key d))))
 
+(defun des-init (secret public-keys)
+  "Initialize the server with its secret key so it can accept DES authentication."
+  (setf *des-private-key* secret)
+  (setf *des-public-keys* public-keys))
 
 
 ;; client contexts -- basically information about which clients have been authenticated
 (defstruct des-context 
   fullname nickname timestamp key window)
 
-(defvar *des-contexts* (make-cyclic-buffer 10))
+(defvar *des-contexts* (make-cyclic-buffer 10)
+  "Cyclic buffer of DES contexts.")
 
 (defun add-des-context (fullname timestamp key window)
   (let ((c (make-des-context :fullname fullname
@@ -272,3 +252,46 @@ VERIFIER should be T. Otherwise VERIFIER should be nil."
 		    (= (des-context-nickname c) nickname))
 		  *des-contexts*))
 
+;; server validates the client request. Returns a server verifier.
+(defun des-valid-client-request (auth verf)
+  "This runs on the server and validates the initial client request. Returns a server verifier."
+  (etypecase auth
+    (authdes-fullname 
+     (let* ((public (or (find-des-public-key (authdes-fullname-name auth))
+			(error "No public key for ~A" (authdes-fullname-name auth))))
+	    (common (dh-common-key *des-private-key* public)))
+       ;; start by getting the converation key from the authenticator
+       (let ((conversation (dh-decrypt-conversation-key common (authdes-fullname-key auth))))
+	 ;; now form the block and decrypt it
+	 (let ((v (dh-decrypt (make-dh-cipher conversation t)
+			      (concatenate '(vector (unsigned-byte 8))
+					   (authdes-verf-client-adv-timestamp verf)
+					   (authdes-fullname-window auth)
+					   (authdes-verf-client-adv-winverf verf)))))
+	   ;; unpack it 
+	   (destructuring-bind (timestamp window winverf) (unpack #'read-des-enc-block v)
+	     ;; compare the timestamp and window
+	     ;; if it is valid then return allocate and return a context
+	     (when 
+		 (and (< (abs (- (getf timestamp :seconds) 
+				 (getf (des-timestamp) :seconds)))
+			 window)
+		      (= winverf (1- window)))
+	       (let ((context (add-des-context (authdes-fullname-name auth)
+					       timestamp
+					       conversation
+					       window)))
+		 (des-server-verifier conversation timestamp (des-context-nickname context)))))))))
+    (integer 
+     ;; this is a nickname, lookup the context 
+     (let ((context (find-des-context auth)))
+       (if context 
+	   (let ((timestamp (decrypt-des-timestamp (des-context-key context)
+						   (authdes-verf-client-adv-timestamp verf))))
+	     (setf (des-context-timestamp context) timestamp)
+	     (des-server-verifier (des-context-key context)
+				  timestamp 
+				  (des-context-nickname context)))
+	   (error "No context for nickname ~A" auth))))))
+
+	 
