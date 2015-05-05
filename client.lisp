@@ -76,14 +76,17 @@ the bytes read."
 ;; ------------- default/null authentication ---------------
 
 (defclass rpc-client ()
-  ((host :initarg :host :initform *rpc-host* :accessor rpc-client-host)
-   (port :initarg :port :initform *rpc-port* :accessor rpc-client-port)
+  ((host :initarg :host :initform nil :accessor rpc-client-host)
+   (port :initarg :port :initform nil :accessor rpc-client-port)
    (program :initarg :program :initform nil :accessor rpc-client-program)
    (version :initarg :version :initform nil :accessor rpc-client-version)
    (initial :initform t :accessor rpc-client-initial)
    (connection :initarg :connection :initform nil :accessor rpc-client-connection)
-   (protocol :initarg :protocol :initform :udp :accessor rpc-client-protocol)
-   (timeout :initarg :timeout :initform 1 :accessor rpc-client-timeout)))
+   (protocol :initarg :protocol :initform nil :accessor rpc-client-protocol)
+   (timeout :initarg :timeout :initform nil :accessor rpc-client-timeout)))
+
+;;(defmethod reinitialize-instance :after ((instance rpc-client) &key)
+;;  (setf (rpc-client-initial instance) nil))
 
 (defgeneric rpc-client-auth (client)
   (:documentation "The authenticator to use for the client request."))
@@ -112,6 +115,10 @@ the bytes read."
    (gids :initarg :gids :initform nil :accessor unix-client-gids)
    (nickname :initform nil :accessor unix-client-nickname)))
 
+(defmethod print-object ((client unix-client) stream)
+  (print-unreadable-object (client stream :type t)
+    (format stream ":NICKNAME ~A" (unix-client-nickname client))))
+
 (defmethod rpc-client-auth ((client unix-client))
   (if (rpc-client-initial client)
       (make-opaque-auth :auth-unix
@@ -126,7 +133,8 @@ the bytes read."
 
 (defmethod verify ((client unix-client) verf)
   (when (eq (opaque-auth-flavour verf) :auth-short)
-    (setf (unix-client-nickname client) (opaque-auth-data verf)))
+    (setf (unix-client-nickname client) (opaque-auth-data verf)
+	  (rpc-client-initial client) nil))
   t)
 
 ;; ----------------- des -----------------
@@ -140,6 +148,10 @@ the bytes read."
    (nickname :initform nil :accessor des-client-nickname)
    (timestamp :initform nil :accessor des-client-timestamp))) ;; timestamp used in request
 
+(defmethod print-object ((client des-client) stream)
+  (print-unreadable-object (client stream :type t)
+    (format stream ":NICKNAME ~A" (des-client-nickname client))))
+
 (defmethod rpc-client-auth ((client des-client))
   ;; if initial request then send a fullname cred, otherwise send a nickname 
   (if (rpc-client-initial client)
@@ -152,7 +164,10 @@ the bytes read."
 			  (des-client-public client)
 			  (des-client-window client)
 			  timestamp))
-      (des-auth (des-client-nickname client))))
+      (let ((timestamp (des-timestamp)))
+	;; store the timestamp so we can compare with the response timestamp
+	(setf (des-client-timestamp client) timestamp)
+	(des-auth (des-client-nickname client)))))
 
 (defmethod rpc-client-verf ((client des-client))
   (if (rpc-client-initial client)
@@ -166,7 +181,10 @@ the bytes read."
     (unless (des-valid-server-verifier (des-client-key client)
 				       (des-client-timestamp client)
 				       v)
-      (error 'rpc-error :description "Invalid DES verifier"))))
+      (error 'rpc-error :description "Invalid DES verifier"))
+    ;; store the nickname 
+    (setf (des-client-nickname client) (authdes-verf-server-adv-nickname v)
+	  (rpc-client-initial client) nil)))
 
 ;; ----------------- gss ---------------
 
@@ -175,7 +193,11 @@ the bytes read."
    (handle :initform nil :accessor gss-client-handle)
    (seqno :initform 0 :accessor gss-client-seqno)
    (service :initarg :service :initform :none :accessor gss-client-service)))
-   
+
+(defmethod print-object ((client gss-client) stream)
+  (print-unreadable-object (client stream :type t)
+    (format stream ":HANDLE ~S" (gss-client-handle client))))
+
 (defmethod rpc-client-auth ((client gss-client))
   (when (rpc-client-initial client)
     (let ((res 
@@ -196,8 +218,10 @@ the bytes read."
       ;; store the handle for future requests
       (setf (gss-client-handle client) (gss-init-res-handle res)
 	    (rpc-client-initial client) nil)))
+
   ;; increment the seqno
   (incf (gss-client-seqno client))
+
   ;; return authenticator
   (make-opaque-auth :auth-gss
 		    (make-gss-cred :proc :data
@@ -417,18 +441,31 @@ CONNECTION should be a TCP or UDP connection, as returned by RPC-CONNECT.
 
 CLIENT should be an instance of RPC-CLIENT or its subclasses. This is the ONLY way to authenticate calls.
 "
-  ;; when a client is provided use it to fill in authenticator and verifier
-  ;; fill out the other parameters with values from the client 
   (when client
-    (setf auth (rpc-client-auth client) ;; generate an authenticator
-	  verf (rpc-client-verf client) ;; generate a verifier 
-	  host (or host (rpc-client-host client))
+    ;; if the client is a gss client it needs special treatment...
+    ;; because it needs all the call-rpc keyword args in its client so it can do 
+    ;; the initial context creation rpc, we need to fill in the missing parts
+    ;; from the args provided here
+    (when (typep client 'gss-client)
+      (setf (rpc-client-host client) (or (rpc-client-host client) host)
+	    (rpc-client-port client) (or (rpc-client-port client) port)
+	    (rpc-client-protocol client) (or (rpc-client-protocol client) protocol)
+	    (rpc-client-timeout client) (or (rpc-client-timeout client) timeout)
+	    (rpc-client-program client) (or (rpc-client-program client) program)
+	    (rpc-client-version client) (or (rpc-client-version client) version)))
+
+    ;; when a client is provided use it to fill in authenticator and verifier
+    ;; fill out the other parameters with values from the client 
+    (setf host (or host (rpc-client-host client))
 	  port (or port (rpc-client-port client))
 	  protocol (or protocol (rpc-client-protocol client))
 	  timeout (or timeout (rpc-client-timeout client))
-	  program (or program (rpc-client-program client) (error "Must provide a program"))
-	  version (or version (rpc-client-version client) (error "Must provide a version"))
-	  connection (or connection (rpc-client-connection client))))
+	  program (or program (rpc-client-program client))
+	  version (or version (rpc-client-version client))
+	  connection (or connection (rpc-client-connection client))
+
+	  auth (rpc-client-auth client) ;; generate an authenticator
+	  verf (rpc-client-verf client))) ;; generate a verifier 
 
   ;; when we're doing gss security levels :integrity or :privacy we need to modify the call args
   (when (typep client 'gss-client)
@@ -482,11 +519,12 @@ CLIENT should be an instance of RPC-CLIENT or its subclasses. This is the ONLY w
 			:verf verf
 			:request-id request-id
 			:timeout timeout)))
-    ;; verify the response 
+
+    ;; verify the response -- this will error if verification fails 
     (when client 
-      (verify client verf)
-      (setf (rpc-client-initial client) nil))
-    ;; return the result 
+      (verify client verf))
+
+    ;; return the RPC result 
     res))
 
 ;; FIXME: it would be nice to have some simple way of providing default values for

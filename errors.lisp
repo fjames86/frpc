@@ -8,7 +8,7 @@
 (define-condition rpc-error (error)
   ((description :initform "" :initarg :description :reader rpc-error-description))
   (:report (lambda (condition stream)
-	     (format stream "RPC ERROR: ~S" (rpc-error-description condition)))))
+	     (format stream "RPC-ERROR: ~A" (rpc-error-description condition)))))
 
 ;; accept errors
 (define-condition rpc-accept-error (rpc-error)

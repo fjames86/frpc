@@ -222,11 +222,6 @@ VERIFIER should be T. Otherwise VERIFIER should be nil."
   (make-des-key :fullname name 
 		:key public))
 
-(defun des-init (secret public-keys)
-  "Initialize the server with its secret key so it can accept DES authentication."
-  (setf *des-private-key* secret)
-  (setf *des-public-keys* public-keys))
-
 
 ;; client contexts -- basically information about which clients have been authenticated
 (defstruct des-context 
@@ -248,6 +243,13 @@ VERIFIER should be T. Otherwise VERIFIER should be nil."
   (cyclic-find-if (lambda (c)
 		    (= (des-context-nickname c) nickname))
 		  *des-contexts*))
+
+(defun des-init (secret public-keys &key (max-contexts 10))
+  "Initialize the server with its secret key so it can accept DES authentication."
+  (setf *des-private-key* secret
+	*des-public-keys* public-keys
+	*des-contexts* (make-cyclic-buffer max-contexts)))
+
 
 ;; server validates the client request. Returns a server verifier.
 (defun des-valid-client-request (auth verf)
@@ -294,11 +296,11 @@ VERIFIER should be T. Otherwise VERIFIER should be nil."
 	       (error "Timestamp ~S older than previous received timestamp ~S" 
 		      timestamp (des-context-timestamp context)))
 	     ;; verify the timestamp is within the window
-	     (unless (< (abs (- (getf timestamp :seconds) (getf (des-context-timestamp context) :seconds)))
+	     (unless (< (abs (- (getf timestamp :seconds) (getf (des-timestamp) :seconds)))
 			(des-context-window context))
-	       (error "Timestamp outside window"))
+	       (error "Timestamp ~S outside window" timestamp))
 
-	     ;; all good -- update the timestamp and return a verifier
+	     ;; all good -- update the context timestamp and return a verifier
 	     (setf (des-context-timestamp context) timestamp)
 	     (des-server-verifier (des-context-key context)
 				  timestamp 

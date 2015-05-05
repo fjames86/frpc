@@ -117,10 +117,6 @@
 (defparameter *krb5-keys* nil
   "The application server's keylist (i.e. contents of a keytab file or equivalent).")
 
-(defun gss-init (keylist)
-  "Setup the application server's GSS support."
-  (setf *krb5-keys* keylist))
-
 ;; ---------------------------------------
 
 (defvar *gss-contexts* (make-cyclic-buffer 10)
@@ -146,7 +142,16 @@
 		    (equalp handle (gss-context-handle c)))
 		  *gss-contexts*))
 
+(defun gss-init (keylist &key (max-contexts 10))
+  "Setup the application server's GSS support."
+  (setf *krb5-keys* keylist
+	*gss-contexts* (make-cyclic-buffer max-contexts)))
+
+
+
 ;; -----------------------------------------
+
+;; used by the server 
 
 (defun gss-authenticate (host token)
   "Parse the GSS token and authenticate it. This should be used in initial context requests. Only support kerberos.

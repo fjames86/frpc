@@ -1,8 +1,7 @@
 # FRPC
-FRPC is an implementation of the ONC-RPC ("SunRPC") protocol. 
-
-The library is composed to two largely decoupled components: the eXtensible Data Representation (XDR) serializer,
-which is used to define message structures and other on-wire formats, and the RPC framework itself.
+FRPC is an implementation of the ONC-RPC ("SunRPC") protocol. It provides both a generalized 
+eXtensible Data Representation (XDR) serializer and a flexible RPC framework to build robust, secure networked 
+services. FRPC supports the most commonly used authentication flavours (see below) including RPCSEC_GSS (i.e. Kerberos).
 
 See the related project [nefarious](https://github.com/fjames86/nefarious), which uses FRPC to implement an NFSv3 client and server.
 
