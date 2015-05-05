@@ -193,6 +193,12 @@ Define enum types using
 (defxenum enum-name
   (symbol integer)
   ...)
+
+;; example 
+(defxenum myenum 
+  (:a 0)
+  (:b 1)
+  (:c 2))
 ```
 
 Lookup a corresponding integer or symbol using
@@ -206,8 +212,22 @@ where val is either an integer or a symbol.
 Define union types using
 ```
 (defxunion union-type (enum-type)
-  ((enum-symbol type-name)
-  ...))
+  (enum-symbol type-name)
+  ...
+  (otherwise type-name))
+
+;; example
+(defxunion myunion (myenum)
+  (:a :int32)
+  (:b :string)
+  (otherwise :void))
+```
+
+Make instances of unions using MAKE-XUNION, e.g.
+```
+(make-xunion :a 123)
+(make-xunion :b "asdad")
+(make-xunion :c nil)
 ```
 
 ### 4.4 structures
@@ -219,6 +239,8 @@ Define structures using
   (slot-name type-name &optional initial-value)
   ...)
 ```
+
+This expands to a DEFSTRUCT form and associated reader/writer functions.
 
 ### 4.5 Generalized types
 
