@@ -104,7 +104,7 @@ Use RPC-CONNECT and RPC-CLOSE to establish and close a connection. The macro WIT
 (pmap:call-dump "192.168.0.8" :protocol :tcp)
 
 ;; reuses a connection to the server 
-(frpc:with-rpc-connection (c "192.168.0.8" 111) 
+(frpc:with-rpc-connection (c "192.168.0.8" 111 :tcp)  
   (list (pmap:call-dump :connection c) 
         (pmap:call-dump :connection c)))
 ```
@@ -119,10 +119,9 @@ Specifying :UDP as the protocol will send the message using the UDP transport in
 
 Users may also supply a connection argument for UDP so that they don't need to keep making new UDP sockets for each RPC.
 ```
-(let ((sock (usocket:socket-connect host port :protocol :datagram)))
-  (pmap:call-null :protocol :udp :connection sock)
-  (pmap:call-dump :protocol :udp :connection sock)
-  (usocket:socket-close sock))
+(with-rpc-connection (conn host port :udp)
+  (pmap:call-null :protocol :udp :connection conn)
+  (pmap:call-dump :protocol :udp :connection conn))
 ```
 
 ### 2.4 UDP broadcast
