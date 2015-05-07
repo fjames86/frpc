@@ -190,3 +190,33 @@ Returns the GSS cred on success, signals an RPC-AUTH-ERROR on failure."
 	 nil)))))
 
 
+
+
+;; --------------------------------
+
+(defun pack-gss-integ-data (writer data seqno req)
+  (let ((msg (flexi-streams:with-output-to-sequence (s)
+				(write-uint32 s seqno)
+				(write-xtype writer s data))))
+    (pack #'%write-gss-integ-data
+	  (make-gss-integ-data :integ msg
+			       :checksum (cerberus:gss-get-mic :kerberos 
+							       req
+							       msg
+							       :initiator t)))))
+
+(defun unpack-gss-integ-data (reader buffer seqno req)
+  (let* ((integ (unpack #'%read-gss-integ-data buffer))
+	 (sno (nibbles:ub32ref/be (gss-integ-data-integ integ) 0))
+	 (msg (subseq (gss-integ-data-integ integ) 4)))    
+    (let ((cksum (cerberus:gss-get-mic :kerberos
+				       req
+				       (gss-integ-data-integ integ))))
+      (unless (equalp cksum (gss-integ-data-checksum integ))
+	(error 'checksum-error))
+      (unless (= seqno sno) (error "seqno doesn't match"))
+      (unpack reader msg))))
+
+
+
+					   
