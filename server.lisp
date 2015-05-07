@@ -184,9 +184,19 @@ returned as an RPC status"
 			   ((and (eq (opaque-auth-flavour auth) :auth-gss)
 				 (eq (gss-cred-service (opaque-auth-data auth)) :integrity))
 			    ;; arg == gss-init-arg structure
-			    (let ((a (read-xtype 'gss-integ-data input-stream)))
+			    (let ((a (read-xtype 'gss-integ-data input-stream))
+				  (cxt (find-gss-context (gss-cred-handle (opaque-auth-data auth)))))
 			      ;; FIXME: validate the checksum
-			      (frpc-log :info "GSS Integrity message -- not yet supported")
+			      (frpc-log :info "GSS Integrity message")
+			      ;; the checksum is from gss-get-mic 
+			      (unless (equalp (gss-integ-data-checksum a)
+					      (cerberus:gss-get-mic :kerberos (gss-context-req cxt) (gss-integ-data-integ a)))
+				(frpc-log :info "GSS integrity checksum failed")
+				(%write-rpc-msg output-stream
+						(make-rpc-response :reject :auth-error
+								   :id id
+								   :auth-stat :gss-context-problem))
+				(setf err t))
 			      (setf arg (unpack reader (gss-integ-data-integ a)))))
 			   ((and (eq (opaque-auth-flavour auth) :auth-gss)
 				 (eq (gss-cred-service (opaque-auth-data auth)) :privacy))
@@ -206,13 +216,19 @@ returned as an RPC status"
 			   ;; so that they can authorize access
 			   ;; FIXME: in the case of DES and GSS, perhaps the auth should be bound to the context 
 			   ;; struct instead because the bare auth doesn't provide much information?
-			   (let ((res (with-caller-binded (host port protocol auth)
-					(funcall handler arg))))
-			     (%write-rpc-msg output-stream
-					     (make-rpc-response :accept :success
-								:id id
-								:verf resp-verf))
-			     (write-xtype writer output-stream res))))))))))))))
+			   (handler-case 
+			       (let ((res (with-caller-binded (host port protocol auth)
+					    (funcall handler arg))))
+				 (%write-rpc-msg output-stream
+						 (make-rpc-response :accept :success
+								    :id id
+								    :verf resp-verf))
+				 (write-xtype writer output-stream res))
+			     (rpc-auth-error (e)
+			       (%write-rpc-msg output-stream
+					       (make-rpc-response :reject :auth-error 
+								  :id id
+								  :auth-stat (auth-error-stat e)))))))))))))))))
     (error (e)
       (frpc-log :info "error processing: ~A" e)
       (%write-rpc-msg output-stream

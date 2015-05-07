@@ -123,10 +123,11 @@
   "List of currently active gss session contexts.")
 
 (defstruct gss-context 
-  host key handle timestamp seqno window)
+  host key handle timestamp seqno window req)
 
 (defun add-gss-context (host req)
   (let ((cxt (make-gss-context :host host
+			       :req req
 			       :key (cerberus:ap-req-session-key req)
 			       :handle (let ((v (nibbles:make-octet-vector 4)))
 					 (setf (nibbles:ub32ref/be v 0) (random (expt 2 32)))
@@ -159,13 +160,8 @@
 Returns the GSS cred on success, signals an RPC-AUTH-ERROR on failure."
   (declare (type (vector (unsigned-byte 8)) token))
   (handler-case 
-      (let ((tok (cerberus:unpack-initial-context-token token)))
-	(typecase tok
-	  (cerberus::ap-req 
-	   (let ((ap-req (cerberus:valid-ticket-p *krb5-keys* tok)))
-	     (add-gss-context host ap-req)
-	     t))
-	  (otherwise nil)))
+      (let ((req (cerberus:gss-accept-security-context :kerberos *krb5-keys* token)))
+	(add-gss-context host req))
     (error (e)
       (frpc-log :info "GSS failed: ~A" e)
       nil)))

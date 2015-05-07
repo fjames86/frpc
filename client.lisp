@@ -189,7 +189,7 @@ the bytes read."
 ;; ----------------- gss ---------------
 
 (defclass gss-client (rpc-client)
-  ((context :initarg :context :accessor gss-client-context)
+  ((context :initarg :context :accessor gss-client-context) ;; get this from cerberus:gss-initialize-security-context 
    (handle :initform nil :accessor gss-client-handle)
    (seqno :initform 0 :accessor gss-client-seqno)
    (service :initarg :service :initform :none :accessor gss-client-service)))

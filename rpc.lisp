@@ -40,7 +40,7 @@
   (:auth-unix 1)
   (:auth-short 2)
   (:auth-des 3)
-  (:auth-kerb4 4)
+  (:auth-kerb4 4) ;; kerberos v4, we don't support this
   (:auth-gss 6))
 
 ;; --------------
