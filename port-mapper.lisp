@@ -213,7 +213,6 @@ removed from the Lisp list."
 ;; but this doesn't scale well if the list is long 
 ;; so we use a hand-written iterative function instead
 
-
 (defxtype mapping-list ()
   ((stream)
    (do ((maps nil)
