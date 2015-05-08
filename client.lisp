@@ -189,7 +189,7 @@ the bytes read."
 ;; ----------------- gss ---------------
 
 (defclass gss-client (rpc-client)
-  ((context :initarg :context :accessor gss-client-context) ;; get this from cerberus:gss-initialize-security-context 
+  ((context :initarg :context :accessor gss-client-context) 
    (handle :initform nil :accessor gss-client-handle)
    (seqno :initform 0 :accessor gss-client-seqno)
    (service :initarg :service :initform :none :accessor gss-client-service)))
@@ -202,7 +202,7 @@ the bytes read."
   (when (rpc-client-initial client)
     (let ((res 
 	   (call-rpc #'%write-gss-init-arg
-		     (gss-client-context client)
+		     (cerberus:gss-initialize-security-context (gss-client-context client))
 		     #'%read-gss-init-res
 		     :host (rpc-client-host client)
 		     :port (rpc-client-port client)
@@ -226,7 +226,7 @@ the bytes read."
   (make-opaque-auth :auth-gss
 		    (make-gss-cred :proc :data
 				   :seqno (gss-client-seqno client)
-				   :service :none
+				   :service (gss-client-service client) 
 				   :handle (gss-client-handle client))))
 
 ;; the client does not send a verifier 
@@ -472,7 +472,15 @@ CLIENT should be an instance of RPC-CLIENT or its subclasses. This is the ONLY w
     (case (gss-client-service client)
       (:integrity 
        ;; pack and checksum the argument
-       (error "GSS Integrity level not yet supported"))
+       (setf arg (pack-gss-integ-data arg-type (gss-client-context client) arg (gss-client-seqno client))
+	     arg-type 
+	     (lambda (stream val) (write-sequence val stream))
+	     result-type 
+	     (lambda (stream) 
+	       (unpack-gss-integ-data result-type 
+				      (gss-client-context client)
+				      (read-octet-array stream)))))
+;;       (error "GSS Integrity level not yet supported"))
       (:privacy 
        ;; pack, checksum and encrypt 
        (error "GSS Privacy level not yet supported"))))

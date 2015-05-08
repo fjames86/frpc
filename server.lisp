@@ -107,6 +107,8 @@ TIMEOUT specifies the duration (in seconds) that a TCP connection should remain 
 	       (list c))))
 	  connections))
 
+;; FIXME: this function is far too large. it needs to be broken up into smaller pieces to make it easier 
+;; to understand and modify 
 (defun process-rpc-request (input-stream output-stream &key host port protocol)
   "Read the message and argument from the stream. Should NOT signal an error, any errors should be caught and 
 returned as an RPC status"
@@ -179,6 +181,7 @@ returned as an RPC status"
 		     (destructuring-bind (reader writer handler) h 
 		       ;; FIXME: if gss authentication is being used, the service levels :integrity and :privacy 
 		       ;; imply that the arguments are sent packed with a checksum (encrypted with :privacy)
+		       ;; * if doing GSS should replace the reader/writer with equivalent functions 
 		       (let (arg err)
 			 (cond
 			   ((and (eq (opaque-auth-flavour auth) :auth-gss)
@@ -224,7 +227,23 @@ returned as an RPC status"
 						 (make-rpc-response :accept :success
 								    :id id
 								    :verf resp-verf))
-				 (write-xtype writer output-stream res))
+				 ;; FIXME: if doing GSS then need to write a gss-integ-data structure instead 
+				 (cond
+				   ((and (eq (opaque-auth-flavour auth) :auth-gss)
+					 (eq (gss-cred-service (opaque-auth-data auth)) :integrity))
+				    (let ((cxt (find-gss-context (gss-cred-handle (opaque-auth-data auth)))))
+				      (write-sequence 
+				       (pack-gss-integ-data writer
+							    (gss-context-context cxt)
+							    res
+							    (gss-context-seqno cxt))
+				       output-stream)))
+				   ((and (eq (opaque-auth-flavour auth) :auth-gss)
+					 (eq (gss-cred-service (opaque-auth-data auth)) :privacy))
+				    (frpc-log :trace "GSS privacy response")
+				    (error "GSS privacy not yet supported"))
+				   (t 
+				    (write-xtype writer output-stream res))))
 			     (rpc-auth-error (e)
 			       (%write-rpc-msg output-stream
 					       (make-rpc-response :reject :auth-error 

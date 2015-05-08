@@ -116,7 +116,7 @@
 
 ;; ---------------------------------------
 
-(defparameter *server-context* nil
+(defvar *server-context* nil
   "The application server's GSS context, as returned from GSS-ACQUIRE-CREDENTIAL")
 
 (defvar *gss-contexts* nil
@@ -191,13 +191,13 @@ Returns the GSS cred on success, signals an RPC-AUTH-ERROR on failure."
 
 ;; --------------------------------
 
-(defun pack-gss-integ-data (writer context data)
+(defun pack-gss-integ-data (writer context data seqno)
   (let ((msg (flexi-streams:with-output-to-sequence (s)
-				(write-uint32 s (gss-context-seqno context))
+				(write-uint32 s seqno)
 				(write-xtype writer s data))))
     (pack #'%write-gss-integ-data
 	  (make-gss-integ-data :integ msg
-			       :checksum (cerberus:gss-get-mic (gss-context-context context) msg)))))
+			       :checksum (cerberus:gss-get-mic context msg)))))
 
 (defun unpack-gss-integ-data (reader context buffer)
   (let* ((integ (unpack #'%read-gss-integ-data buffer))
