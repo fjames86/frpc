@@ -257,9 +257,7 @@ returned as an RPC status"
 
 ;; FIXME: should we put a limit on the maximum number of simultaneous connections?
 (defun run-rpc-server (server)
-  "Run the RPC server until the SERVER-EXITING flag is set. Will open TCP sockets listening on the TCP-PORTS list and UDP sockets listening on the UDP-PORTS list.
-
-TIMEOUT should be an integer specifying the maximum time TCP connections should be held open."
+  "Run the RPC server until the SERVER-EXITING flag is set."
   (declare (type rpc-server server))
   (let (tcp-sockets udp-sockets connections)
     (unwind-protect 
@@ -319,7 +317,8 @@ TIMEOUT should be an integer specifying the maximum time TCP connections should 
 			  (declare (ignore %buffer))
 			  (cond
 			    ((or (< count 0) (= count #xffffffff))
-			     ;; some implementations (up to SBCL 1.2.10 x64, Lispworks) return error codes this way rather than signalling an error
+			     ;; some implementations (e.g. up to SBCL 1.2.10 x64, LispWorks) return error codes 
+			     ;; this way rather than signalling an error
 			     (frpc-log :info "recvfrom returned -1"))
 			    (t 
 			     (flexi-streams:with-input-from-sequence (input-stream udp-buffer :end count)

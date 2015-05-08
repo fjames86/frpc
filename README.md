@@ -368,20 +368,15 @@ Please note: RPCSEC_GSS provides both integrity (checksumming) and privacy (encr
 the call arguments/results. This is not currently supported by frpc.
 
 ```
-;; Client gets a TGT and credentials by communication with the KDC
-;; Stores the credentials in *CREDENTIALS* (see cerberus documentation for details)
-
-;; client generates a context 
-CL-USER> (defvar *context* (cerberus:pack-initial-context-token (cerberus:make-ap-request *credentials*)))
-;; allocate a client
-CL-USER> (defvar *client* (make-instance 'frpc:gss-client :context *context* :program 10000000 :version 2))
+;; client, has set *context* to the result of calling CERBERUS:GSS-ACQUIRE-CREDENTIAL
+CL-USER> (defvar *client* (make-instance 'frpc:gss-client :context (cerberus:gss-initialize-security-context *context*)))
 ;; should now have a handle and be ready for calls
 CL-USER> (pmap:call-null :client *client*)
 
 ;; server initializes itself with its keylist (i.e. contents of keytab file)
-CL-USER> (defvar *keylist* (cerberus:generate-keylist "username" "password" "realm"))
-CL-USER> (frpc:gss-init *keylist*)
-
+;; the server generates a GSS context as well
+CL-USER> (defvar *context2* (cerberus:gss-acquire-credential :kerberos "Administrator" :username "Administrator" :password "1234" :realm "REALM"))
+CL-USER> (frpc:gss-init *context2*)
 ```
 
 ### 5.5 Reauthentication
