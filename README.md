@@ -362,20 +362,22 @@ CL-USER> (frpc:des-init *server-secret* (list (frpc:des-public-key "xxxx" *clien
 
 ### 5.4 AUTH-GSS (Kerberos)
 
-Kerberos support provided by [cerberus](https://github.com/fjames86/cerberus).
+GSS support provided by [glass](https://github.com/fjames86/glass). If you want Kerberos support
+this is provided by [cerberus](https://github.com/fjames86/cerberus), you should load this package to provide 
+the required methods.
 
 Please note: RPCSEC_GSS provides both integrity (checksumming) and privacy (encryption) of 
 the call arguments/results. This is not currently supported by frpc.
 
 ```
-;; client, has set *context* to the result of calling CERBERUS:GSS-ACQUIRE-CREDENTIAL
+;; client, has set *context* to the result of calling GLASS:ACQUIRE-CREDENTIAL
 CL-USER> (defvar *client* (make-instance 'frpc:gss-client :context *context*))
 ;; should now have a handle and be ready for calls
 CL-USER> (pmap:call-null :client *client*)
 
 ;; server initializes itself with its keylist (i.e. contents of keytab file)
 ;; the server generates a GSS context as well
-CL-USER> (defvar *context2* (cerberus:gss-acquire-credential :kerberos "Administrator" :username "Administrator" :password "1234" :realm "REALM"))
+CL-USER> (defvar *context2* (glass:acquire-credential :kerberos "Administrator" :username "Administrator" :password "1234" :realm "REALM"))
 CL-USER> (frpc:gss-init *context2*)
 ```
 
