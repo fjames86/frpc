@@ -205,25 +205,38 @@ removed from the Lisp list."
 
 ;; DUMP -- list all mappings
 
-(defxstruct mapping-list ()
-  (map mapping)
-  (next (:optional mapping-list)))
+;; define our own type for a list of mappings
+;; should be something like 
+;; (defxstruct mapping-list () 
+;;   (map mapping)
+;;   (next (:optional mapping-list)))
+;; but this doesn't scale well if the list is long 
+;; so we use a hand-written iterative function instead
+
+
+(defxtype mapping-list ()
+  ((stream)
+   (do ((maps nil)
+	(done nil))
+       (done maps)
+     (let ((map (read-xtype 'mapping stream)))
+       (push map maps)
+       (let ((next (read-xtype :boolean stream)))
+	 (unless next (setf done t))))))
+  ((stream mlist)
+   (do ((mlist mlist (cdr mlist)))
+       ((null mlist))
+     (write-xtype 'mapping stream (car mlist))
+     (if (cdr mlist)
+	 (write-xtype :boolean stream t)
+	 (write-xtype :boolean stream nil)))))
+       
 
 (defun %handle-dump (void)
   (declare (ignore void))
-  (do ((mappings *mappings* (cdr mappings))
-       (mlist nil))
-      ((null mappings) mlist)
-    (let ((map (car mappings)))
-      (setf mlist 
-	    (make-mapping-list :map map :next mlist)))))
+  *mappings*)
 
 (defrpc call-dump 4 :void (:optional mapping-list)
-  (:transformer (res)
-    (do ((mlist res (mapping-list-next mlist))
-	 (ms nil))
-	((null mlist) ms)
-      (push (mapping-list-map mlist) ms)))
   (:documentation "List all available port mappings.")
   (:handler #'%handle-dump))
 
