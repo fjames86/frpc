@@ -3,7 +3,9 @@
 
 (in-package #:frpc)
 
-(defparameter *frpc-log-path* (merge-pathnames (user-homedir-pathname) "frpc.log"))
+(defparameter *frpc-log-path* (merge-pathnames (user-homedir-pathname) "frpc.log")
+  "The path to the log file. If this is NIL then no log will be opened, no logging will be performed.")
+
 (defvar *frpc-log* nil
   "The log to write messages to. Gets opened on the first call to FRPC-LOG.")
 
@@ -12,13 +14,14 @@
 
 (defun frpc-log (lvl control-string &rest args)
   "Write a message to the debug log."
-  (unless *frpc-log*
-    (let ((path (namestring *frpc-log-path*))) 
-      #+(or windows win32)(setf path (substitute #\\ #\/ path))
-      (setf *frpc-log*
-	    (pounds.log:open-log :path path
-				 :tag "FRPC"))))
-  (when (member lvl *frpc-log-levels*)
-    (pounds.log:write-message *frpc-log* lvl 
-			      (apply #'format nil control-string args))))
+  (when *frpc-log-path*
+    (unless *frpc-log*
+      (let ((path (namestring *frpc-log-path*))) 
+	#+(or windows win32)(setf path (substitute #\\ #\/ path))
+	(setf *frpc-log*
+	      (pounds.log:open-log :path path
+				   :tag "FRPC"))))
+    (when (member lvl *frpc-log-levels*)
+      (pounds.log:write-message *frpc-log* lvl 
+				(apply #'format nil control-string args)))))
 
