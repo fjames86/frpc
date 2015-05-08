@@ -114,21 +114,19 @@
   (:call-inaccessible-write #x02000000)
   (:call-bad-structure #x03000000))
 
-(defparameter *krb5-keys* nil
-  "The application server's keylist (i.e. contents of a keytab file or equivalent).")
-
 ;; ---------------------------------------
 
-(defvar *gss-contexts* (make-cyclic-buffer 10)
+(defparameter *server-context* nil
+  "The application server's GSS context, as returned from GSS-ACQUIRE-CREDENTIAL")
+
+(defvar *gss-contexts* nil
   "List of currently active gss session contexts.")
 
 (defstruct gss-context 
-  host key handle timestamp seqno window req)
+  handle context timestamp seqno window)
 
-(defun add-gss-context (host req)
-  (let ((cxt (make-gss-context :host host
-			       :req req
-			       :key (cerberus:ap-req-session-key req)
+(defun add-gss-context (context)
+  (let ((cxt (make-gss-context :context context
 			       :handle (let ((v (nibbles:make-octet-vector 4)))
 					 (setf (nibbles:ub32ref/be v 0) (random (expt 2 32)))
 					 v)
@@ -143,9 +141,9 @@
 		    (equalp handle (gss-context-handle c)))
 		  *gss-contexts*))
 
-(defun gss-init (keylist &key (max-contexts 10))
+(defun gss-init (server-context &key (max-contexts 10))
   "Setup the application server's GSS support."
-  (setf *krb5-keys* keylist
+  (setf *server-context* server-context
 	*gss-contexts* (make-cyclic-buffer max-contexts)))
 
 
@@ -154,19 +152,19 @@
 
 ;; used by the server 
 
-(defun gss-authenticate (host token)
+(defun gss-authenticate (token)
   "Parse the GSS token and authenticate it. This should be used in initial context requests. Only support kerberos.
 
 Returns the GSS cred on success, signals an RPC-AUTH-ERROR on failure."
   (declare (type (vector (unsigned-byte 8)) token))
   (handler-case 
-      (let ((req (cerberus:gss-accept-security-context :kerberos *krb5-keys* token)))
-	(add-gss-context host req))
+      (let ((context (cerberus:gss-accept-security-context *server-context* token)))
+	(add-gss-context context))
     (error (e)
       (frpc-log :info "GSS failed: ~A" e)
       nil)))
     
-(defun gss-authenticate-handle (host cred)
+(defun gss-authenticate-handle (cred)
   "Validate the handle belongs to the host, and that the credential is still valid."
   (declare (type gss-cred cred))
   (let ((c (find-gss-context (gss-cred-handle cred))))
@@ -175,7 +173,6 @@ Returns the GSS cred on success, signals an RPC-AUTH-ERROR on failure."
     ;; 2. the host for that handle matches the requesting host
     ;; 3. the seqno of the request is within the seqno window for the context
     (let ((valid (and c 
-		      (equalp host (gss-context-host c))
 		      (<= (- (gss-cred-seqno cred) 
 			     (gss-context-seqno c))
 			 (gss-context-window c)))))
@@ -194,29 +191,20 @@ Returns the GSS cred on success, signals an RPC-AUTH-ERROR on failure."
 
 ;; --------------------------------
 
-(defun pack-gss-integ-data (writer data seqno req)
+(defun pack-gss-integ-data (writer context data)
   (let ((msg (flexi-streams:with-output-to-sequence (s)
-				(write-uint32 s seqno)
+				(write-uint32 s (gss-context-seqno context))
 				(write-xtype writer s data))))
     (pack #'%write-gss-integ-data
 	  (make-gss-integ-data :integ msg
-			       :checksum (cerberus:gss-get-mic :kerberos 
-							       req
-							       msg
-							       :initiator t)))))
+			       :checksum (cerberus:gss-get-mic (gss-context-context context) msg)))))
 
-(defun unpack-gss-integ-data (reader buffer seqno req)
+(defun unpack-gss-integ-data (reader context buffer)
   (let* ((integ (unpack #'%read-gss-integ-data buffer))
-	 (sno (nibbles:ub32ref/be (gss-integ-data-integ integ) 0))
 	 (msg (subseq (gss-integ-data-integ integ) 4)))    
-    (let ((cksum (cerberus:gss-get-mic :kerberos
-				       req
-				       (gss-integ-data-integ integ))))
-      (unless (equalp cksum (gss-integ-data-checksum integ))
-	(error 'checksum-error))
-      (unless (= seqno sno) (error "seqno doesn't match"))
-      (unpack reader msg))))
+    (unless (cerberus:gss-verify-mic (gss-context-context context) 
+				     msg 
+				     (gss-integ-data-checksum integ))
+      (error 'checksum-error))
+    (unpack reader msg)))
 
-
-
-					   
