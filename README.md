@@ -369,7 +369,7 @@ the call arguments/results. This is not currently supported by frpc.
 
 ```
 ;; client, has set *context* to the result of calling CERBERUS:GSS-ACQUIRE-CREDENTIAL
-CL-USER> (defvar *client* (make-instance 'frpc:gss-client :context (cerberus:gss-initialize-security-context *context*)))
+CL-USER> (defvar *client* (make-instance 'frpc:gss-client :context *context*))
 ;; should now have a handle and be ready for calls
 CL-USER> (pmap:call-null :client *client*)
 
