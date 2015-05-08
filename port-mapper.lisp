@@ -85,7 +85,7 @@
 (defun find-mapping (mapping &optional map-port)
   "Lookup a port mapping matching the program, version and protocol specified
 in the mapping structure. if MAP-PORT is provided, will also match this port."
-  (with-slots (program version protocol port) mapping
+  (let ((port (mapping-port mapping)))
     (find-if (lambda (m)
 	       (and (mapping-eql m mapping)
 		    (if map-port
