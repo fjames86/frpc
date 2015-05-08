@@ -158,7 +158,7 @@
 Returns the GSS cred on success, signals an RPC-AUTH-ERROR on failure."
   (declare (type (vector (unsigned-byte 8)) token))
   (handler-case 
-      (let ((context (cerberus:gss-accept-security-context *server-context* token)))
+      (let ((context (glass:accept-security-context *server-context* token)))
 	(add-gss-context context))
     (error (e)
       (frpc-log :info "GSS failed: ~A" e)
@@ -197,12 +197,12 @@ Returns the GSS cred on success, signals an RPC-AUTH-ERROR on failure."
 				(write-xtype writer s data))))
     (pack #'%write-gss-integ-data
 	  (make-gss-integ-data :integ msg
-			       :checksum (cerberus:gss-get-mic context msg)))))
+			       :checksum (glass:get-mic context msg)))))
 
 (defun unpack-gss-integ-data (reader context buffer)
   (let* ((integ (unpack #'%read-gss-integ-data buffer))
 	 (msg (subseq (gss-integ-data-integ integ) 4)))    
-    (unless (cerberus:gss-verify-mic (gss-context-context context) 
+    (unless (glass:verify-mic (gss-context-context context) 
 				     msg 
 				     (gss-integ-data-checksum integ))
       (error 'checksum-error))

@@ -202,7 +202,7 @@ the bytes read."
   (when (rpc-client-initial client)
     (let ((res 
 	   (call-rpc #'%write-gss-init-arg
-		     (cerberus:gss-initialize-security-context (gss-client-context client))
+		     (glass:initialize-security-context (gss-client-context client))
 		     #'%read-gss-init-res
 		     :host (rpc-client-host client)
 		     :port (rpc-client-port client)

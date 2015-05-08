@@ -140,7 +140,6 @@ returned as an RPC status"
 		;; which should be returned in the gss-init-res result
 		(let ((token (coerce (read-xtype 'gss-init-arg input-stream)
 				     '(vector (unsigned-byte 8)))))
-		  ;; arg is a buffer containing a CERBERUS:INITIAL-CONTEXT-TOKEN 
 		  (let ((cxt (gss-authenticate token)))
 		    (cond
 		      (cxt
@@ -192,7 +191,7 @@ returned as an RPC status"
 			      ;; FIXME: validate the checksum
 			      (frpc-log :info "GSS Integrity message")
 			      ;; the checksum is from gss-get-mic 
-			      (unless (cerberus:gss-verify-mic (gss-context-context cxt)
+			      (unless (glass:verify-mic (gss-context-context cxt)
 							       (gss-integ-data-integ a)
 							       (gss-integ-data-checksum a))
 				(frpc-log :info "GSS integrity checksum failed")
