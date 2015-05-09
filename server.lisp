@@ -1,6 +1,17 @@
-
+;;;; Copyright (c) Frank James 2015 <frank.a.james@gmail.com>
+;;;; This code is licensed under the MIT license.
 
 (in-package #:frpc)
+
+(defun write-rpc-response (stream &key accept reject verf (id 0) (high 0) (low 0) auth-stat)
+  (%write-rpc-msg stream
+		  (make-rpc-response :accept accept
+				     :reject reject
+				     :verf verf
+				     :id id
+				     :high high
+				     :low low
+				     :auth-stat auth-stat)))
 
 ;; server handlers might need to know who called them
 ;; bind these special variables to the remote host, port and protocol
@@ -56,8 +67,7 @@
 	      (cdr v)))
 	(cdr p))))
 
-;; ---------------------------------------------
-
+;; ---------------------------------------------------------
 
 ;; stores the information about the rpc server, its thread, exit flag etc
 (defstruct (rpc-server (:constructor %make-rpc-server))
@@ -107,153 +117,122 @@ TIMEOUT specifies the duration (in seconds) that a TCP connection should remain 
 	       (list c))))
 	  connections))
 
-;; FIXME: this function is far too large. it needs to be broken up into smaller pieces to make it easier 
-;; to understand and modify 
-(defun process-rpc-request (input-stream output-stream &key host port protocol)
-  "Read the message and argument from the stream. Should NOT signal an error, any errors should be caught and 
-returned as an RPC status"
-  ;; start by reading the message and its arguments
-  (handler-case 
-      (let* ((msg (%read-rpc-msg input-stream))
-	     (id (rpc-msg-xid msg)))
-	;; analyze the message, find its prog/vers/proc 
-	(cond
-	  ((eq (xunion-tag (rpc-msg-body msg)) :reply)
-	   ;; we were sent a reply, this is bad
-	   (%write-rpc-msg output-stream
-			   (make-rpc-response :accept :garbage-args
-					      :id id)))
-	  (t 
-	   (let* ((call (xunion-val (rpc-msg-body msg)))
-		  (program (call-body-prog call))
-		  (version (call-body-vers call))
-		  (proc (call-body-proc call))
-		  (auth (call-body-auth call))
-		  (verf (call-body-verf call)))
-	     ;; FIXME: check the authentication
-	     (cond	       
-	       ((and (eq (opaque-auth-flavour auth) :auth-gss)
-	       	     (eq (gss-cred-proc (opaque-auth-data auth)) :init))
-		;; the RPC argument will be a gss-init-arg structure
-		;; This contains a GSS creation token. we should dispatch to 
-		;; a GSS library to parse it and generate a context handle,
-		;; which should be returned in the gss-init-res result
-		(let ((token (coerce (read-xtype 'gss-init-arg input-stream)
-				     '(vector (unsigned-byte 8)))))
-		  (let ((cxt (gss-authenticate token)))
-		    (cond
-		      (cxt
-		       (frpc-log :info "Accepted GSS context from ~S" host)
-		       (%write-rpc-msg output-stream 
-				       (make-rpc-response :accept :success
-							  :id id))
-		       (%write-gss-init-res output-stream
-					    (make-gss-init-res :handle (gss-context-handle cxt)
-							       :major 0
-							       :minor 0
-							       :window 0
-							       :token nil)))
-		      (t
-		       ;; no context granted... means was invalid token
-		       (%write-rpc-msg output-stream
-				       (make-rpc-response :reject :auth-error
-							  :id id
-							  :auth-stat :gss-cred-problem)))))))
-	       (t
-		;; lookup the handler
-		(let ((h (find-handler program version proc))
-		      (resp-verf (authenticate (opaque-auth-flavour auth)
-					       (opaque-auth-data auth)
-					       verf)))
-		  (cond
-		    ((null resp-verf)
-		     ;; authentication failed
-		     (%write-rpc-msg output-stream
-				     (make-rpc-response :reject :auth-error
-							:id id
-							:auth-stat :auth-rejected)))
-		    ((not h)
-		     (%write-rpc-msg output-stream
-				     (make-rpc-response :accept :proc-unavail
-							:id id)))
-		    (t 
-		     (destructuring-bind (reader writer handler) h 
-		       ;; FIXME: if gss authentication is being used, the service levels :integrity and :privacy 
-		       ;; imply that the arguments are sent packed with a checksum (encrypted with :privacy)
-		       ;; * if doing GSS should replace the reader/writer with equivalent functions 
-		       (let (arg err)
-			 (cond
-			   ((and (eq (opaque-auth-flavour auth) :auth-gss)
-				 (eq (gss-cred-service (opaque-auth-data auth)) :integrity))
-			    ;; arg == gss-init-arg structure
-			    (let ((a (read-xtype 'gss-integ-data input-stream))
-				  (cxt (find-gss-context (gss-cred-handle (opaque-auth-data auth)))))
-			      ;; FIXME: validate the checksum
-			      (frpc-log :info "GSS Integrity message")
-			      ;; the checksum is from gss-get-mic 
-			      (unless (glass:verify-mic (gss-context-context cxt)
-							       (gss-integ-data-integ a)
-							       (gss-integ-data-checksum a))
-				(frpc-log :info "GSS integrity checksum failed")
-				(%write-rpc-msg output-stream
-						(make-rpc-response :reject :auth-error
-								   :id id
-								   :auth-stat :gss-context-problem))
-				(setf err t))
-			      (setf arg (unpack reader (gss-integ-data-integ a)))))
-			   ((and (eq (opaque-auth-flavour auth) :auth-gss)
-				 (eq (gss-cred-service (opaque-auth-data auth)) :privacy))
-			    (let ((a (read-xtype 'gss-priv-data input-stream)))
-			      (declare (ignore a))
-			      ;; FIXME: decrypt the data and unpack 
-			      (frpc-log :info "GSS privacy message -- not yet supported")
-			      (%write-rpc-msg output-stream
-					      (make-rpc-response :reject :auth-error
-								 :id id
-								 :auth-stat :gss-cred-problem))
-			      (setf err t)))
-			   (t (setf arg (read-xtype reader input-stream))))
-			 (unless err
-			   ;; execute the handler function with some specials bound to values
-			   ;; so that the user-defined handler knows who called it and what authentication was used
-			   ;; so that they can authorize access
-			   ;; FIXME: in the case of DES and GSS, perhaps the auth should be bound to the context 
-			   ;; struct instead because the bare auth doesn't provide much information?
-			   (handler-case 
-			       (let ((res (with-caller-binded (host port protocol auth)
-					    (funcall handler arg))))
-				 (%write-rpc-msg output-stream
-						 (make-rpc-response :accept :success
-								    :id id
-								    :verf resp-verf))
-				 ;; FIXME: if doing GSS then need to write a gss-integ-data structure instead 
-				 (cond
-				   ((and (eq (opaque-auth-flavour auth) :auth-gss)
-					 (eq (gss-cred-service (opaque-auth-data auth)) :integrity))
-				    (let ((cxt (find-gss-context (gss-cred-handle (opaque-auth-data auth)))))
-				      (write-sequence 
-				       (pack-gss-integ-data writer
-							    (gss-context-context cxt)
-							    res
-							    (gss-context-seqno cxt))
-				       output-stream)))
-				   ((and (eq (opaque-auth-flavour auth) :auth-gss)
-					 (eq (gss-cred-service (opaque-auth-data auth)) :privacy))
-				    (frpc-log :trace "GSS privacy response")
-				    (error "GSS privacy not yet supported"))
-				   (t 
-				    (write-xtype writer output-stream res))))
-			     (rpc-auth-error (e)
-			       (%write-rpc-msg output-stream
-					       (make-rpc-response :reject :auth-error 
-								  :id id
-								  :auth-stat (auth-error-stat e)))))))))))))))))
-    (error (e)
-      (frpc-log :info "error processing: ~A" e)
-      (%write-rpc-msg output-stream
-		      (make-rpc-response :accept :garbage-args)))))
-					 
+;; ---------------------------------------------------------
 
+(defun process-rpc-auth (output-stream auth verf id)
+  "Process authentication, returns T is authenticated, nil is no further processing required."
+  (let ((flavour (opaque-auth-flavour auth))
+	(data (opaque-auth-data auth)))
+    (handler-case (authenticate flavour data verf)
+      (error (e)
+	(frpc-log :trace "authentication failed: ~A" e)
+	(write-rpc-response output-stream
+			    :reject :auth-error
+			    :auth-stat :auth-rejected
+			    :id id)
+	nil))))
+
+(defun process-rpc-call (input-stream output-stream 
+			 &key host port protocol id auth verf program version proc)
+  "Process the actual call. read the argument, handle it and write the response."
+  (let ((rverf (process-rpc-auth output-stream auth verf id)))
+    ;; check the verifier
+    (unless rverf 
+      (write-rpc-response output-stream
+			  :reject :auth-error
+			  :auth-stat :auth-rejected)
+      (return-from process-rpc-call))
+    ;; go ahead and try to invoke the handler
+    (let ((h (find-handler program version proc)))
+      (unless h
+	(write-rpc-response output-stream :accept :proc-unavail :id id)
+	(return-from process-rpc-call))
+      (destructuring-bind (reader writer handler) h
+	(let ((gss-service (when (eq (opaque-auth-flavour auth) :auth-gss)
+			     (gss-cred-service (opaque-auth-data auth)))))
+	  ;; when the service level is :integrity the arg has been packed and paired with a mic
+	  ;; FIXME: put in a trap to reject integrity/privacy because we don't yet support it 
+	  (when (member gss-service '(:integrity :privacy))
+	    (write-rpc-response output-stream :reject :auth-error :auth-stat :auth-rejected :id id)
+	    (return-from process-rpc-call))
+	  (let ((arg (handler-case (read-xtype reader input-stream)
+		       (error (e)
+			 (frpc-log :trace "Failed to read argument: ~A" e)
+			 (write-rpc-response output-stream 
+					     :accept :garbage-args :id id)
+			 (return-from process-rpc-call)))))
+	    ;; FIXME: may need to modify the arg if doing GSS 
+	    (let ((res (handler-case (with-caller-binded (host port protocol auth) (funcall handler arg))
+			 (error (e)
+			   (frpc-log :trace "Failed to invoke handler: ~A" e)
+			   (write-rpc-response output-stream :accept :garbage-args :id id)
+			   (return-from process-rpc-call)))))
+	      ;; FIXME: may need to modify the reuslt if doing GSS
+	      (write-rpc-response output-stream :accept :success :id id :verf rverf)
+	      (write-xtype writer output-stream res))))))))
+
+(defun process-gss-init-command (input-stream output-stream id)
+  "GSS requires special treatment, it can send arguments in place of the nullproc void parameter."
+  (let ((token (handler-case (coerce (read-xtype 'gss-init-arg input-stream)
+				     '(vector (unsigned-byte 8)))
+		 (error (e)
+		   (frpc-log :trace "Error parsing GSS token: ~A" e)
+		   (write-rpc-response output-stream 
+				       :accept :garbge-args
+				       :id id)
+		   (return-from process-gss-init-command)))))
+    (let ((cxt (handler-case (gss-authenticate token)
+		 (error () nil))))
+      (cond
+	(cxt
+	 (write-rpc-response output-stream :accept :success :id id)
+	 (%write-gss-init-res output-stream
+			      (make-gss-init-res :handle (gss-context-handle cxt)
+						 :major 0
+						 :minor 0
+						 :window 0
+						 :token nil)))
+	(t
+	 ;; no context granted... means was invalid token
+	 (write-rpc-response output-stream 
+			     :reject :auth-error
+			     :id id
+			     :auth-stat :gss-cred-problem))))))
+
+(defun process-rpc-request (input-stream output-stream &key host port protocol)
+  "Process a request from the input stream, writing the response to the output stream."
+  (let* ((msg (handler-case (%read-rpc-msg input-stream)
+		(error (e)
+		  (frpc-log :trace "Failed to read msg: ~A" e)
+		  (%write-rpc-msg output-stream
+				  (make-rpc-response :accept :garbage-args))
+		  (return-from process-rpc-request))))
+	 (id (rpc-msg-xid msg)))
+    ;; if it's a reply then this is not intended for us
+    (when (eq (xunion-tag (rpc-msg-body msg)) :reply)
+      (%write-rpc-msg output-stream
+		      (make-rpc-response :accept :garbage-args :id id))
+      (return-from process-rpc-request))
+
+    (let* ((call (xunion-val (rpc-msg-body msg)))
+	   (auth (call-body-auth call)))
+      
+      ;; if the authenticator is a GSS init (FIXME: or continue) command then we need to do special things
+      (when (and (eq (opaque-auth-flavour auth) :auth-gss)
+		 (eq (gss-cred-proc (opaque-auth-data auth)) :init))
+	(process-gss-init-command input-stream output-stream id)
+	(return-from process-rpc-request))
+
+      (process-rpc-call input-stream output-stream
+			:host host :port port :protocol protocol :id id
+			:auth auth :verf (call-body-verf call)
+			:program (call-body-prog call) 
+			:version (call-body-vers call)
+			:proc (call-body-proc call)))))
+
+;; -----------------------------------------------------------------
+
+					
 ;; FIXME: should we put a limit on the maximum number of simultaneous connections?
 (defun run-rpc-server (server)
   "Run the RPC server until the SERVER-EXITING flag is set."

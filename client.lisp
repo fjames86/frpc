@@ -3,8 +3,6 @@
 
 (in-package #:frpc)
 
-;; FIXME: when we come to implementing GSSSEC authentication we will need to be able to write GSS control
-;; messages instead of the arg (which is always nil in that scenario). 
 (defun write-request (stream msg arg-type arg)
   "Write an RPC request to the stream."
   (%write-rpc-msg stream msg)

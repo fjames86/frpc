@@ -14,7 +14,7 @@
 (define-condition rpc-accept-error (rpc-error)
   ((stat :initform nil :initarg :stat :reader rpc-accept-error-stat))
   (:report (lambda (condition stream)
-	     (format stream "ACCEPT ERROR ~A" 
+	     (format stream "RPC-ACCEPT-ERROR: ~A" 
 		     (rpc-accept-error-stat condition)))))
 
 (define-condition rpc-prog-mismatch-error (rpc-accept-error)
@@ -30,7 +30,7 @@
 (define-condition rpc-auth-error (rpc-error)
   ((stat :initform nil :initarg :stat :reader auth-error-stat))
   (:report (lambda (condition stream)
-	     (format stream "AUTH-ERROR ~A" (auth-error-stat condition)))))
+	     (format stream "AUTH-ERROR: ~A" (auth-error-stat condition)))))
 
 (define-condition rpc-mismatch-error (rpc-error)
   ((high :initform 0 :initarg :high :reader rpc-mismatch-error-high)

@@ -119,7 +119,7 @@
 (defvar *server-context* nil
   "The application server's GSS context, as returned from GSS-ACQUIRE-CREDENTIAL")
 
-(defvar *gss-contexts* nil
+(defvar *gss-contexts* (make-cyclic-buffer 10)
   "List of currently active gss session contexts.")
 
 (defstruct gss-context 
