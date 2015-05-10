@@ -27,7 +27,6 @@
 	 (*rpc-remote-auth* ,auth))
      ,@body))
 
-
 ;; stores an assoc list for each program id
 ;; each program id stores an alist of version ids
 ;; each version id stores an alist of handler lists
