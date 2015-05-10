@@ -337,11 +337,12 @@ TIMEOUT specifies the duration (in seconds) that a TCP connection should remain 
 							     :host remote-host 
 							     :port remote-port
 							     :protocol :udp))))
-				 (usocket:socket-send socket 
-						      response-buffer
-						      (length response-buffer)
-						      :host remote-host
-						      :port remote-port))))))
+				 (unless (zerop (length response-buffer))
+				   (usocket:socket-send socket 
+							response-buffer
+							(length response-buffer)
+							:host remote-host
+							:port remote-port)))))))
 		      (error (e)
 			;; windows is known to throw an error on receive if there was no-one 
 			;; listening on the port the previous UDP packet was sent to.
@@ -360,9 +361,10 @@ TIMEOUT specifies the duration (in seconds) that a TCP connection should remain 
 							  :host (usocket:get-peer-address socket)
 							  :port (usocket:get-peer-port socket)
 							  :protocol :tcp))))
-			      (write-uint32 (usocket:socket-stream socket)
-					    (logior #x80000000 (length response-buffer)))
-			      (write-sequence response-buffer (usocket:socket-stream socket)))))
+			      (unless (zerop (length response-buffer))
+				(write-uint32 (usocket:socket-stream socket)
+					      (logior #x80000000 (length response-buffer)))
+				(write-sequence response-buffer (usocket:socket-stream socket))))))
 		      (end-of-file ()
 			(frpc-log :info "Connection closed by remote host")
 			(setf connections (remove socket connections :key #'rpc-connection-conn)))

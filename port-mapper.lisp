@@ -186,7 +186,6 @@ removed from the Lisp list."
 
 ;; GET-PORT -- lookup a port mapping for a given program/version
 
-
 (defun %handle-get-port (mapping)
   (let ((m (find-mapping mapping)))
     (if m
@@ -194,7 +193,7 @@ removed from the Lisp list."
 	0)))
 
 (defrpc call-get-port 3 mapping :uint32
-  (:arg-transformer (program version &key (query-protocol :tcp))
+  (:arg-transformer (program version &key (query-protocol :udp))
     (make-mapping :program program
                   :version version
                   :protocol query-protocol))
@@ -230,7 +229,6 @@ removed from the Lisp list."
 	 (write-xtype :boolean stream t)
 	 (write-xtype :boolean stream nil)))))
        
-
 (defun %handle-dump (void)
   (declare (ignore void))
   *mappings*)
@@ -239,8 +237,7 @@ removed from the Lisp list."
   (:documentation "List all available port mappings.")
   (:handler #'%handle-dump))
 
-;; ---------------------
-
+;; ----------------------------------------
 
 ;; In the spec it says we should be able to call any (mapped) rpc on the local machine communicating
 ;; only via UDP. We run all RPC programs from within the same Lisp image so we can directly 
@@ -256,7 +253,8 @@ removed from the Lisp list."
       (cond
 	((or (not mapping) (not h))
 	 ;; error: no mapping or no handler
-	 (list 0 nil))
+	 (error "no handler"))
+;;	 (list 0 nil))
 	(t 
 	 ;; found the handler, run it
 	 (destructuring-bind (reader writer handler) h

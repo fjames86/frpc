@@ -151,6 +151,12 @@ An RPC server runs from within a single thread and listens on a set of TCP and U
 
 When the server accepts a TCP connection, it is added to a list of currently open connections. The server will select a connection to process using USOCKET:WAIT-FOR-INPUT. This allows the server to keep open multiple TCP connections without blocking other traffic. Note that the socket IO is still syncronous. Connections which are idle for TIMEOUT seconds (default 60 seconds) are closed by the FRPC server. 
 
+### 3.1 Server handlers
+
+The handler function, which is invoked to process an RPC request, should return an object which matches the type specified in the associated DEFRPC 
+form. If the handler signals an error, then the RPC server will be silent, i.e. not return any response to the caller. Some APIs require this behaviour,
+this is the way server handlers should support it.
+
 ## 4. XDR serializer
 
 The XDR serializer is largely decoupled from the rpc implementation. This means it 
