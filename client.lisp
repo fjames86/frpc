@@ -470,19 +470,25 @@ CLIENT should be an instance of RPC-CLIENT or its subclasses. This is the ONLY w
     (case (gss-client-service client)
       (:integrity 
        ;; pack and checksum the argument
-       (setf arg (pack-gss-integ-data arg-type (gss-client-context client) arg (gss-client-seqno client))
-	     arg-type 
-	     (lambda (stream val) (write-sequence val stream))
-	     result-type 
-	     (lambda (stream) 
-	       (unpack-gss-integ-data result-type 
-				      (gss-client-context client)
-				      (read-octet-array stream)))))
-;;       (error "GSS Integrity level not yet supported"))
+       (setf arg-type (lambda (stream obj)
+			(write-gss-integ-res stream arg-type obj
+					     (gss-client-context client)
+					     (gss-client-seqno client)))
+	     result-type (lambda (stream)
+			   (read-gss-integ-arg stream result-type 
+					       (gss-client-context client)
+					       (gss-client-seqno client)))))
       (:privacy 
        ;; pack, checksum and encrypt 
-       (error "GSS Privacy level not yet supported"))))
-
+       (setf arg-type (lambda (stream obj)
+			(write-gss-priv-res stream arg-type obj
+					    (gss-client-context client)
+					    (gss-client-seqno client)))
+	     result-type (lambda (stream)
+			   (read-gss-priv-arg stream result-type 
+					      (gss-client-context client)
+					      (gss-client-seqno client)))))))
+  
   (multiple-value-bind (res verf) 
       (ecase protocol
 	(:tcp
