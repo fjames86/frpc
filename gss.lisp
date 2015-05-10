@@ -191,20 +191,34 @@ Returns the GSS cred on success, signals an RPC-AUTH-ERROR on failure."
 
 ;; --------------------------------
 
-(defun pack-gss-integ-data (writer context data seqno)
-  (let ((msg (flexi-streams:with-output-to-sequence (s)
-				(write-uint32 s seqno)
-				(write-xtype writer s data))))
-    (pack #'%write-gss-integ-data
-	  (make-gss-integ-data :integ msg
-			       :checksum (glass:get-mic context msg)))))
-
-(defun unpack-gss-integ-data (reader context buffer)
-  (let* ((integ (unpack #'%read-gss-integ-data buffer))
-	 (msg (subseq (gss-integ-data-integ integ) 4)))    
-    (unless (glass:verify-mic (gss-context-context context) 
-				     msg 
-				     (gss-integ-data-checksum integ))
+(defun read-gss-integ-arg (stream reader context seqno)
+  (let ((integ (%read-gss-integ-data stream)))
+    (unless (glass:verify-mic context 
+			      (gss-integ-data-integ integ)
+			      (gss-integ-data-checksum integ))
       (error 'checksum-error))
-    (unpack reader msg)))
+    (flexi-streams:with-input-from-sequence (s (gss-integ-data-integ integ))
+      (unless (= seqno (read-uint32 s))
+	(error "Seqnos don't match"))
+      (read-xtype reader s))))
+
+(defun write-gss-integ-res (stream writer obj context seqno)
+  (let ((msg (flexi-streams:with-output-to-sequence (s)
+	       (write-uint32 s seqno)
+	       (write-xtype writer s obj))))
+    (%write-gss-integ-data stream
+			   (make-gss-integ-data :integ msg
+						:checksum (glass:get-mic context msg)))))
+
+(defun read-gss-priv-arg (stream reader context seqno)
+  (let ((buffer (read-octet-array stream)))
+    (let ((data (glass:unwrap context buffer)))
+      (flexi-streams:with-input-from-sequence (s data)
+	(read-gss-integ-arg s reader context seqno)))))
+
+(defun write-gss-priv-res (stream writer obj context seqno)
+  (let ((buffer (flexi-streams:with-output-to-sequence (s)
+		  (write-gss-integ-arg s writer obj context seqno))))
+    (write-sequence (glass:wrap context buffer)
+		    stream)))
 

@@ -149,25 +149,52 @@ TIMEOUT specifies the duration (in seconds) that a TCP connection should remain 
 	(return-from process-rpc-call))
       (destructuring-bind (reader writer handler) h
 	(let ((gss-service (when (eq (opaque-auth-flavour auth) :auth-gss)
-			     (gss-cred-service (opaque-auth-data auth)))))
-	  ;; when the service level is :integrity the arg has been packed and paired with a mic
-	  ;; FIXME: put in a trap to reject integrity/privacy because we don't yet support it 
-	  (when (member gss-service '(:integrity :privacy))
-	    (write-rpc-response output-stream :reject :auth-error :auth-stat :auth-rejected :id id)
-	    (return-from process-rpc-call))
+			     (gss-cred-service (opaque-auth-data auth))))
+	      (arg-reader reader)
+	      (res-writer writer))
+
+	  ;; when doing GSS integrity we need to modify the reader
+	  (case gss-service
+	    (:integrity 
+	     (let* ((cred (opaque-auth-data auth))
+		    (context (find-gss-context (gss-cred-handle cred))))
+	       (setf arg-reader (lambda (stream)
+				  (read-gss-integ-arg stream 
+						      reader 
+						      (gss-context-context context)
+						      (gss-cred-seqno cred)))
+		     res-writer (lambda (stream obj)
+				  (write-gss-integ-res stream writer obj 
+						       (gss-context-context context)
+						       (gss-cred-seqno cred))))))
+	    (:privacy 
+	     (let* ((cred (opaque-auth-data auth))
+		    (context (find-gss-context (gss-cred-handle cred))))
+	       (setf arg-reader (lambda (stream)
+				  (read-gss-priv-arg stream reader 
+						     (gss-context-context context)
+						     (gss-cred-seqno cred)))
+		     res-writer (lambda (stream obj)
+				  (write-gss-priv-res stream writer obj
+						      (gss-context-context context)
+						      (gss-cred-seqno cred)))))))
+
+	  ;; funcall the handler to get the result 
 	  (let ((arg (handler-case (read-xtype reader input-stream)
 		       (error (e)
 			 (frpc-log :trace "Failed to read argument: ~A" e)
 			 (write-rpc-response output-stream 
 					     :accept :garbage-args :id id)
 			 (return-from process-rpc-call)))))
-	    ;; FIXME: may need to modify the arg if doing GSS 
+
 	    (let ((res (handler-case (with-caller-binded (host port protocol auth) (funcall handler arg))
 			 (error (e)
 			   (frpc-log :trace "Failed to invoke handler: ~A" e)
-			   (write-rpc-response output-stream :accept :garbage-args :id id)
+			   ;; be silent if the handler errors, this allows us to 
+			   ;; provide the "silent" semantics that some APIs require
+;;			   (write-rpc-response output-stream :accept :garbage-args :id id)
 			   (return-from process-rpc-call)))))
-	      ;; FIXME: may need to modify the reuslt if doing GSS
+
 	      (write-rpc-response output-stream :accept :success :id id :verf rverf)
 	      (write-xtype writer output-stream res))))))))
 
@@ -223,12 +250,16 @@ TIMEOUT specifies the duration (in seconds) that a TCP connection should remain 
 	(process-gss-init-command input-stream output-stream id)
 	(return-from process-rpc-request))
 
-      (process-rpc-call input-stream output-stream
-			:host host :port port :protocol protocol :id id
-			:auth auth :verf (call-body-verf call)
-			:program (call-body-prog call) 
-			:version (call-body-vers call)
-			:proc (call-body-proc call)))))
+      (handler-case 
+	  (process-rpc-call input-stream output-stream
+			    :host host :port port :protocol protocol :id id
+			    :auth auth :verf (call-body-verf call)
+			    :program (call-body-prog call) 
+			    :version (call-body-vers call)
+			    :proc (call-body-proc call))
+	(error (e)
+	  (frpc-log :trace "Failed to process: ~A" e)
+	  nil)))))
 
 ;; -----------------------------------------------------------------
 
@@ -271,7 +302,7 @@ TIMEOUT specifies the duration (in seconds) that a TCP connection should remain 
 		 (setf connections (purge-connection-list connections now (rpc-server-timeout server))
 		       prev-time now)))
 	     
-	     ;; poll and timeout each second so that we can check the exiting flag
+	     ;; poll and timeout each second so that we can check the exiting flag and purge connections
 	     (let ((ready (usocket:wait-for-input (append tcp-sockets 
 							  udp-sockets
 							  (mapcar #'rpc-connection-conn connections))

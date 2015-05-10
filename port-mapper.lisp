@@ -278,4 +278,3 @@ recommended to be a well-defined type, i.e. represented by a symbol, so that it 
 function available.")
   (:handler #'%handle-callit))
 
-
