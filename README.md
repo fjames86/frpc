@@ -354,10 +354,6 @@ CL-USER> (defvar *client-public* (frpc:des-public *client-secret*))
 ;; initializes itself and is ready to accept DES requests
 ;; note: the server will only be able to accept requests from the clients listed here
 CL-USER> (frpc:des-init *server-secret* (list (frpc:des-public-key "xxxx" *client-public*)))
-(#S(FRPC::DES-KEY
-    :FULLNAME "xxxx"
-    :KEY 3213052535315436189492383973955265165447190102893452033197))
-
 ```
 
 ### 5.4 AUTH-GSS (Kerberos)

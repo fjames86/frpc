@@ -291,7 +291,7 @@ VERIFIER should be T. Otherwise VERIFIER should be nil."
 						   (authdes-verf-client-adv-timestamp verf))))
 
 	     ;; verify the timestamp is later than the previous one 
-	     (unless (and (> (getf timestamp :seconds) (getf (des-context-timestamp context) :seconds))
+	     (unless (and (>= (getf timestamp :seconds) (getf (des-context-timestamp context) :seconds))
 			  (>= (getf timestamp :useconds) (getf (des-context-timestamp context) :useconds)))
 	       (error "Timestamp ~S older than previous received timestamp ~S" 
 		      timestamp (des-context-timestamp context)))

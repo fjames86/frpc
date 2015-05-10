@@ -138,13 +138,20 @@ the bytes read."
 ;; ----------------- des -----------------
 
 (defclass des-client (rpc-client)
-  ((name :initarg :name :accessor des-client-name)
-   (secret :initarg :secret :accessor des-client-secret)
-   (public :initarg :public :accessor des-client-public)
+  ((name :initform nil :initarg :name :accessor des-client-name)
+   (secret :initform nil :initarg :secret :accessor des-client-secret)
+   (public :initform nil :initarg :public :accessor des-client-public)
    (key :initarg :key :initform (des-conversation) :accessor des-client-key)
-   (window :initarg :window :accessor des-client-window)
+   (window :initform 300 :initarg :window :accessor des-client-window)
    (nickname :initform nil :accessor des-client-nickname)
    (timestamp :initform nil :accessor des-client-timestamp))) ;; timestamp used in request
+
+(defmethod initialize-instance :after ((inst des-client) &key)
+  ;; just check that the name, secret and public have been provided
+  (unless (des-client-name inst) (error "Must provide a client NAME"))
+  (unless (des-client-secret inst) (error "Must provide a client secret key"))
+  (unless (des-client-public inst) (error "Must provide a server public key"))
+  inst)
 
 (defmethod print-object ((client des-client) stream)
   (print-unreadable-object (client stream :type t)
