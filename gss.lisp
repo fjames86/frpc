@@ -218,7 +218,7 @@ Returns the GSS cred on success, signals an RPC-AUTH-ERROR on failure."
 
 (defun write-gss-priv-res (stream writer obj context seqno)
   (let ((buffer (flexi-streams:with-output-to-sequence (s)
-		  (write-gss-integ-arg s writer obj context seqno))))
+		  (write-gss-integ-res s writer obj context seqno))))
     (write-sequence (glass:wrap context buffer)
 		    stream)))
 

@@ -69,7 +69,7 @@
 ;; needs to keep a mapping of ports to mapping structs
 ;; 
 
-(defparameter *mappings* nil)
+(defvar *mappings* nil)
 
 (defun add-mapping (mapping)
   "Add a port mapping."
