@@ -576,8 +576,10 @@ OPTIONS allow customization of the generated client function:
 	  (arg-writer (alexandria:symbolicate '%write- name '-arg))
 	  (res-reader (alexandria:symbolicate '%read- name '-res))
 	  (res-writer (alexandria:symbolicate '%write- name '-res)))
-    `(let ((,gprogram ,*rpc-program*)
-	   (,gversion ,*rpc-version*)
+    `(let ((,gprogram ,(or (cadr (find-program (cadr (assoc :program options)))) 
+			   *rpc-program*))
+	   (,gversion ,(or (caddr (assoc :program options))
+			   *rpc-version*))
 	   (,gproc ,proc))
 
        ;; define the serializers for the client 

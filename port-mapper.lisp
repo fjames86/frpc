@@ -38,9 +38,8 @@
 ;; -------- globals ------------
 
 (defconstant +pmapper-program+ 100000)
-(defconstant +pmapper-version+ 2)
 
-(use-rpc-program +pmapper-program+ +pmapper-version+)
+(defprogram port-mapper 100000)
 (use-rpc-host '*rpc-host* 111)
 
 (defparameter *pmap-port* 111)
@@ -153,6 +152,7 @@ removed from the Lisp list."
   nil)
 
 (defrpc call-null 0 :void :void
+  (:program port-mapper 2)
   (:handler #'%handle-null))
 
 ;; ---------------
@@ -164,6 +164,7 @@ removed from the Lisp list."
   t)
 
 (defrpc call-set 1 mapping :boolean
+  (:program port-mapper 2)
   (:arg-transformer (mapping) mapping)
   (:documentation "Set a port mapping.")
   (:handler #'%handle-set))
@@ -178,6 +179,7 @@ removed from the Lisp list."
     t))
 
 (defrpc call-unset 2 mapping :boolean
+  (:program port-mapper 2)
   (:arg-transformer (mapping) mapping)
   (:documentation "Remove a port mapping.")
   (:handler #'%handle-unset))
@@ -193,6 +195,7 @@ removed from the Lisp list."
 	0)))
 
 (defrpc call-get-port 3 mapping :uint32
+  (:program port-mapper 2)
   (:arg-transformer (program version &key (query-protocol :udp))
     (make-mapping :program program
                   :version version
@@ -234,6 +237,7 @@ removed from the Lisp list."
   *mappings*)
 
 (defrpc call-dump 4 :void (:optional mapping-list)
+  (:program port-mapper 2)
   (:documentation "List all available port mappings.")
   (:handler #'%handle-dump))
 
@@ -267,6 +271,7 @@ removed from the Lisp list."
 (defrpc call-callit 5 
   (:list :uint32 :uint32 :uint32 (:varray* :octet)) ;;prog version proc args)
   (:list :uint32 (:varray* :octet))
+  (:program port-mapper 2)
   (:arg-transformer (program version proc packed-args)
     (list program version proc packed-args))
   (:documentation 

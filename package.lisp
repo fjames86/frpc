@@ -9,6 +9,9 @@
 	   #:defrpc
 	   #:find-handler
 	   #:generate-program-number
+	   #:defprogram
+	   #:find-program
+	   #:list-all-programs
 
 	   ;; type definitions
 	   #:defxtype

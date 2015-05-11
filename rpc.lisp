@@ -295,8 +295,46 @@ Returns a response verifier to be sent back to the client or nil in the case of 
 (defparameter *rpc-version* 0)
 
 (defmacro use-rpc-program (program version)
+  (alexandria:simple-style-warning "USE-RPC-PROGRAM is deprecated. Replace with DEFPROGRAM and a (:program progname version) option to DEFRPC.")
   `(eval-when (:compile-toplevel :load-toplevel :execute)
      (setf *rpc-program* ,program
 	   *rpc-version* ,version)))
+
+
+(defvar *programs* nil
+  "List of program ID mappings.")
+
+(defun %defprogram (name number)
+  (let ((p (assoc name *programs*)))
+    (cond
+      ((and p (= (cadr p) number))
+       ;; program already defined, do nothing
+       nil)
+      ((and p (not (= (cadr p) number)))
+       (warn "Redefining program ~A to ~A" name number)
+       (setf (cdr p) (list number)))
+      (t 
+       (push (list p number) *programs*))))
+  name)
+       
+(defmacro defprogram (name number)
+  "Define a program identifier mapping. 
+NAME ::= a symbol naming the program. 
+NUMBER ::= a positive integer specifying the program number.
+"
+  `(eval-when (:compile-toplevel :load-toplevel :execute)
+     (%defprogram ',name ,number)))
+
+(defun find-program (id)
+  "Lookup the program identifier"
+  (etypecase id
+    (symbol
+     (assoc id *programs*))
+    (integer 
+     (find id *programs* :key #'cadr))))
+
+(defun list-all-programs ()
+  "List all known program mappings."
+  *programs*)
 
 
