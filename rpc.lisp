@@ -311,10 +311,10 @@ Returns a response verifier to be sent back to the client or nil in the case of 
        ;; program already defined, do nothing
        nil)
       ((and p (not (= (cadr p) number)))
-       (warn "Redefining program ~A to ~A" name number)
+       (alexandria:simple-style-warning "Redefining program ~A to ~A" name number)
        (setf (cdr p) (list number)))
       (t 
-       (push (list p number) *programs*))))
+       (push (list name number) *programs*))))
   name)
        
 (defmacro defprogram (name number)
