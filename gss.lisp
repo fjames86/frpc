@@ -159,7 +159,8 @@ Returns the GSS cred on success, signals an RPC-AUTH-ERROR on failure."
   (declare (type (vector (unsigned-byte 8)) token))
   (handler-case 
       (let ((context (glass:accept-security-context *server-context* token)))
-	(add-gss-context context))
+	(add-gss-context context)
+	t)
     (error (e)
       (frpc-log :info "GSS failed: ~A" e)
       nil)))

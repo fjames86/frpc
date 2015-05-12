@@ -259,7 +259,7 @@ Returns a response verifier to be sent back to the client or nil in the case of 
 ;; 9.3 DES authentication
 
 ;; DES authentication is different to the other flavours because its authenticator and verifier structures
-;; do not match. This means we can't define a functions to pack/unpack its data. We therefore leave it as
+;; are not the same. This means we can't define functions to pack/unpack its data. We therefore leave it as
 ;; an opaque buffer and parse it as required.
 
 (defmethod authenticate ((flavour (eql :auth-des)) data verf)
@@ -279,14 +279,12 @@ Returns a response verifier to be sent back to the client or nil in the case of 
 (defmethod unpack-auth-data ((type (eql :auth-gss)) data)
   (unpack #'%read-gss-cred data))
 
-;; GSS authentication requires special treatment, i.e. hard-coding into the rpc server codes.
-;; This means this function is essentially redudant, but we need to fill it in anyway so that 
-;; the server does not immediately reject it 
+;; lookup the handle specified
 (defmethod authenticate ((flavour (eql :auth-gss)) data verf)
-  (make-opaque-auth :auth-null nil))
-
-
-
+  (let ((authp (gss-authenticate-handle data)))
+    (when authp
+      (frpc-log :info "GSS authentication granted")
+      (make-opaque-auth :auth-null nil))))
 
 ;; ----------------------------------------
 
@@ -337,4 +335,10 @@ NUMBER ::= a positive integer specifying the program number.
   "List all known program mappings."
   *programs*)
 
-
+(defun program-id (id)
+  "Lookup the program name or number."
+  (let ((p (find-program id)))
+    (when p 
+      (etypecase id
+	(symbol (cadr p))
+	(integer (car p))))))

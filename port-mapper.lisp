@@ -221,6 +221,10 @@ removed from the Lisp list."
 	(done nil))
        (done maps)
      (let ((map (read-xtype 'mapping stream)))
+       ;; modify the program id to a symbol (if its a known program)
+;;       (let ((name (frpc::program-id (mapping-program map))))
+;;	 (when name 
+;;	   (setf (mapping-program map) name)))
        (push map maps)
        (let ((next (read-xtype :boolean stream)))
 	 (unless next (setf done t))))))

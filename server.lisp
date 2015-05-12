@@ -211,6 +211,7 @@ TIMEOUT specifies the duration (in seconds) that a TCP connection should remain 
 		 (error () nil))))
       (cond
 	(cxt
+	 (frpc-log :info "GSS context granted")
 	 (write-rpc-response output-stream :accept :success :id id)
 	 (%write-gss-init-res output-stream
 			      (make-gss-init-res :handle (gss-context-handle cxt)
@@ -220,6 +221,7 @@ TIMEOUT specifies the duration (in seconds) that a TCP connection should remain 
 						 :token nil)))
 	(t
 	 ;; no context granted... means was invalid token
+	 (frpc-log :info "No GSS context granted")
 	 (write-rpc-response output-stream 
 			     :reject :auth-error
 			     :id id

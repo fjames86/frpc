@@ -12,6 +12,7 @@
 	   #:defprogram
 	   #:find-program
 	   #:list-all-programs
+	   #:program-id 
 
 	   ;; type definitions
 	   #:defxtype
