@@ -111,7 +111,7 @@ Use RPC-CONNECT and RPC-CLOSE to establish and close a connection. The macro WIT
 
 ### 2.3 UDP 
 
-Specifying :UDP as the protocol will send the message using the UDP transport instead of TCP (the default). If you care about the result, then specify a timeout in seconds to wait for the reply. If not reply is received an FRPC-TIMEOUT-ERROR will be raised, otherwise the function returns immediately with retult nil.
+Specifying :UDP as the protocol will send the message using the UDP transport instead of TCP (UDP is the default). If you care about the result, then specify a timeout in seconds to wait for the reply. If no reply is received an RPC-TIMEOUT-ERROR will be signalled, otherwise the function returns immediately with result nil.
 
 ```
 (pmap:call-null :host "192.168.0.1" :protocol :udp)
