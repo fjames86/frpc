@@ -86,6 +86,24 @@ the bytes read."
 ;;(defmethod reinitialize-instance :after ((instance rpc-client) &key)
 ;;  (setf (rpc-client-initial instance) nil))
 
+;; (defmethod initialize-instance :after ((client rpc-client) &rest initargs &key)
+;;   (declare (ignore initargs))
+;;   (let ((program (rpc-client-program client))
+;; 	(version (rpc-client-version client)))
+;;     (when (and program version)
+;;       (let ((port (port-mapper:call-get-port program version 
+;; 					     :host (or (rpc-client-host client) *rpc-host*)
+;; 					     :timeout (or (rpc-client-timeout client) 1)
+;; 					     :connection (rpc-client-connection client))))
+;; 	(cond
+;; 	  ((zerop port) (error "Program ~A.~A not mapped by remote port mapper" 
+;; 			       program version))
+;; 	  ((and (rpc-client-port client)
+;; 		(not (= port (rpc-client-port client))))
+;; 	   (error "Program ~A.~A not mapped to specified port" program version))
+;; 	  (t 
+;; 	   (setf (rpc-client-port client) port)))))))
+
 (defgeneric rpc-client-auth (client)
   (:documentation "The authenticator to use for the client request."))
 
@@ -601,7 +619,9 @@ OPTIONS allow customization of the generated client function:
 			       `(,@params &key))))
 			(t 
 			 '(arg &key)))
-		     (host ,*default-rpc-host*) (port ,*default-rpc-port*) auth verf request-id (protocol :udp) (timeout 1) connection client)
+		     (host ,*default-rpc-host*) (port ,*default-rpc-port*) 
+;;                      auth verf request-id  ;; does anyone ever use these? authentication should only be done using a client
+                      (protocol :udp) (timeout 1) connection client)
 	 ,@(when (assoc :documentation options) (cdr (assoc :documentation options)))
 	 ,(let ((the-form `(call-rpc (function ,arg-writer)
                                      ,(cond
@@ -618,9 +638,9 @@ OPTIONS allow customization of the generated client function:
                                      :program ,gprogram
                                      :version ,gversion
                                      :proc ,gproc
-                                     :auth auth
-                                     :verf verf
-                                     :request-id request-id
+;;                                     :auth auth
+;;                                     :verf verf
+;;                                     :request-id request-id
                                      :protocol protocol
                                      :timeout timeout
 				     :connection connection
@@ -648,3 +668,21 @@ OPTIONS allow customization of the generated client function:
 			    (function ,res-writer) 
 			    ,handler))))))))
 
+
+
+(defun call-null-proc (program version 
+		  &key (host *rpc-host*) (port *rpc-port*)
+		    (protocol :udp) connection (timeout 1) client)
+  (call-rpc :void nil :void 
+	    :host host
+	    :port port
+	    :program (if (symbolp program)
+			 (let ((p (find-program program)))
+			   (if p p (error "Program ~A not found" program)))
+			 program)
+	    :version version
+	    :proc 0
+	    :protocol protocol
+	    :timeout timeout
+	    :connection connection
+	    :client client))
