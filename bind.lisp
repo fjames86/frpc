@@ -105,101 +105,100 @@
 ;; -------------- version 3 -----------
 
 (defrpc call-null3 0 :void :void
-  (:program port-mapper 3))
+  (:program port-mapper::port-mapper 3))
 
 (defrpc call-set3 1 rpcb :boolean
-  (:program port-mapper 3))
+  (:program port-mapper::port-mapper 3))
 
 (defrpc call-unset3 2 rpcb :boolean
-  (:program port-mapper 3))
+  (:program port-mapper::port-mapper 3))
 
 (defrpc call-get-addr3 3
   rpcb
   :string
-  (:program port-mapper 3))
+  (:program port-mapper::port-mapper 3))
 
 (defrpc call-dump3 4
   :void
   (:optional rpcb-list)
-  (:program port-mapper 3))
+  (:program port-mapper::port-mapper 3))
 
 (defrpc call-callit3 5
   rpcb-rmtcall-args 
   rpcb-rmtcall-res
-  (:program port-mapper 3))
+  (:program port-mapper::port-mapper 3))
 
 (defrpc call-get-time3 6
   :void :uint32
-  (:program port-mapper 3))
+  (:program port-mapper::port-mapper 3))
 
 (defrpc call-uaddr2taddr3 7
   :string
   netbuf
-  (:program port-mapper 3))
+  (:program port-mapper::port-mapper 3))
 
 (defrpc call-taddr2uaddr3 8
   netbuf
   :string
-  (:program port-mapper 3))
+  (:program port-mapper::port-mapper 3))
 
 ;; ------------- version 4 -------------
 
 (defrpc call-null4 0 :void :void
-  (:program port-mapper 4))
+  (:program port-mapper::port-mapper 4))
 
 (defrpc call-set4 1 rpcb :boolean
-  (:program port-mapper 4))
+  (:program port-mapper::port-mapper 4))
 
 (defrpc call-unset4 2 rpcb :boolean
-  (:program port-mapper 4))
+  (:program port-mapper::port-mapper 4))
 
 (defrpc call-get-addr4 3
   rpcb
   :string
-  (:program port-mapper 4))
+  (:program port-mapper::port-mapper 4))
 
 (defrpc call-dump4 4
   :void
   (:optional rpcb-list)
-  (:program port-mapper 4))
+  (:program port-mapper::port-mapper 4))
 
 (defrpc call-callit4 5
   rpcb-rmtcall-args 
   rpcb-rmtcall-res
-  (:program port-mapper 4))
+  (:program port-mapper::port-mapper 4))
 
 (defrpc call-get-time4 6
   :void :uint32
-  (:program port-mapper 4))
+  (:program port-mapper::port-mapper 4))
 
 (defrpc call-uaddr2taddr4 7
   :string
   netbuf
-  (:program port-mapper 4))
+  (:program port-mapper::port-mapper 4))
 
 (defrpc call-taddr2uaddr4 8
   netbuf
   :string
-  (:program port-mapper 4))
+  (:program port-mapper::port-mapper 4))
 
 (defrpc call-get-version-addr 9
   rpcb :string
-  (:program port-mapper 4))
+  (:program port-mapper::port-mapper 4))
 
 (defrpc call-indirect 10
   rpcb-rmtcall-args
   rpcb-rmtcall-res
-  (:program port-mapper 4))
+  (:program port-mapper::port-mapper 4))
 
 (defrpc call-get-addr-list 11
   rpcb 
   (:optional rpcb-entry-list)
-  (:program port-mapper 4))
+  (:program port-mapper::port-mapper 4))
 
 (defrpc call-stat-by-version 12
   :void rpcb-stat-by-vers
-  (:program port-mapper 4))
-
+  (:program port-mapper::port-mapper 4))
 
 ;;; -----------------------
 

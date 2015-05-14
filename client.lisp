@@ -28,9 +28,9 @@
 	 (case (xunion-tag (accepted-reply-reply-data (xunion-val body)))
 	   (:prog-mismatch
 	    (let ((a (xunion-val (accepted-reply-reply-data (xunion-val body)))))
-	      (error 'rpc-mismatch-error 
-		     :low (cdr (assoc 'low a))
-		     :high (cdr (assoc 'high a))
+	      (error 'rpc-prog-mismatch-error 
+		     :low (getf a :low)
+		     :high (getf a :high)
 		     :description "Program mismatch")))
 	   (:success ;; do nothing -- the result value will be read at the end 
 	    nil)

@@ -18,7 +18,12 @@
 		     (rpc-accept-error-stat condition)))))
 
 (define-condition rpc-prog-mismatch-error (rpc-accept-error)
-  ())
+  ((low :initarg :low :initform 0 :reader rpc-prog-mismatch-error-low)
+   (high :initarg :high :initform 0 :reader rpc-prog-mismatch-error-high))
+  (:report (lambda (c stream)
+	     (format stream "RPC-PROG-MISMATCH-ERROR :LOW ~A :HIGH ~A" 
+		     (rpc-prog-mismatch-error-low c)
+		     (rpc-prog-mismatch-error-high c)))))
 
 (define-condition rpc-timeout-error (rpc-error)
   ()
@@ -36,7 +41,7 @@
   ((high :initform 0 :initarg :high :reader rpc-mismatch-error-high)
    (low :initform 0 :initarg :low :reader rpc-mismatch-error-low))
   (:report (lambda (condition stream)
-	     (format stream "RPC-MISMATCH ~A:~A" 
+	     (format stream "RPC-MISMATCH :LOW ~A :HIGH ~A" 
 		     (rpc-mismatch-error-low condition)
 		     (rpc-mismatch-error-high condition)))))
 
