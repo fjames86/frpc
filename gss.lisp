@@ -116,8 +116,8 @@
 
 ;; ---------------------------------------
 
-(defvar *server-context* nil
-  "The application server's GSS context, as returned from GSS-ACQUIRE-CREDENTIAL")
+(defvar *server-credentials* nil
+  "The application server's GSS context, as returned from GSS-ACQUIRE-CREDENTIALS")
 
 (defvar *gss-contexts* (make-cyclic-buffer 10)
   "List of currently active gss session contexts.")
@@ -141,9 +141,9 @@
 		    (equalp handle (gss-context-handle c)))
 		  *gss-contexts*))
 
-(defun gss-init (server-context &key (max-contexts 10))
+(defun gss-init (server-credentials &key (max-contexts 10))
   "Setup the application server's GSS support."
-  (setf *server-context* server-context
+  (setf *server-creds* server-credentials
 	*gss-contexts* (make-cyclic-buffer max-contexts)))
 
 
@@ -158,7 +158,7 @@
 Returns the GSS cred on success, signals an RPC-AUTH-ERROR on failure."
   (declare (type (vector (unsigned-byte 8)) token))
   (handler-case 
-      (multiple-value-bind (context response-buffer) (glass:accept-security-context *server-context* token)
+      (multiple-value-bind (context response-buffer) (glass:accept-security-context *server-credentials* token)
 	(add-gss-context context)
 	(make-gss-init-res :handle (gss-context-handle context)
 			   :token response-buffer))			   
