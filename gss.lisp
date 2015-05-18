@@ -143,7 +143,7 @@
 
 (defun gss-init (server-credentials &key (max-contexts 10))
   "Setup the application server's GSS support."
-  (setf *server-creds* server-credentials
+  (setf *server-credentials* server-credentials
 	*gss-contexts* (make-cyclic-buffer max-contexts)))
 
 
