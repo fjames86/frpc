@@ -212,7 +212,8 @@ the bytes read."
 ;; ----------------- gss ---------------
 
 (defclass gss-client (rpc-client)
-  ((context :initarg :context :accessor gss-client-context) 
+  ((context :initform nil :accessor gss-client-context)
+   (creds :initarg :credentials :accessor gss-client-credentials)
    (handle :initform nil :accessor gss-client-handle)
    (seqno :initform 0 :accessor gss-client-seqno)
    (service :initarg :service :initform :none :accessor gss-client-service)))
@@ -223,24 +224,26 @@ the bytes read."
 
 (defmethod rpc-client-auth ((client gss-client))
   (when (rpc-client-initial client)
-    (let ((res 
-	   (call-rpc #'%write-gss-init-arg
-		     (glass:initialize-security-context (gss-client-context client))
-		     #'%read-gss-init-res
-		     :host (rpc-client-host client)
-		     :port (rpc-client-port client)
-		     :program (rpc-client-program client)
-		     :version (rpc-client-version client)
-		     :auth (make-opaque-auth :auth-gss
-					     (make-gss-cred :proc :init
-							    :seqno (gss-client-seqno client)
-							    :service :none))
-		     :protocol (rpc-client-protocol client)
-		     :timeout (rpc-client-timeout client)
-		     :connection (rpc-client-connection client))))
-      ;; store the handle for future requests
-      (setf (gss-client-handle client) (gss-init-res-handle res)
-	    (rpc-client-initial client) nil)))
+    (multiple-value-bind (context buffer) (glass:initialize-security-context (gss-client-credentials client))
+      (setf (gss-client-context client) context)
+      (let ((res 
+	     (call-rpc #'%write-gss-init-arg
+		       buffer
+		       #'%read-gss-init-res
+		       :host (rpc-client-host client)
+		       :port (rpc-client-port client)
+		       :program (rpc-client-program client)
+		       :version (rpc-client-version client)
+		       :auth (make-opaque-auth :auth-gss
+					       (make-gss-cred :proc :init
+							      :seqno (gss-client-seqno client)
+							      :service :none))
+		       :protocol (rpc-client-protocol client)
+		       :timeout (rpc-client-timeout client)
+		       :connection (rpc-client-connection client))))
+	;; store the handle for future requests
+	(setf (gss-client-handle client) (gss-init-res-handle res)
+	      (rpc-client-initial client) nil))))
 
   ;; increment the seqno
   (incf (gss-client-seqno client))
