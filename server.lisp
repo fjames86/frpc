@@ -207,18 +207,15 @@ TIMEOUT specifies the duration (in seconds) that a TCP connection should remain 
 				       :accept :garbge-args
 				       :id id)
 		   (return-from process-gss-init-command)))))
-    (let ((cxt (handler-case (gss-authenticate token)
+    (let ((res (handler-case (gss-authenticate token)
 		 (error () nil))))
       (cond
-	(cxt
+	(res
+	 ;; FIXME: it might be that we need to authenticate ourselves to the client
+	 ;; we need to send the response buffer as the TOKEN parameter of the res struct
 	 (frpc-log :info "GSS context granted")
 	 (write-rpc-response output-stream :accept :success :id id)
-	 (%write-gss-init-res output-stream
-			      (make-gss-init-res :handle (gss-context-handle cxt)
-						 :major 0
-						 :minor 0
-						 :window 0
-						 :token nil)))
+	 (%write-gss-init-res output-stream res))
 	(t
 	 ;; no context granted... means was invalid token
 	 (frpc-log :info "No GSS context granted")
