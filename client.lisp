@@ -340,19 +340,19 @@ the bytes read."
                  (cond
                    ((eq (xunion-tag (xunion-val body)) :msg-denied)
                     ;; rpc denied e.g. auth-error
-                    (list remote-host remote-port nil))
+                    (list remote-host nil))
                    ((not (eq (xunion-tag (accepted-reply-reply-data (xunion-val (xunion-val body))))
                              :success))
                     ;; rpc unsuccessful e.g. prog-unavail
-                    (list remote-host remote-port nil))
+                    (list remote-host nil))
                    (t 
                     ;; FIXME: should really check the reply's id
-                    (push (list remote-host remote-port (read-xtype result-type input))
+                    (push (list remote-host (read-xtype result-type input))
                           replies)))))
            (error (e)
              (frpc-log :error "~A" e)
              (frpc-log :error "~S" (subseq buffer 0 count))
-             (list remote-host remote-port nil))))))))))
+             (list remote-host nil))))))))))
     
 (defun send-rpc-udp (socket arg-type arg &key program version proc auth verf request-id host port)
   (let ((buffer (frpc.streams:allocate-buffer)))

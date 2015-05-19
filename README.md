@@ -1,7 +1,7 @@
-# FRPC
-FRPC is an implementation of the ONC-RPC ("SunRPC") protocol. It provides both a generalized 
+# frpc
+This is an implementation of the ONC-RPC ("SunRPC") protocol in Common Lisp. It provides both a generalized 
 eXtensible Data Representation (XDR) serializer and a flexible RPC framework to build robust, secure networked 
-services. FRPC supports the most commonly used authentication flavours (see below) including RPCSEC_GSS (i.e. Kerberos).
+services. It supports the most commonly used authentication flavours (see below) including RPCSEC_GSS (i.e. Kerberos).
 
 See the related project [nefarious](https://github.com/fjames86/nefarious), which uses FRPC to implement an NFSv3 client and server.
 
@@ -11,7 +11,7 @@ RPC interfaces are given a unique integer called a program number. Each program 
 versions of its interface, with each version having a different set of functions/arguments. Each procedure
 in the interface is also given a unique integer. Together these 3 integers define the procedure identifier.
 
-In FRPC, both clients and servers must define the interface. This supplies argument and result types.
+In frpc, both clients and servers must define the interface. This supplies argument and result types.
 Servers must additionally implement handlers for each procedure they wish to support.
 
 For instance, a client should write:
@@ -43,14 +43,13 @@ Servers should additionally implement handlers for the procedures they wish to s
 ```
 The :HANDLER option specifies a function which accepts a single argument, which will be the value decoded according
 to the rule defined for the arg-type by the DEFRPC form. The handler function should return a single value which will be 
-passed to the result-type serializer defined by the DEFRPC form. Handlers should never signal errors because 
-the RPC protocol does not have a generalized mechanism of reporting errors. Instead, your RPC interface will typically
-define a set of error status codes which will be returned as a part of the handler's return value.
+passed to the result-type serializer defined by the DEFRPC form. If the handler signals an error, 
+the RPC server will be silent (i.e. not send a reply). Typically, you should indicate to the caller that an error occured
+by returning a status code as a part of your return value. Most RPC interfaces define return value structures in this way.
 
 The types provided to DEFRPC can be a generalized type specifier, as described below in section 4.5.
 
 ## 2. Client
-
 
 The DEFRPC macro defines a wrapper around the underlying CALL-RPC function, with default values provided 
 for the argument writer, result reader, program, version and proc arguments. 
@@ -72,7 +71,7 @@ For instance, consider a procedure which accepts and returns a structure of two 
   (:arg-transformer (a &key (b ""))
     (make-my-arg :a a :b b))
   (:transformer (res)
-    (values (my-arg-a res) (my-arg-b res)))
+    (values (string-upcase (my-arg-a res)) (string-upcase (my-arg-b res))))
   (:documentation "Accepts two strings A and B. Returns (values (string-upcase A) (string-upcase B))."))
 ```
 The resulting client function can then be called:
@@ -101,7 +100,7 @@ Use RPC-CONNECT and RPC-CLOSE to establish and close a connection. The macro WIT
 
 ```
 ;; normal way to do it. establishes a connection and closes it at the end 
-(pmap:call-dump "192.168.0.8" :protocol :tcp)
+(frpc.bind:call-dump "192.168.0.8" :protocol :tcp)
 
 ;; reuses a connection to the server 
 (frpc:with-rpc-connection (c "192.168.0.8" 111 :tcp)  
@@ -114,14 +113,14 @@ Use RPC-CONNECT and RPC-CLOSE to establish and close a connection. The macro WIT
 Specifying :UDP as the protocol will send the message using the UDP transport instead of TCP (UDP is the default). If you care about the result, then specify a timeout in seconds to wait for the reply. If no reply is received an RPC-TIMEOUT-ERROR will be signalled, otherwise the function returns immediately with result nil.
 
 ```
-(pmap:call-null :host "192.168.0.1" :protocol :udp)
+(frpc.bind:call-null :host "192.168.0.1" :protocol :udp)
 ```
 
 Users may also supply a connection argument for UDP so that they don't need to keep making new UDP sockets for each RPC.
 ```
 (with-rpc-connection (conn host port :udp)
-  (pmap:call-null :protocol :udp :connection conn)
-  (pmap:call-dump :protocol :udp :connection conn))
+  (frpc.bind:call-null :protocol :udp :connection conn)
+  (frpc.bind:call-dump :protocol :udp :connection conn))
 ```
 
 ### 2.4 UDP broadcast
@@ -129,14 +128,18 @@ Users may also supply a connection argument for UDP so that they don't need to k
 You may send messages using UDP broadcast to find services on your local network.
 
 ```
-(pmap:call-null :host "255.255.255.255" :protocol :broadcast)
+(frpc.bind:call-null :host "255.255.255.255" :protocol :broadcast)
 ```
 
-Broadcast messages return a list of the responses received within the timeout -- no timeout error is raised if no replies are received. Each element in the list is a list of 3 items (host port result), where host and port identify where the response came from and result is the result of decoding the message that was received.
+Broadcast messages return a list of the responses received within the timeout -- no timeout error 
+is raised if no replies are received. Each element in the list is a list of 2
+items (host result), where host is where the response came from 
+and result is the result of decoding the message that was received.
 
 ## 3. RPC Server
 
-An RPC server runs from within a single thread and listens on a set of TCP and UDP ports. It my serve a subset of available RPC programs, by default serving all programs. Authentication handlers can be supplied to filter client requests.
+An RPC server runs from within a single thread and listens on a set of TCP and UDP ports. 
+It may serve a subset of available RPC programs, by default serving all programs. 
 
 ```
 ;; make a server instance
@@ -149,13 +152,21 @@ An RPC server runs from within a single thread and listens on a set of TCP and U
 (stop-rpc-server *server*)
 ```
 
-When the server accepts a TCP connection, it is added to a list of currently open connections. The server will select a connection to process using USOCKET:WAIT-FOR-INPUT. This allows the server to keep open multiple TCP connections without blocking other traffic. Note that the socket IO is still syncronous. Connections which are idle for TIMEOUT seconds (default 60 seconds) are closed by the FRPC server. 
+When the server accepts a TCP connection, it is added to a list of currently open connections. 
+The server will select a connection to process using USOCKET:WAIT-FOR-INPUT. This allows the server to
+keep open multiple TCP connections without blocking other traffic. Note that the socket IO is 
+still synchronous. Connections which are idle for TIMEOUT seconds (default 60 seconds) are closed by the RPC server. 
 
 ### 3.1 Server handlers
 
 The handler function, which is invoked to process an RPC request, should return an object which matches the type specified in the associated DEFRPC 
-form. If the handler signals an error, then the RPC server will be silent, i.e. not return any response to the caller. Some APIs require this behaviour,
-this is the way server handlers should support it.
+form. If the handler signals an RPC-AUTH-ERROR, the request will be rejected with the auth-stat provided (or AUTH-TOOWEAK otherwise). 
+
+It is the handler's responsibility to ensure both that the caller has authenticated to a suffiently secure level and that 
+the caller is authorized to call the function. 
+
+If any other error is signalled, then the RPC server will be silent, i.e. not return any response to the caller. 
+Some APIs require this behaviour, this is the way server handlers should support it.
 
 ## 4. XDR serializer
 
@@ -193,7 +204,7 @@ Use PACK/UNPACK to store/extract instances from buffers rather than streams.
 
 ### 4.2 enums
 
-Define enum types using
+Enumerated types are lists of symbol/integer pairs. Define enum types using
 ```
 (defxenum enum-name
   (symbol integer)
@@ -214,7 +225,8 @@ where val is either an integer or a symbol.
 
 ### 4.3 unions
 
-Define union types using
+Discriminated unions are an enum followed by a value, with the type of the value specified by the provided enum.
+Define union types using:
 ```
 (defxunion union-type (enum-type)
   (enum-symbol type-name)
@@ -227,25 +239,31 @@ Define union types using
   (:b :string)
   (otherwise :void))
 ```
+This essentially expands to a `CASE` form, so you may put an `OTHERWISE` clause at the end, usually this will be a `:VOID` type.
 
-Make instances of unions using MAKE-XUNION, e.g.
+Make instances of unions using `MAKE-XUNION`, get the tag and value using `XUNION-TAG` and `XUNION-VAL` e.g.
 ```
-(make-xunion :a 123)
-(make-xunion :b "asdad")
-(make-xunion :c nil)
+(let ((u (make-xunion :a 123)))
+  (values (xunion-tag u) (xunion-val u)))
+:A
+123
 ```
 
 ### 4.4 structures
 
-Define structures using
-
+Define structures using:
 ```
 (defxstruct struct-name ()
-  (slot-name type-name &optional initial-value)
+  (slot-name xtype-name &optional initial-value)
   ...)
 ```
+This expands to a DEFSTRUCT form to define a structure.
 
-This expands to a DEFSTRUCT form and associated reader/writer functions.
+For smaller structures it may be more convenient to use lists or plists:
+```
+(defxtype* my-list () (:list :uint32 :string))
+(defxtype* my-plist () (:plist foo :uint32 bar :string))
+```
 
 ### 4.5 Generalized types
 
@@ -349,10 +367,10 @@ CL-USER> (defvar *server-public* (frpc:des-public *server-secret*))
 CL-USER> (defvar *client* (make-instance 'frpc:des-client :secret *client-secret* :public *server-public* :name "xxxx"))
 *CLIENT2*
 ;; first call uses fullname authentication
-CL-USER> (pmap:call-null :client *client*)
+CL-USER> (frpc.bind:call-null :client *client*)
 NIL
 ;; subsequent calls use an allocated nickname
-CL-USER> (pmap:call-null :client *client*)
+CL-USER> (frpc.bind:call-null :client *client*)
 
 ;; the server acquires its secret key and the client's public key 
 CL-USER> (defvar *client-public* (frpc:des-public *client-secret*))
@@ -364,29 +382,31 @@ CL-USER> (frpc:des-init *server-secret* (list (frpc:des-public-key "xxxx" *clien
 
 ### 5.4 AUTH-GSS (Kerberos)
 
-GSS support provided by [glass](https://github.com/fjames86/glass). If you want Kerberos support
+GSS support provided by [glass](https://github.com/fjames86/glass). Please note, if you want Kerberos support
 this is provided by [cerberus](https://github.com/fjames86/cerberus), you should load this package to provide 
-the required methods.
+the required methods. 
 
 Please note: RPCSEC_GSS provides both integrity (checksumming) and privacy (encryption) of 
 the call arguments/results. This is not currently supported by frpc.
 
 ```
-;; client, has set *context* to the result of calling GLASS:ACQUIRE-CREDENTIAL
-CL-USER> (defvar *client* (make-instance 'frpc:gss-client :context *context*))
-;; should now have a handle and be ready for calls
+;; you must first logon before you can request credentials for the application server
+CL-USER> (cerberus:logon-user "myusername" "mypassword" "myrealm" :kdc-address "10.1.2.3")
+CL-USER> (defvar *cred* (glass:acquire-credentials :kerberos "service/hostname.com@myrealm"))
+;; make the instance of the gss client
+CL-USER> (defvar *client* (make-instance 'frpc:gss-client :context *cred*))
+;; attempt to call the function, this will first negotiate the authentication before calling the proc
 CL-USER> (pmap:call-null :client *client*)
 
-;; server initializes itself with its keylist (i.e. contents of keytab file)
-;; the server generates a GSS context as well
-CL-USER> (defvar *context2* (glass:acquire-credential :kerberos "Administrator" :username "Administrator" :password "1234" :realm "REALM"))
-CL-USER> (frpc:gss-init *context2*)
+;; the server should initialize itself with a credentials handle
+CL-USER> (defvar *server-creds* (glass:acquire-credentials :kerberos nil))
+CL-USER> (frpc:gss-init *server-creds*)
 ```
 
 ### 5.5 Reauthentication
 RPC servers are free to flush their tables of allocated nicknames/handles. When this happens you will 
 receive a RPC-AUTH-ERROR (AUTH-REJECTED) error. You should set your client back to its initial state and retry,
-this should reallocate a new nickname.
+this should reallocate a new nickname/context handle.
 
 ```
 CL-USER> (setf (frpc:rpc-client-initial *client*) t)

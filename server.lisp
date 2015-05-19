@@ -1,6 +1,8 @@
 ;;;; Copyright (c) Frank James 2015 <frank.a.james@gmail.com>
 ;;;; This code is licensed under the MIT license.
 
+;;; This file implements the codes to accept and process RPC requests.
+
 (in-package #:frpc)
 
 (defun write-rpc-response (stream &key accept reject verf (id 0) (high 0) (low 0) auth-stat)
@@ -180,6 +182,13 @@ TIMEOUT specifies the duration (in seconds) that a TCP connection should remain 
 
 	  ;; funcall the handler to get the result 
 	  (let ((arg (handler-case (read-xtype reader input-stream)
+		       (rpc-auth-error (e)
+			 (frpc-log :trace "Handler signalled an auth error")
+			 (write-rpc-response output-stream
+					     :reject :auth-error
+					     :id id
+					     :auth-stat (or (auth-error-stat e) :auth-tooweak))
+			 (return-from process-rpc-call))
 		       (error (e)
 			 (frpc-log :trace "Failed to read argument: ~A" e)
 			 (write-rpc-response output-stream 

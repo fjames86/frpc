@@ -1,8 +1,7 @@
 ;;;; Copyright (c) Frank James 2015 <frank.a.james@gmail.com>
 ;;;; This code is licensed under the MIT license.
 
-;;; This file implements rpcbind (versions 3 and 4)
-;;; This is essentially an upgraded version of port-mapper 
+;;; This file implements portmap (version 2) and rpcbind (versions 3 and 4)
 
 (defpackage #:frpc.bind 
   (:use #:cl #:frpc)
@@ -14,6 +13,13 @@
            #:mapping-port
            #:*pmap-port*
 
+	   #:binding
+	   #:binding-program
+	   #:binding-version
+	   #:binding-netid
+	   #:binding-addr
+	   #:binding-owner
+	   
            ;; the rpc functions
            #:call-null
            #:call-set
@@ -25,9 +31,9 @@
            #:call-null3
            #:call-set3
            #:call-unset3
-           #:call-get-por3
+           #:call-get-addr3
            #:call-dump3
-           #:call-callit3
+           #:call-broadcast3
 	   #:call-get-time3
 	   #:call-uaddr2taddr3
 	   #:call-taddr2uaddr3
@@ -35,9 +41,9 @@
            #:call-null4
            #:call-set4
            #:call-unset4
-           #:call-get-port4
+           #:call-get-addr4
            #:call-dump4
-           #:call-callit4
+           #:call-broadcast4
 	   #:call-get-time4
 	   #:call-uaddr2taddr4
 	   #:call-taddr2uaddr4
@@ -306,7 +312,7 @@ function available.")
 
 
 
-(defxstruct rpcb ()
+(defxstruct binding ()
   (program :uint32)
   (version :uint32)
   (netid :string)
@@ -329,11 +335,11 @@ function available.")
 	(write-xtype stream :boolean t)
 	(write-xtype stream :boolean nil))))
 
-(defxtype rpcb-list ()
+(defxtype binding-list ()
   ((stream)
-   (read-type-list stream 'rpcb))
+   (read-type-list stream 'binding))
   ((stream mappings)
-   (write-type-list stream 'rpcb mappings)))
+   (write-type-list stream 'binding mappings)))
        
 (defxstruct rpcb-remote-call-arg ()
   (program :uint32)
@@ -404,23 +410,23 @@ function available.")
 (defrpc call-null3 0 :void :void
   (:program port-mapper 3))
 
-(defrpc call-set3 1 rpcb :boolean
+(defrpc call-set3 1 binding :boolean
   (:program port-mapper 3))
 
-(defrpc call-unset3 2 rpcb :boolean
+(defrpc call-unset3 2 binding :boolean
   (:program port-mapper 3))
 
 (defrpc call-get-addr3 3
-  rpcb
+  binding
   :string
   (:program port-mapper 3))
 
 (defrpc call-dump3 4
   :void
-  (:optional rpcb-list)
+  (:optional binding-list)
   (:program port-mapper 3))
 
-(defrpc call-callit3 5
+(defrpc call-broadcast3 5
   rpcb-rmtcall-args 
   rpcb-rmtcall-res
   (:program port-mapper 3))
@@ -444,23 +450,23 @@ function available.")
 (defrpc call-null4 0 :void :void
   (:program port-mapper 4))
 
-(defrpc call-set4 1 rpcb :boolean
+(defrpc call-set4 1 binding :boolean
   (:program port-mapper 4))
 
-(defrpc call-unset4 2 rpcb :boolean
+(defrpc call-unset4 2 binding :boolean
   (:program port-mapper 4))
 
 (defrpc call-get-addr4 3
-  rpcb
+  binding
   :string
   (:program port-mapper 4))
 
 (defrpc call-dump4 4
   :void
-  (:optional rpcb-list)
+  (:optional binding-list)
   (:program port-mapper 4))
 
-(defrpc call-callit4 5
+(defrpc call-broadcast4 5
   rpcb-rmtcall-args 
   rpcb-rmtcall-res
   (:program port-mapper 4))
@@ -480,7 +486,7 @@ function available.")
   (:program port-mapper 4))
 
 (defrpc call-get-version-addr 9
-  rpcb :string
+  binding :string
   (:program port-mapper 4))
 
 (defrpc call-indirect 10
@@ -489,7 +495,7 @@ function available.")
   (:program port-mapper 4))
 
 (defrpc call-get-addr-list 11
-  rpcb 
+  binding
   (:optional rpcb-entry-list)
   (:program port-mapper 4))
 
