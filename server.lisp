@@ -136,6 +136,7 @@ TIMEOUT specifies the duration (in seconds) that a TCP connection should remain 
 (defun process-rpc-call (input-stream output-stream 
 			 &key host port protocol id auth verf program version proc)
   "Process the actual call. read the argument, handle it and write the response."
+  (frpc-log :trace "Call ~A:~A:~A" program version proc)
   (let ((rverf (process-rpc-auth output-stream auth verf id)))
     ;; check the verifier
     (unless rverf 
@@ -254,6 +255,8 @@ TIMEOUT specifies the duration (in seconds) that a TCP connection should remain 
       ;; if the authenticator is a GSS init (FIXME: or continue) command then we need to do special things
       (when (and (eq (opaque-auth-flavour auth) :auth-gss)
 		 (eq (gss-cred-proc (opaque-auth-data auth)) :init))
+	(frpc-log :trace "Process GSS init: ~A ~A" 
+		  (opaque-auth-flavour auth) (gss-cred-proc (opaque-auth-data auth)))
 	(process-gss-init-command input-stream output-stream id)
 	(return-from process-rpc-request))
 

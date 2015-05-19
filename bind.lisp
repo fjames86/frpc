@@ -503,15 +503,5 @@ function available.")
   :void rpcb-stat-by-vers
   (:program port-mapper 4))
 
-;;; -----------------------
-
-(defun call-null (&key (host *rpc-host*) (port 111) (protocol :udp) (version 4) (timeout 1) connection client)
-  (ecase version
-    (4 
-     (call-null4 :host host :port port :protocol protocol
-		 :timeout timeout :connection connection :client client))
-    (3 
-     (call-null3 :host host :port port :protocol protocol
-		 :timeout timeout :connection connection :client client))))
 
 

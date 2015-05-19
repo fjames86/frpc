@@ -224,6 +224,7 @@ the bytes read."
 
 (defmethod rpc-client-auth ((client gss-client))
   (when (rpc-client-initial client)
+    (frpc-log :trace "Initiating GSS client context")
     (multiple-value-bind (context buffer) (glass:initialize-security-context (gss-client-credentials client))
       (setf (gss-client-context client) context)
       (let ((res 
