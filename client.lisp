@@ -503,24 +503,28 @@ CLIENT should be an instance of RPC-CLIENT or its subclasses. This is the ONLY w
     (case (gss-client-service client)
       (:integrity 
        ;; pack and checksum the argument
-       (setf arg-type (lambda (stream obj)
-			(write-gss-integ-res stream arg-type obj
-					     (gss-client-context client)
-					     (gss-client-seqno client)))
-	     result-type (lambda (stream)
-			   (read-gss-integ-arg stream result-type 
-					       (gss-client-context client)
-					       (gss-client-seqno client)))))
+       (setf arg-type (let ((w arg-type))
+                        (lambda (stream obj)
+                          (write-gss-integ stream w obj
+                                           (gss-client-context client)
+                                           (gss-client-seqno client))))
+             result-type (let ((r result-type))
+                           (lambda (stream)
+                             (read-gss-integ stream r
+                                             (gss-client-context client)
+                                             (gss-client-seqno client))))))
       (:privacy 
        ;; pack, checksum and encrypt 
-       (setf arg-type (lambda (stream obj)
-			(write-gss-priv-res stream arg-type obj
-					    (gss-client-context client)
-					    (gss-client-seqno client)))
-	     result-type (lambda (stream)
-			   (read-gss-priv-arg stream result-type 
-					      (gss-client-context client)
-					      (gss-client-seqno client)))))))
+       (setf arg-type (let ((a arg-type))
+                        (lambda (stream obj)
+                          (write-gss-priv stream a obj
+                                          (gss-client-context client)
+                                          (gss-client-seqno client))))
+             result-type (let ((r result-type))
+                           (lambda (stream)
+                             (read-gss-priv stream r
+                                            (gss-client-context client)
+                                            (gss-client-seqno client))))))))
   
   (multiple-value-bind (res verf) 
       (ecase protocol

@@ -193,7 +193,7 @@ Returns the GSS cred on success, signals an RPC-AUTH-ERROR on failure."
 
 ;; --------------------------------
 
-(defun read-gss-integ-arg (stream reader context seqno)
+(defun read-gss-integ (stream reader context seqno)
   (let ((integ (%read-gss-integ-data stream)))
     (unless (glass:verify-mic context 
 			      (gss-integ-data-integ integ)
@@ -204,7 +204,7 @@ Returns the GSS cred on success, signals an RPC-AUTH-ERROR on failure."
 	(error "Seqnos don't match"))
       (read-xtype reader s))))
 
-(defun write-gss-integ-res (stream writer obj context seqno)
+(defun write-gss-integ (stream writer obj context seqno)
   (let ((msg (flexi-streams:with-output-to-sequence (s)
 	       (write-uint32 s seqno)
 	       (write-xtype writer s obj))))
@@ -212,15 +212,15 @@ Returns the GSS cred on success, signals an RPC-AUTH-ERROR on failure."
 			   (make-gss-integ-data :integ msg
 						:checksum (glass:get-mic context msg)))))
 
-(defun read-gss-priv-arg (stream reader context seqno)
+(defun read-gss-priv (stream reader context seqno)
   (let ((buffer (read-octet-array stream)))
     (let ((data (glass:unwrap context buffer)))
       (flexi-streams:with-input-from-sequence (s data)
-	(read-gss-integ-arg s reader context seqno)))))
+	(read-gss-integ s reader context seqno)))))
 
-(defun write-gss-priv-res (stream writer obj context seqno)
+(defun write-gss-priv (stream writer obj context seqno)
   (let ((buffer (flexi-streams:with-output-to-sequence (s)
-		  (write-gss-integ-res s writer obj context seqno))))
+		  (write-gss-integ s writer obj context seqno))))
     (write-sequence (glass:wrap context buffer)
 		    stream)))
 

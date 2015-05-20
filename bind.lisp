@@ -280,7 +280,7 @@ removed from the Lisp list."
 (defun %handle-callit (args)
   (destructuring-bind (program version proc arg-buffer) args
     ;; find the handler and port mapping 
-    (frpc-log :info "CALLIT ~A:~A:~A" program version proc)
+    (frpc-log :info "CALLIT ~A:~A ~A:~A:~A" *rpc-remote-host* *rpc-remote-port* program version proc)
     (let ((mapping (find-mapping (make-mapping :program program
 					       :version version
 					       :protocol :udp)))
