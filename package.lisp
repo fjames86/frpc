@@ -7,6 +7,7 @@
   (:export #:use-rpc-program
 	   #:use-rpc-host
 	   #:defrpc
+	   #:defhandler
 	   #:find-handler
 	   #:generate-program-number
 	   #:defprogram
@@ -91,6 +92,7 @@
 	   ;; debug logging
 	   #:*frpc-log*
 	   #:*frpc-log-path*
+	   #:*frpc-log-levels*
 	   #:frpc-log
 
 	   ;; for des security

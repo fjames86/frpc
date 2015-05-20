@@ -54,6 +54,22 @@
 	      *handlers*)))
   nil)
 
+(defmacro defhandler (name (var program version proc) &body body)
+  "Define a server handler function.
+
+NAME ::= name of the function to define.
+VAR ::= variable bound to the argument to the handler.
+PROGRAM ::= symbol naming the program.
+VERSION,PROC ::= integers specifying the version and proc.
+"
+  (let* ((p (cadr (find-program program)))
+	 (h (find-handler p version proc)))
+    (unless h (error "RPC ~A:~A:~A not defined" program version proc))
+    `(progn
+       (defun ,name (,var) ,@body)
+       (%defhandler ,p version ,proc
+		  ,(car h) ,(cadr h) #',name))))
+
 (defun find-handler (&optional program version proc)
   "Look up the handler(s) for the given PROGRAM, VERSION and PROC IDs."
   ;; if no program supplied return a list of all programs currently defined
