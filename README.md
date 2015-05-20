@@ -6,7 +6,6 @@ services. It supports the most commonly used authentication flavours (see below)
 See the related project [nefarious](https://github.com/fjames86/nefarious), which uses FRPC to implement an NFSv3 client and server.
 
 ## 1. Defining RPC interfaces
-
 RPC interfaces are given a unique integer called a program number. Each program may have multiple
 versions of its interface, with each version having a different set of functions/arguments. Each procedure
 in the interface is also given a unique integer. Together these 3 integers define the procedure identifier.
@@ -318,7 +317,7 @@ but a simple tagging mechanism.
 and server have access to the public keys for each other. Traditionally this is implemented using some shared
 repository accessable via RPC (usually NIS or NIS+), however frpc does not assume such a repository is available.
 Key management is left as an exercise for future development.
-- [ ] AUTH-GSS: GSS (i.e. Kerberos) authentication, supports authentication, integrity validation and privacy.
+- [x] AUTH-GSS: GSS (i.e. Kerberos) authentication, supports authentication, integrity validation and privacy.
 Uses the package [cerberus](https://github.com/fjames86/cerberus) to implement Kerberos v5 authentication.
 
 
@@ -386,19 +385,21 @@ GSS support provided by [glass](https://github.com/fjames86/glass). Please note,
 this is provided by [cerberus](https://github.com/fjames86/cerberus), you should load this package to provide 
 the required methods. 
 
-Please note: RPCSEC_GSS provides both integrity (checksumming) and privacy (encryption) of 
-the call arguments/results. This is not currently supported by frpc.
+RPCSEC_GSS provides both integrity (checksumming) and privacy (encryption) of the call arguments/results. Set 
+the :SERVICE level to `:INTEGITY` for checksumming and `:PRIVACY` for encryption and checksumming of the call
+arguments/results. The default is `:NONE` which sends the args/results as normal.
 
 ```
 ;; you must first logon before you can request credentials for the application server
-CL-USER> (cerberus:logon-user "myusername" "mypassword" "myrealm" :kdc-address "10.1.2.3")
+CL-USER> (cerberus:logon-user "myusername@myrealm" "mypassword" :kdc-address "10.1.2.3")
 CL-USER> (defvar *cred* (glass:acquire-credentials :kerberos "service/hostname.com@myrealm"))
 ;; make the instance of the gss client
-CL-USER> (defvar *client* (make-instance 'frpc:gss-client :context *cred*))
+CL-USER> (defvar *client* (make-instance 'frpc:gss-client :context *cred* :service :privacy))
 ;; attempt to call the function, this will first negotiate the authentication before calling the proc
 CL-USER> (pmap:call-null :client *client*)
 
 ;; the server should initialize itself with a credentials handle
+CL-USER> (cerberus:logon-service "service/hostname.com@myrealm" "password")
 CL-USER> (defvar *server-creds* (glass:acquire-credentials :kerberos nil))
 CL-USER> (frpc:gss-init *server-creds*)
 ```
@@ -433,6 +434,9 @@ create a 2MB log file in your home directory named "frpc.log". You should change
 The log is created on the first call to FRPC-LOG, this is typically when you make your 
 first RPC call or start your RPC server.
 
+By default only log messages with `:INFO` or greater level are actually written to the log. You can 
+increase the logging verbosity by pushing `:TRACE` to `FRPC:*FRPC-LOG-LEVELS*`. 
+
 For debugging and development you may follow the log to see output as it arrives:
 ```
 (pounds.log:start-following *frpc-log*)
@@ -440,7 +444,9 @@ For debugging and development you may follow the log to see output as it arrives
 (pounds.log:stop-following)
 ```
 
-Users may also write to this log if they wish, you should simply use a different tag.
+Users may also write to this log if they wish, you should simply use a different tag (note: [nefarious](https://github.com/fjames86/nefarious)
+shares the frpc log).
+
 ```
 (let ((tag (babel:string-to-octets "MYLG")))
   (defun my-log (lvl format-control &rest args)
@@ -456,8 +462,6 @@ See the pounds documentation for more information on the logging system.
 
 ## 8. Notes
 
-* Authentication support is kind of basic and not well fleshed out. GSS (i.e. Kerberos) authentication should be fully supported, including 
-integrity and privacy levels.
 * At the moment, reading from TCP streams requires buffering the input to cope with reading multiple fragments. This is REALLY bad if
 large payloads are sent. A fragmented-stream type could be defined to wrap the underlying socket stream so that we can avoid the buffering on reads.
 You still need to buffer writes because you need to know how much you intend to write before you've written it.
