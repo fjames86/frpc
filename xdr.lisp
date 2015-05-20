@@ -182,8 +182,13 @@
       (funcall writer stream (aref array i))))
   nil)
 
+(defconstant +max-octet-array-length+ (* 50 1024 1024))
+
 (defun read-octet-array (stream)
   (let ((len (read-uint32 stream)))
+    (when (> len +max-octet-array-length+)
+      (break)
+      (error "Attempted to read a silly size array ~DMB" (truncate len (* 1024 1024))))
     (let ((sequence (nibbles:make-octet-vector len)))
       (dotimes (i len)
         (setf (elt sequence i)

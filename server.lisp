@@ -151,62 +151,67 @@ TIMEOUT specifies the duration (in seconds) that a TCP connection should remain 
 	(return-from process-rpc-call))
       (destructuring-bind (reader writer handler) h
 	(let ((gss-service (when (eq (opaque-auth-flavour auth) :auth-gss)
-			     (gss-cred-service (opaque-auth-data auth))))
-	      (arg-reader reader)
-	      (res-writer writer))
-
-	  ;; when doing GSS integrity we need to modify the reader
-	  (case gss-service
-	    (:integrity 
-	     (let* ((cred (opaque-auth-data auth))
-		    (context (find-gss-context (gss-cred-handle cred))))
-	       (setf arg-reader (lambda (stream)
-				  (read-gss-integ stream 
-						      reader 
-						      (gss-context-context context)
-						      (gss-cred-seqno cred)))
-		     res-writer (lambda (stream obj)
-                          (frpc-log :trace "writing integ response")
-				  (write-gss-integ stream writer obj 
-						       (gss-context-context context)
-						       (gss-cred-seqno cred))))))
-	    (:privacy 
-	     (let* ((cred (opaque-auth-data auth))
-		    (context (find-gss-context (gss-cred-handle cred))))
-	       (setf arg-reader (lambda (stream)
-				  (read-gss-priv stream reader 
-						     (gss-context-context context)
-						     (gss-cred-seqno cred)))
-		     res-writer (lambda (stream obj)
-				  (write-gss-priv stream writer obj
-						      (gss-context-context context)
-						      (gss-cred-seqno cred)))))))
-
-	  ;; funcall the handler to get the result 
-	  (let ((arg (handler-case (read-xtype arg-reader input-stream)
-		       (rpc-auth-error (e)
-			 (frpc-log :trace "Handler signalled an auth error")
-			 (write-rpc-response output-stream
-					     :reject :auth-error
-					     :id id
-					     :auth-stat (or (auth-error-stat e) :auth-tooweak))
-			 (return-from process-rpc-call))
-		       (error (e)
-			 (frpc-log :trace "Failed to read argument: ~A" e)
-			 (write-rpc-response output-stream 
-					     :accept :garbage-args :id id)
-			 (return-from process-rpc-call)))))
-
-	    (let ((res (handler-case (with-caller-binded (host port protocol auth) (funcall handler arg))
+			     (gss-cred-service (opaque-auth-data auth)))))
+	  (flet ((arg-reader (stream)
+		   (frpc-log :trace "Reading arg")
+		   (case gss-service
+		     (:integrity
+		      (let* ((cred (opaque-auth-data auth))
+			     (context (find-gss-context (gss-cred-handle cred))))
+			(read-gss-integ stream 
+					reader 
+					(gss-context-context context)
+					(gss-cred-seqno cred))))
+		     (:privacy
+		      (let* ((cred (opaque-auth-data auth))
+			     (context (find-gss-context (gss-cred-handle cred))))
+			(read-gss-priv stream reader 
+				       (gss-context-context context)
+				       (gss-cred-seqno cred))))		      
+		     (otherwise (read-xtype reader stream))))
+		 (res-writer (stream obj)
+		   (frpc-log :trace "Writing result")
+		   (case gss-service
+		     (:integrity
+		      (let* ((cred (opaque-auth-data auth))
+			     (context (find-gss-context (gss-cred-handle cred))))
+			(frpc-log :trace "writing integ response")
+			(write-gss-integ stream writer obj 
+					 (gss-context-context context)
+					 (gss-cred-seqno cred))))
+		     (:privacy
+		      (let* ((cred (opaque-auth-data auth))
+			     (context (find-gss-context (gss-cred-handle cred))))
+			(write-gss-priv stream writer obj
+					(gss-context-context context)
+					(gss-cred-seqno cred))))
+		     (otherwise (write-xtype writer stream obj)))))
+	    
+	    ;; funcall the handler to get the result 
+	    (let ((arg (handler-case (read-xtype #'arg-reader input-stream)
+			 (rpc-auth-error (e)
+			   (frpc-log :trace "Handler signalled an auth error")
+			   (write-rpc-response output-stream
+					       :reject :auth-error
+					       :id id
+					       :auth-stat (or (auth-error-stat e) :auth-tooweak))
+			   (return-from process-rpc-call))
 			 (error (e)
-			   (frpc-log :trace "Failed to invoke handler: ~A" e)
-			   ;; be silent if the handler errors, this allows us to 
-			   ;; provide the "silent" semantics that some APIs require
-;;			   (write-rpc-response output-stream :accept :garbage-args :id id)
+			   (frpc-log :trace "Failed to read argument: ~A" e)
+			   (write-rpc-response output-stream 
+					       :accept :garbage-args :id id)
 			   (return-from process-rpc-call)))))
-
-	      (write-rpc-response output-stream :accept :success :id id :verf rverf)
-	      (write-xtype res-writer output-stream res))))))))
+	      
+	      (let ((res (handler-case (with-caller-binded (host port protocol auth) (funcall handler arg))
+			   (error (e)
+			     (frpc-log :trace "Failed to invoke handler: ~A" e)
+			     ;; be silent if the handler errors, this allows us to 
+			     ;; provide the "silent" semantics that some APIs require
+			     ;;			   (write-rpc-response output-stream :accept :garbage-args :id id)
+			     (return-from process-rpc-call)))))
+		
+		(write-rpc-response output-stream :accept :success :id id :verf rverf)
+		(write-xtype #'res-writer output-stream res)))))))))
 
 (defun process-gss-init-command (input-stream output-stream id)
   "GSS requires special treatment, it can send arguments in place of the nullproc void parameter."
