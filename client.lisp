@@ -213,7 +213,7 @@ the bytes read."
 
 (defclass gss-client (rpc-client)
   ((context :initform nil :accessor gss-client-context)
-   (creds :initarg :creds :credentials :accessor gss-client-credentials)
+   (creds :initarg :credentials :accessor gss-client-credentials)
    (handle :initform nil :accessor gss-client-handle)
    (seqno :initform 0 :accessor gss-client-seqno)
    (service :initarg :service :initform :none :accessor gss-client-service)))
