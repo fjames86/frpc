@@ -161,28 +161,29 @@ TIMEOUT specifies the duration (in seconds) that a TCP connection should remain 
 	     (let* ((cred (opaque-auth-data auth))
 		    (context (find-gss-context (gss-cred-handle cred))))
 	       (setf arg-reader (lambda (stream)
-				  (read-gss-integ-arg stream 
+				  (read-gss-integ stream 
 						      reader 
 						      (gss-context-context context)
 						      (gss-cred-seqno cred)))
 		     res-writer (lambda (stream obj)
-				  (write-gss-integ-res stream writer obj 
+                          (frpc-log :trace "writing integ response")
+				  (write-gss-integ stream writer obj 
 						       (gss-context-context context)
 						       (gss-cred-seqno cred))))))
 	    (:privacy 
 	     (let* ((cred (opaque-auth-data auth))
 		    (context (find-gss-context (gss-cred-handle cred))))
 	       (setf arg-reader (lambda (stream)
-				  (read-gss-priv-arg stream reader 
+				  (read-gss-priv stream reader 
 						     (gss-context-context context)
 						     (gss-cred-seqno cred)))
 		     res-writer (lambda (stream obj)
-				  (write-gss-priv-res stream writer obj
+				  (write-gss-priv stream writer obj
 						      (gss-context-context context)
 						      (gss-cred-seqno cred)))))))
 
 	  ;; funcall the handler to get the result 
-	  (let ((arg (handler-case (read-xtype reader input-stream)
+	  (let ((arg (handler-case (read-xtype arg-reader input-stream)
 		       (rpc-auth-error (e)
 			 (frpc-log :trace "Handler signalled an auth error")
 			 (write-rpc-response output-stream
@@ -205,7 +206,7 @@ TIMEOUT specifies the duration (in seconds) that a TCP connection should remain 
 			   (return-from process-rpc-call)))))
 
 	      (write-rpc-response output-stream :accept :success :id id :verf rverf)
-	      (write-xtype writer output-stream res))))))))
+	      (write-xtype res-writer output-stream res))))))))
 
 (defun process-gss-init-command (input-stream output-stream id)
   "GSS requires special treatment, it can send arguments in place of the nullproc void parameter."
