@@ -283,10 +283,15 @@ Returns a response verifier to be sent back to the client or nil in the case of 
 (defmethod authenticate ((flavour (eql :auth-gss)) data verf)
   (let ((authp (gss-authenticate-handle data)))
     (when authp
-      (frpc-log :info "GSS authentication granted")
+      (frpc-log :trace "GSS authenticated")
       (make-opaque-auth :auth-null nil))))
 
-;; ----------------------------------------
+;; ---------------------------------------------------------
+
+;; -------- DEPRECATED -------------
+;; this was the old way to define RPC interfaces. It involved modifying 
+;; a pair of globals at compile time so that the macroexpander could insert
+;; program/version numbers. 
 
 ;; these are used to keep track of the current program that is being compiled
 (defparameter *rpc-program* 0)
@@ -297,6 +302,7 @@ Returns a response verifier to be sent back to the client or nil in the case of 
   `(eval-when (:compile-toplevel :load-toplevel :execute)
      (setf *rpc-program* ,program
 	   *rpc-version* ,version)))
+;; ----------------------------------
 
 
 (defvar *programs* nil

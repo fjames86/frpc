@@ -213,7 +213,7 @@ the bytes read."
 
 (defclass gss-client (rpc-client)
   ((context :initform nil :accessor gss-client-context)
-   (creds :initarg :credentials :accessor gss-client-credentials)
+   (creds :initarg :creds :credentials :accessor gss-client-credentials)
    (handle :initform nil :accessor gss-client-handle)
    (seqno :initform 0 :accessor gss-client-seqno)
    (service :initarg :service :initform :none :accessor gss-client-service)))
@@ -221,10 +221,12 @@ the bytes read."
 (defmethod print-object ((client gss-client) stream)
   (print-unreadable-object (client stream :type t)
     (format stream ":HANDLE ~S" (gss-client-handle client))))
-
+		     
 (defmethod rpc-client-auth ((client gss-client))
   (when (rpc-client-initial client)
     (frpc-log :trace "Initiating GSS client context")
+    ;; FIXME: the client may wish to use mutual authentication, in which case the server should 
+    ;; return a verification token. We currently don't support this.
     (multiple-value-bind (context buffer) (glass:initialize-security-context (gss-client-credentials client))
       (setf (gss-client-context client) context)
       (let ((res 
@@ -242,7 +244,9 @@ the bytes read."
 		       :protocol (rpc-client-protocol client)
 		       :timeout (rpc-client-timeout client)
 		       :connection (rpc-client-connection client))))
-	;; store the handle for future requests
+	;; store the handle for future requests.
+	;; FIXME: if mutual authentication requested then this will also contain a verification token
+	;; to be passed to GSS:INITIALIZE-SECURITY-CONTEXT. We currently don't support mutual authentication.
 	(setf (gss-client-handle client) (gss-init-res-handle res)
 	      (rpc-client-initial client) nil))))
 
@@ -258,7 +262,7 @@ the bytes read."
 
 ;; the client does not send a verifier 
 
-;; if mutual authentication was requested, there may be a verifier returned
+;; FIXME: if mutual authentication was requested, there may be a verifier returned???
 
 
 ;; ---------------------------------------------------------

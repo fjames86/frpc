@@ -11,7 +11,6 @@
            #:mapping-version
            #:mapping-protocol
            #:mapping-port
-           #:*pmap-port*
 
 	   #:binding
 	   #:binding-program
@@ -179,9 +178,18 @@ removed from the Lisp list."
 
 ;; ---------------
 
+;; only allow it to be set if the host is localhost and the user has 
+;; been authenticated to at least unix level
+(defun auth-or-fail ()
+  (unless (or (not (equalp *rpc-remote-host* #(127 0 0 1)))
+	      (eq (opaque-auth-flavour *rpc-remote-auth*)
+		  :auth-null))
+    (error 'rpc-auth-error :stat :auth-tooweak)))
+
 ;; SET -- set a port mapping 
 
 (defun %handle-set (mapping)
+  (auth-or-fail)
   (add-mapping mapping)
   t)
 
@@ -196,6 +204,7 @@ removed from the Lisp list."
 ;; UNSET -- remove a port mapping 
 
 (defun %handle-unset (mapping)
+  (auth-or-fail)
   (when (find-mapping mapping)
     (rem-mapping mapping)
     t))
@@ -243,10 +252,6 @@ removed from the Lisp list."
 	(done nil))
        (done maps)
      (let ((map (read-xtype 'mapping stream)))
-       ;; modify the program id to a symbol (if its a known program)
-;;       (let ((name (frpc::program-id (mapping-program map))))
-;;	 (when name 
-;;	   (setf (mapping-program map) name)))
        (push map maps)
        (let ((next (read-xtype :boolean stream)))
 	 (unless next (setf done t))))))
@@ -281,19 +286,38 @@ removed from the Lisp list."
 					       :protocol :udp)))
 	  (h (find-handler program version proc)))
       (cond
-	((or (not mapping) (not h))
-	 ;; error: no mapping or no handler
-	 (error "no handler"))
-;;	 (list 0 nil))
-	(t 
+	((and (null mapping) (null h))
+	 ;; error: no mapping or no handler. signalling an error here
+	 ;; causes the server to be silent (not reply)
+	 (error "proc not found"))
+	(h
 	 ;; found the handler, run it
 	 (destructuring-bind (reader writer handler) h
 	   (if handler 
 	       (let ((res (funcall handler (unpack reader arg-buffer))))
 		 (list (mapping-port mapping)
 		       (pack writer res)))
-	       (list 0 nil))))))))
-
+	       (error "no handler"))))
+	(mapping
+	 ;; we have a mapping, but no handler defined. this means
+	 ;; the rpc server lives out-of-process i.e. in another Lisp image
+	 ;; we must therefore contact it via UDP and await a response
+	 ;; NOTE: if the handler really is living in our image then
+	 ;; this will lock for 1 second because we have sent a 
+	 ;; message to ourselves.
+	 (let ((port (mapping-port mapping)))
+	   (let ((res 
+		  (call-rpc #'frpc::write-octet-array
+			    arg-buffer
+			    #'frpc::read-octet-array 
+			    :host "localhost"
+			    :port port
+			    :program program
+			    :version version
+			    :proc proc)))
+		 (list port res))))))))
+	
+			 
 (defrpc call-callit 5 
   (:list :uint32 :uint32 :uint32 (:varray* :octet)) ;;prog version proc args)
   (:list :uint32 (:varray* :octet))
@@ -310,8 +334,6 @@ function available.")
 
 ;; ------------------------------------------------------------
 
-
-
 (defxstruct binding ()
   (program :uint32)
   (version :uint32)
@@ -320,6 +342,10 @@ function available.")
   (owner :string))
 
 (defun read-type-list (stream type)
+  "A useful utility function to read a list-type object. I.e. a type
+which consists of a structure followed by an optional next structure, e.g.
+\(defxstruct a \(x :int32\) \(y :int32\) \(next \(:optional a\)\)\)
+"
   (do ((list nil)
 	(done nil))
        (done list)
