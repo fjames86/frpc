@@ -152,7 +152,7 @@ TIMEOUT specifies the duration (in seconds) that a TCP connection should remain 
 (defun process-rpc-call (input-stream output-stream 
 			 &key host port protocol id auth verf program version proc)
   "Process the actual call. read the argument, handle it and write the response."
-  (frpc-log :trace "Call ~A:~A:~A" program version proc)
+  (frpc-log :info "Call ~A:~A ~A:~A:~A" host port program version proc)
   (let ((rverf (process-rpc-auth output-stream auth verf id)))
     ;; check the verifier
     (unless rverf 
@@ -205,13 +205,6 @@ TIMEOUT specifies the duration (in seconds) that a TCP connection should remain 
 	    
 	    ;; funcall the handler to get the result 
 	    (let ((arg (handler-case (read-xtype #'arg-reader input-stream)
-			 (rpc-auth-error (e)
-			   (frpc-log :trace "Handler signalled an auth error")
-			   (write-rpc-response output-stream
-					       :reject :auth-error
-					       :id id
-					       :auth-stat (or (auth-error-stat e) :auth-tooweak))
-			   (return-from process-rpc-call))
 			 (error (e)
 			   (frpc-log :trace "Failed to read argument: ~A" e)
 			   (write-rpc-response output-stream 
@@ -219,6 +212,13 @@ TIMEOUT specifies the duration (in seconds) that a TCP connection should remain 
 			   (return-from process-rpc-call)))))
 	      
 	      (let ((res (handler-case (with-caller-binded (host port protocol auth) (funcall handler arg))
+                       (rpc-auth-error (e)
+                         (frpc-log :trace "Handler signalled an auth error")
+                         (write-rpc-response output-stream
+                                             :reject :auth-error
+                                             :id id
+                                             :auth-stat (or (auth-error-stat e) :auth-tooweak))
+                         (return-from process-rpc-call))
 			   (error (e)
 			     (frpc-log :trace "Failed to invoke handler: ~A" e)
 			     ;; be silent if the handler errors, this allows us to 
@@ -396,7 +396,8 @@ TIMEOUT specifies the duration (in seconds) that a TCP connection should remain 
 			      (unless (zerop (length response-buffer))
 				(write-uint32 (usocket:socket-stream socket)
 					      (logior #x80000000 (length response-buffer)))
-				(write-sequence response-buffer (usocket:socket-stream socket))))))
+				(write-sequence response-buffer (usocket:socket-stream socket)))
+                  (force-output (usocket:socket-stream socket)))))
 		      (end-of-file ()
 			(frpc-log :info "Connection closed by remote host")
 			(setf connections (remove socket connections :key #'rpc-connection-conn)))
