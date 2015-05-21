@@ -12,7 +12,7 @@
 
 (defun handle-null (void) 
   (declare (ignore void))
-  (frpc-log :info "auth ~S" frpc::*rpc-remote-auth*)
+  (frpc-log :info "auth ~S" *rpc-remote-auth*)
   nil)
 
 (defrpc call-null 0 :void :void
