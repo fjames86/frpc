@@ -394,14 +394,13 @@ arguments/results. The default is `:NONE` which sends the args/results as normal
 CL-USER> (cerberus:logon-user "myusername@myrealm" "mypassword" :kdc-address "10.1.2.3")
 CL-USER> (defvar *cred* (glass:acquire-credentials :kerberos "service/hostname.com@myrealm"))
 ;; make the instance of the gss client
-CL-USER> (defvar *client* (make-instance 'frpc:gss-client :context *cred* :service :privacy))
+CL-USER> (defvar *client* (make-instance 'frpc:gss-client :credentials *cred* :service :privacy))
 ;; attempt to call the function, this will first negotiate the authentication before calling the proc
 CL-USER> (pmap:call-null :client *client*)
 
 ;; the server should initialize itself with a credentials handle
 CL-USER> (cerberus:logon-service "service/hostname.com@myrealm" "password")
-CL-USER> (defvar *server-creds* (glass:acquire-credentials :kerberos nil))
-CL-USER> (frpc:gss-init *server-creds*)
+CL-USER> (frpc:gss-init)
 ```
 
 ### 5.5 Reauthentication
@@ -418,12 +417,23 @@ When server handlers are executed, the special variable *RPC-REMOTE-AUTH* is bou
 that was used in the request. This allows the server to decide whether to honour the request or 
 to signal an RPC-AUTH-ERROR instead. 
 
-## 6. Examples
+## 6. Portmap/rpcbind
+Typically each RPC service listens on a randomly allocated high-numbered port. In order to find out 
+the port number to contact the service on you must first query a service which listens on a well-known port,
+this service is called portmap or rpcbind. 
+
+```
+CL-USER> (frpc.bind:call-dump :host "10.1.1.1")
+(#S(MAPPING :PROGRAM 100000 :VERSION 2 :PORT 111 :PROTOCOL :TCP)
+ #S(MAPPING :PROGRAM 100000 :VERSION 2 :PORT 111 :PROTOCOL :UDP))
+```
+
+## 7. Examples
 
 I have typed in some simple example programs. 
 For more serious usages, see port-mapper.lisp or Nefarious, an NFS implementation in Common Lisp.
 
-## 7. Logging 
+## 8. Logging 
 
 Debug logging is provided by [pounds](https://github.com/fjames86/pounds). By default this will 
 create a 2MB log file in your home directory named "frpc.log". You should change the path by modifying:
@@ -460,7 +470,7 @@ shares the frpc log).
 
 See the pounds documentation for more information on the logging system.
 
-## 8. Notes
+## 9. Notes
 
 * At the moment, reading from TCP streams requires buffering the input to cope with reading multiple fragments. This is REALLY bad if
 large payloads are sent. A fragmented-stream type could be defined to wrap the underlying socket stream so that we can avoid the buffering on reads.
@@ -471,7 +481,7 @@ This makes it impossible to inform the port mapper of where to direct traffic.
 * UDP multicast? 
 * The XDR serializer is probably not as efficient as it could be, but who really cares so long as it works.
 
-## 9. License
+## 10. License
 
 Released under the terms of the MIT license.
 
