@@ -280,7 +280,7 @@ removed from the Lisp list."
 (defun %handle-callit (args)
   (destructuring-bind (program version proc arg-buffer) args
     ;; find the handler and port mapping 
-    (frpc-log :info "CALLIT ~A:~A ~A:~A:~A" *rpc-remote-host* *rpc-remote-port* program version proc)
+    (frpc-log :trace "CALLIT ~A:~A:~A" program version proc)
     (let ((mapping (find-mapping (make-mapping :program program
 					       :version version
 					       :protocol :udp)))
@@ -317,7 +317,6 @@ removed from the Lisp list."
 			    :proc proc)))
 		 (list port res))))))))
 	
-			 
 (defrpc call-callit 5 
   (:list :uint32 :uint32 :uint32 (:varray* :octet)) ;;prog version proc args)
   (:list :uint32 (:varray* :octet))
@@ -330,7 +329,6 @@ of the packed result. The result needs to be extracted using FRPC:UNPACK. The re
 recommended to be a well-defined type, i.e. represented by a symbol, so that it has an easy reader
 function available.")
   (:handler #'%handle-callit))
-
 
 ;; ------------------------------------------------------------
 
