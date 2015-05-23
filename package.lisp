@@ -7,7 +7,6 @@
   (:export #:use-rpc-program
 	   #:use-rpc-host
 	   #:defrpc
-	   #:defhandler
 	   #:find-handler
 	   #:generate-program-number
 	   #:defprogram

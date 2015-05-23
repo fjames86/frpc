@@ -673,7 +673,7 @@ OPTIONS allow customization of the generated client function:
 		   the-form)))
 
        ;; define a server handler if required
-       ,@(let ((handler(cadr (assoc :handler options))))
+       ,@(let ((handler (cadr (assoc :handler options))))
 	   (when handler
 	     `((%defhandler ,gprogram ,gversion ,gproc 
 			    (function ,arg-reader) 
