@@ -178,10 +178,9 @@ removed from the Lisp list."
 
 ;; ---------------
 
-;; only allow it to be set if the host is localhost and the user has 
-;; been authenticated to at least unix level
+;; only allow it to be called if the host is localhost and the user has been authenticated to some level
 (defun auth-or-fail ()
-  (when (or (not (equalp *rpc-remote-host* #(127 0 0 1)))
+  (when (or (not (equalp *rpc-remote-host* #(127 0 0)))
 	    (eq (opaque-auth-flavour *rpc-remote-auth*)
 		:auth-null))
     (frpc-log :info "Rejected ~S ~S" *rpc-remote-host* (opaque-auth-flavour *rpc-remote-auth*))
@@ -221,7 +220,10 @@ removed from the Lisp list."
 ;; GET-PORT -- lookup a port mapping for a given program/version
 
 (defun %handle-get-port (mapping)
-  (let ((m (find-mapping mapping)))
+  (let ((m (find-if (lambda (m)
+		      (and (= (mapping-program mapping) (mapping-program m))
+			   (eq (mapping-protocol mapping) (mapping-protocol m))))
+		    *mappings*)))
     (if m
 	(mapping-port m)
 	0)))
