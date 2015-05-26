@@ -180,7 +180,7 @@ removed from the Lisp list."
 
 ;; only allow it to be called if the host is localhost and the user has been authenticated to some level
 (defun auth-or-fail ()
-  (when (or (not (equalp *rpc-remote-host* #(127 0 0)))
+  (when (or (not (equalp *rpc-remote-host* #(127 0 0 1)))
 	    (eq (opaque-auth-flavour *rpc-remote-auth*)
 		:auth-null))
     (frpc-log :info "Rejected ~S ~S" *rpc-remote-host* (opaque-auth-flavour *rpc-remote-auth*))
