@@ -181,9 +181,10 @@ removed from the Lisp list."
 ;; only allow it to be set if the host is localhost and the user has 
 ;; been authenticated to at least unix level
 (defun auth-or-fail ()
-  (unless (or (not (equalp *rpc-remote-host* #(127 0 0 1)))
-	      (eq (opaque-auth-flavour *rpc-remote-auth*)
-		  :auth-null))
+  (when (or (not (equalp *rpc-remote-host* #(127 0 0 1)))
+	    (eq (opaque-auth-flavour *rpc-remote-auth*)
+		:auth-null))
+    (frpc-log :info "Rejected ~S ~S" *rpc-remote-host* (opaque-auth-flavour *rpc-remote-auth*))
     (error 'rpc-auth-error :stat :auth-tooweak)))
 
 ;; SET -- set a port mapping 
