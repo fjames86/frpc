@@ -334,6 +334,10 @@ NUMBER ::= a positive integer specifying the program number.
   (etypecase id
     (symbol
      (assoc id *programs*))
+    (string 
+     (find id *programs* 
+           :key (lambda (x) (symbol-name (car x)))
+           :test #'string-equal))
     (integer 
      (find id *programs* :key #'cadr))))
 
@@ -346,5 +350,5 @@ NUMBER ::= a positive integer specifying the program number.
   (let ((p (find-program id)))
     (when p 
       (etypecase id
-	(symbol (cadr p))
-	(integer (car p))))))
+        ((or symbol string) (cadr p))
+        (integer (car p))))))

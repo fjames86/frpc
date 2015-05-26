@@ -136,7 +136,10 @@ TIMEOUT specifies the duration (in seconds) that a TCP connection should remain 
 (defun process-rpc-call (input-stream output-stream 
 			 &key host port protocol id auth verf program version proc)
   "Process the actual call. read the argument, handle it and write the response."
-  (frpc-log :info "Call ~A:~A ~A:~A:~A" host port program version proc)
+  (frpc-log :info "Call ~A:~A ~A:~A:~A ~S"
+            host port 
+            program version proc 
+            (opaque-auth-flavour auth))
   (let ((rverf (process-rpc-auth output-stream auth verf id)))
     ;; check the verifier
     (unless rverf 
