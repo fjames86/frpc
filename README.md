@@ -103,8 +103,8 @@ Use RPC-CONNECT and RPC-CLOSE to establish and close a connection. The macro WIT
 
 ;; reuses a connection to the server 
 (frpc:with-rpc-connection (c "192.168.0.8" 111 :tcp)  
-  (list (pmap:call-dump :connection c) 
-        (pmap:call-dump :connection c)))
+  (list (frpc.bind:call-dump :connection c) 
+        (frpc.bind:call-dump :connection c)))
 ```
 
 ### 2.3 UDP 
@@ -331,7 +331,7 @@ also be used as a "bag" of default values for the CALL-RPC keyword parameters.
 CL-USER> (defvar *client* (make-instance 'frpc:rpc-client :host "10.1.1.1" :port 123 :protocol :udp :timeout 1))
 
 ;; use it to perform an RPC
-CL-USER> (pmap:call-null :client *client*)
+CL-USER> (frpc.bind:call-null :client *client*)
 
 ```
 
@@ -344,10 +344,10 @@ This is the default mechanism and requires no special treatment.
 (defvar *client* (make-instance 'frpc:unix-client :uid 1000 :gid 1001 :gids '(1002 1005)))
 
 ;; the first call uses AUTH-UNIX and if successful will recive a nickname
-(pmap:call-null :client *client*)
+(frpc.bind:call-null :client *client*)
 
 ;; subsequent calls use AUTH-SHORT i.e. the nickname
-(pmap:call-null :client *client*)
+(frpc.bind:call-null :client *client*)
 
 ```
 
@@ -398,7 +398,7 @@ CL-USER> (defvar *cred* (glass:acquire-credentials :kerberos "service/hostname.c
 ;; make the instance of the gss client
 CL-USER> (defvar *client* (make-instance 'frpc:gss-client :credentials *cred* :service :privacy))
 ;; attempt to call the function, this will first negotiate the authentication before calling the proc
-CL-USER> (pmap:call-null :client *client*)
+CL-USER> (frpc.bind:call-null :client *client*)
 
 ;; the server should initialize itself with a credentials handle
 CL-USER> (cerberus:logon-service "service/hostname.com@myrealm" "password")
