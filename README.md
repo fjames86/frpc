@@ -135,6 +135,8 @@ is raised if no replies are received. Each element in the list is a list of 2
 items (host result), where host is where the response came from 
 and result is the result of decoding the message that was received.
 
+Note: not all implementations support UDP broadcast. Check with usocket to find out whether your implementation is supported. 
+
 ## 3. RPC Server
 
 An RPC server runs from within a single thread and listens on a set of TCP and UDP ports. 
@@ -480,6 +482,7 @@ This makes it impossible to inform the port mapper of where to direct traffic.
 * Could make it easier to add more transports, e.g. SSL/TLS stream, writing to shared memory etc. Probably not much call for this though.
 * UDP multicast? 
 * The XDR serializer is probably not as efficient as it could be, but who really cares so long as it works.
+* Developed using SBCL on Windows and Linux, also tested with CCL and LispWorks on Windows.
 
 ## 10. License
 
