@@ -12,13 +12,13 @@
            #:mapping-protocol
            #:mapping-port
 
-	   #:binding
-	   #:binding-program
-	   #:binding-version
-	   #:binding-netid
-	   #:binding-addr
-	   #:binding-owner
-	   
+           #:binding
+           #:binding-program
+           #:binding-version
+           #:binding-netid
+           #:binding-addr
+           #:binding-owner
+           
            ;; the rpc functions
            #:call-null
            #:call-set
@@ -33,9 +33,9 @@
            #:call-get-addr3
            #:call-dump3
            #:call-broadcast3
-	   #:call-get-time3
-	   #:call-uaddr2taddr3
-	   #:call-taddr2uaddr3
+           #:call-get-time3
+           #:call-uaddr2taddr3
+           #:call-taddr2uaddr3
 
            #:call-null4
            #:call-set4
@@ -43,13 +43,13 @@
            #:call-get-addr4
            #:call-dump4
            #:call-broadcast4
-	   #:call-get-time4
-	   #:call-uaddr2taddr4
-	   #:call-taddr2uaddr4
-	   #:call-get-version-addr
-	   #:call-indirect
-	   #:call-get-addr-list
-	   #:call-stat-by-version
+           #:call-get-time4
+           #:call-uaddr2taddr4
+           #:call-taddr2uaddr4
+           #:call-get-version-addr
+           #:call-indirect
+           #:call-get-addr-list
+           #:call-stat-by-version
 
            ;; underlying API
            #:add-mapping
@@ -68,7 +68,7 @@
 ;; ------- port mapper structs ----------
 
 (defxenum mapping-protocol
-  (:tcp 6)
+    (:tcp 6)
   (:udp 17))
 
 (defxstruct mapping ()
@@ -98,20 +98,20 @@
 (defun rem-mapping (mapping)
   "Remove a port mapping."
   (setf *mappings* 
-	(remove-if (lambda (m)
-		     (mapping-eql m mapping))
-		   *mappings*)))
+        (remove-if (lambda (m)
+                     (mapping-eql m mapping))
+                   *mappings*)))
 
 (defun find-mapping (mapping &optional map-port)
   "Lookup a port mapping matching the program, version and protocol specified
 in the mapping structure. if MAP-PORT is provided, will also match this port."
   (let ((port (mapping-port mapping)))
     (find-if (lambda (m)
-	       (and (mapping-eql m mapping)
-		    (if map-port
-			(= map-port port)
-			t)))
-	     *mappings*)))
+               (and (mapping-eql m mapping)
+                    (if map-port
+                        (= map-port port)
+                        t)))
+             *mappings*)))
 
 (defun add-all-mappings (tcp-ports udp-ports &key rpc)
   "Add mappings for all defined RPCs to the TCP and UDP ports specified. If RPC is non-nil, the local port-mapper program will contacted using RPC, otherwise the local Lisp port-mapper program will have the mappings added directly."
@@ -134,7 +134,8 @@ in the mapping structure. if MAP-PORT is provided, will also match this port."
                                            :port port)))
                 (add-mapping mapping)
                 (when rpc 
-                  (call-set mapping :protocol :udp))))
+                  (call-set mapping :protocol :udp
+                            :client (make-instance 'unix-client)))))
             ;; add all UDP port mappings
             (dolist (port udp-ports)
               (let ((mapping (make-mapping :program program
@@ -143,7 +144,8 @@ in the mapping structure. if MAP-PORT is provided, will also match this port."
                                            :port port)))
                 (add-mapping mapping)
                 (when rpc 
-                  (call-set mapping :protocol :udp)))))))))
+                  (call-set mapping :protocol :udp
+                            :client (make-instance 'unix-client))))))))))
   nil)
 
 (defun remove-all-mappings (&key rpc)
@@ -173,16 +175,16 @@ removed from the Lisp list."
   nil)
 
 (defrpc call-null 0 :void :void
-  (:program port-mapper 2)
-  (:handler #'%handle-null))
+        (:program port-mapper 2)
+        (:handler #'%handle-null))
 
 ;; ---------------
 
 ;; only allow it to be called if the host is localhost and the user has been authenticated to some level
 (defun auth-or-fail ()
   (when (or (not (equalp *rpc-remote-host* #(127 0 0 1)))
-	    (eq (opaque-auth-flavour *rpc-remote-auth*)
-		:auth-null))
+            (eq (opaque-auth-flavour *rpc-remote-auth*)
+                :auth-null))
     (frpc-log :info "Rejected ~S ~S" *rpc-remote-host* (opaque-auth-flavour *rpc-remote-auth*))
     (error 'rpc-auth-error :stat :auth-tooweak)))
 
@@ -194,10 +196,10 @@ removed from the Lisp list."
   t)
 
 (defrpc call-set 1 mapping :boolean
-  (:program port-mapper 2)
-  (:arg-transformer (mapping) mapping)
-  (:documentation "Set a port mapping.")
-  (:handler #'%handle-set))
+        (:program port-mapper 2)
+        (:arg-transformer (mapping) mapping)
+        (:documentation "Set a port mapping.")
+        (:handler #'%handle-set))
 
 ;; -------------------
 
@@ -210,10 +212,10 @@ removed from the Lisp list."
     t))
 
 (defrpc call-unset 2 mapping :boolean
-  (:program port-mapper 2)
-  (:arg-transformer (mapping) mapping)
-  (:documentation "Remove a port mapping.")
-  (:handler #'%handle-unset))
+        (:program port-mapper 2)
+        (:arg-transformer (mapping) mapping)
+        (:documentation "Remove a port mapping.")
+        (:handler #'%handle-unset))
 
 ;; ----------------------
 
@@ -221,21 +223,21 @@ removed from the Lisp list."
 
 (defun %handle-get-port (mapping)
   (let ((m (find-if (lambda (m)
-		      (and (= (mapping-program mapping) (mapping-program m))
-			   (eq (mapping-protocol mapping) (mapping-protocol m))))
-		    *mappings*)))
+                      (and (= (mapping-program mapping) (mapping-program m))
+                           (eq (mapping-protocol mapping) (mapping-protocol m))))
+                    *mappings*)))
     (if m
-	(mapping-port m)
-	0)))
+        (mapping-port m)
+        0)))
 
 (defrpc call-get-port 3 mapping :uint32
-  (:program port-mapper 2)
-  (:arg-transformer (program version &key (query-protocol :udp))
-    (make-mapping :program program
-                  :version version
-                  :protocol query-protocol))
-  (:documentation "Query the port for the specified program.")
-  (:handler #'%handle-get-port))
+        (:program port-mapper 2)
+        (:arg-transformer (program version &key (query-protocol :udp))
+                          (make-mapping :program program
+                                        :version version
+                                        :protocol query-protocol))
+        (:documentation "Query the port for the specified program.")
+        (:handler #'%handle-get-port))
 
 ;; ------------------------
 
@@ -252,28 +254,28 @@ removed from the Lisp list."
 (defxtype mapping-list ()
   ((stream)
    (do ((maps nil)
-	(done nil))
+        (done nil))
        (done maps)
      (let ((map (read-xtype 'mapping stream)))
        (push map maps)
        (let ((next (read-xtype :boolean stream)))
-	 (unless next (setf done t))))))
+         (unless next (setf done t))))))
   ((stream mlist)
    (do ((mlist mlist (cdr mlist)))
        ((null mlist))
      (write-xtype 'mapping stream (car mlist))
      (if (cdr mlist)
-	 (write-xtype :boolean stream t)
-	 (write-xtype :boolean stream nil)))))
-       
+         (write-xtype :boolean stream t)
+         (write-xtype :boolean stream nil)))))
+
 (defun %handle-dump (void)
   (declare (ignore void))
   *mappings*)
 
 (defrpc call-dump 4 :void (:optional mapping-list)
-  (:program port-mapper 2)
-  (:documentation "List all available port mappings.")
-  (:handler #'%handle-dump))
+        (:program port-mapper 2)
+        (:documentation "List all available port mappings.")
+        (:handler #'%handle-dump))
 
 ;; ----------------------------------------
 
@@ -285,47 +287,47 @@ removed from the Lisp list."
     ;; find the handler and port mapping 
     (frpc-log :trace "CALLIT ~A:~A:~A" program version proc)
     (let ((mapping (find-mapping (make-mapping :program program
-					       :version version
-					       :protocol :udp)))
-	  (h (find-handler program version proc)))
+                                               :version version
+                                               :protocol :udp)))
+          (h (find-handler program version proc)))
       (cond
-	((and (null mapping) (null h))
-	 ;; error: no mapping or no handler. signalling an error here
-	 ;; causes the server to be silent (not reply)
-	 (error "proc not found"))
-	(h
-	 ;; found the handler, run it
-	 (destructuring-bind (reader writer handler) h
-	   (if handler 
-	       (let ((res (funcall handler (unpack reader arg-buffer))))
-		 (list (mapping-port mapping)
-		       (pack writer res)))
-	       (error "no handler"))))
-	(mapping
-	 ;; we have a mapping, but no handler defined. this means
-	 ;; the rpc server lives out-of-process i.e. in another Lisp image
-	 ;; we must therefore contact it via UDP and await a response
-	 ;; NOTE: if the handler really is living in our image then
-	 ;; this will lock for 1 second because we have sent a 
-	 ;; message to ourselves.
-	 (let ((port (mapping-port mapping)))
-	   (let ((res 
-		  (call-rpc #'frpc::write-octet-array
-			    arg-buffer
-			    #'frpc::read-octet-array 
-			    :host "localhost"
-			    :port port
-			    :program program
-			    :version version
-			    :proc proc)))
-		 (list port res))))))))
-	
+        ((and (null mapping) (null h))
+         ;; error: no mapping or no handler. signalling an error here
+         ;; causes the server to be silent (not reply)
+         (error "proc not found"))
+        (h
+         ;; found the handler, run it
+         (destructuring-bind (reader writer handler) h
+           (if handler 
+               (let ((res (funcall handler (unpack reader arg-buffer))))
+                 (list (mapping-port mapping)
+                       (pack writer res)))
+               (error "no handler"))))
+        (mapping
+         ;; we have a mapping, but no handler defined. this means
+         ;; the rpc server lives out-of-process i.e. in another Lisp image
+         ;; we must therefore contact it via UDP and await a response
+         ;; NOTE: if the handler really is living in our image then
+         ;; this will lock for 1 second because we have sent a 
+         ;; message to ourselves.
+         (let ((port (mapping-port mapping)))
+           (let ((res 
+                  (call-rpc #'frpc::write-octet-array
+                            arg-buffer
+                            #'frpc::read-octet-array 
+                            :host "localhost"
+                            :port port
+                            :program program
+                            :version version
+                            :proc proc)))
+             (list port res))))))))
+
 (defrpc call-callit 5 
   (:list :uint32 :uint32 :uint32 (:varray* :octet)) ;;prog version proc args)
   (:list :uint32 (:varray* :octet))
   (:program port-mapper 2)
   (:arg-transformer (program version proc packed-args)
-    (list program version proc packed-args))
+                    (list program version proc packed-args))
   (:documentation 
    "Execute an RPC via the remote port mapper proxy. Returns (PORT ARGS) where ARGS is an opaque array
 of the packed result. The result needs to be extracted using FRPC:UNPACK. The result type is 
@@ -348,26 +350,26 @@ which consists of a structure followed by an optional next structure, e.g.
 \(defxstruct a \(x :int32\) \(y :int32\) \(next \(:optional a\)\)\)
 "
   (do ((list nil)
-	(done nil))
-       (done list)
-     (push (read-xtype type stream) list)
-     (let ((b (read-xtype :boolean stream)))
-       (unless b (setf done t)))))
+       (done nil))
+      (done list)
+    (push (read-xtype type stream) list)
+    (let ((b (read-xtype :boolean stream)))
+      (unless b (setf done t)))))
 
 (defun write-type-list (stream type list)
   (do ((list list (cdr list)))
       ((null list))
     (write-xtype type stream (car list))
     (if (cdr list)
-	(write-xtype stream :boolean t)
-	(write-xtype stream :boolean nil))))
+        (write-xtype stream :boolean t)
+        (write-xtype stream :boolean nil))))
 
 (defxtype binding-list ()
   ((stream)
    (read-type-list stream 'binding))
   ((stream mappings)
    (write-type-list stream 'binding mappings)))
-       
+
 (defxstruct rpcb-remote-call-arg ()
   (program :uint32)
   (version :uint32)
@@ -376,7 +378,7 @@ which consists of a structure followed by an optional next structure, e.g.
 
 (defxtype* rpb-remote-call-res () 
   (:list :string ;; addr
-	 (:varray* :octet))) ;; results
+         (:varray* :octet))) ;; results
 
 (defxstruct rpcb-entry ()
   (maddr :string)
@@ -405,7 +407,7 @@ which consists of a structure followed by an optional next structure, e.g.
 (defxtype rpcbs-addr-list ()
   ((stream) (read-type-list stream 'rpcbs-addr))
   ((stream list) (write-type-list stream 'rpbs-addr list)))
-  
+
 (defxstruct rpcbs-rmtcall ()
   (program :uint32)
   (version :uint32)
@@ -418,7 +420,7 @@ which consists of a structure followed by an optional next structure, e.g.
 (defxtype rpcbs-rmtcall-list () 
   ((stream) (read-type-list stream 'rpcbs-rmtcall))
   ((stream list) (write-type-list stream 'rpcbs-rmtcall list)))
-  
+
 (defxtype* rpcbs-proc () (:array :int32 +rpcbs-highproc+))
 
 (defxstruct rpcb-stat ()
@@ -435,13 +437,13 @@ which consists of a structure followed by an optional next structure, e.g.
 ;; -------------- version 3 -----------
 
 (defrpc call-null3 0 :void :void
-  (:program port-mapper 3))
+        (:program port-mapper 3))
 
 (defrpc call-set3 1 binding :boolean
-  (:program port-mapper 3))
+        (:program port-mapper 3))
 
 (defrpc call-unset3 2 binding :boolean
-  (:program port-mapper 3))
+        (:program port-mapper 3))
 
 (defrpc call-get-addr3 3
   binding
@@ -475,13 +477,13 @@ which consists of a structure followed by an optional next structure, e.g.
 ;; ------------- version 4 -------------
 
 (defrpc call-null4 0 :void :void
-  (:program port-mapper 4))
+        (:program port-mapper 4))
 
 (defrpc call-set4 1 binding :boolean
-  (:program port-mapper 4))
+        (:program port-mapper 4))
 
 (defrpc call-unset4 2 binding :boolean
-  (:program port-mapper 4))
+        (:program port-mapper 4))
 
 (defrpc call-get-addr4 3
   binding

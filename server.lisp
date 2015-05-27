@@ -246,39 +246,49 @@ TIMEOUT specifies the duration (in seconds) that a TCP connection should remain 
 (defun process-rpc-request (input-stream output-stream &key host port protocol)
   "Process a request from the input stream, writing the response to the output stream."
   (let* ((msg (handler-case (%read-rpc-msg input-stream)
-		(error (e)
-		  (frpc-log :trace "Failed to read msg: ~A" e)
-		  (%write-rpc-msg output-stream
-				  (make-rpc-response :accept :garbage-args))
-		  (return-from process-rpc-request))))
-	 (id (rpc-msg-xid msg)))
+                (error (e)
+                  (frpc-log :trace "Failed to read msg: ~A" e)
+                  (%write-rpc-msg output-stream
+                                  (make-rpc-response :accept :garbage-args))
+                  (return-from process-rpc-request))))
+         (id (rpc-msg-xid msg)))
     ;; if it's a reply then this is not intended for us
     (when (eq (xunion-tag (rpc-msg-body msg)) :reply)
       (%write-rpc-msg output-stream
-		      (make-rpc-response :accept :garbage-args :id id))
+                      (make-rpc-response :accept :garbage-args :id id))
       (return-from process-rpc-request))
 
     (let* ((call (xunion-val (rpc-msg-body msg)))
-	   (auth (call-body-auth call)))
+           (auth (call-body-auth call)))
       
       ;; if the authenticator is a GSS init (FIXME: or continue) command then we need to do special things
       (when (and (eq (opaque-auth-flavour auth) :auth-gss)
-		 (eq (gss-cred-proc (opaque-auth-data auth)) :init))
-	(frpc-log :trace "Process GSS init: ~A ~A" 
-		  (opaque-auth-flavour auth) (gss-cred-proc (opaque-auth-data auth)))
-	(process-gss-init-command input-stream output-stream id)
-	(return-from process-rpc-request))
+                 (eq (gss-cred-proc (opaque-auth-data auth)) :init))
+        (frpc-log :trace "Process GSS init: ~A ~A" 
+                  (opaque-auth-flavour auth) (gss-cred-proc (opaque-auth-data auth)))
+        (process-gss-init-command input-stream output-stream id)
+        (return-from process-rpc-request))
+
+      ;; if the host is an integer then convert it to an octet vector.
+      ;; LispWorks and CCL are both known to provide host IPs as the htol integer
+      ;; but an octet vector is more useful I think, plus it means handlers can consistently 
+      ;; assume the *rpc-remote-host* is an octet vector.
+      (when (integerp host)
+        (setf host 
+              (let ((v (nibbles:make-octet-vector 4)))
+                (setf (nibbles:ub32ref/be v 0) host)
+                v)))
 
       (handler-case 
-	  (process-rpc-call input-stream output-stream
-			    :host host :port port :protocol protocol :id id
-			    :auth auth :verf (call-body-verf call)
-			    :program (call-body-prog call) 
-			    :version (call-body-vers call)
-			    :proc (call-body-proc call))
-	(error (e)
-	  (frpc-log :trace "Failed to process: ~A" e)
-	  nil)))))
+          (process-rpc-call input-stream output-stream
+                            :host host :port port :protocol protocol :id id
+                            :auth auth :verf (call-body-verf call)
+                            :program (call-body-prog call) 
+                            :version (call-body-vers call)
+                            :proc (call-body-proc call))
+        (error (e)
+          (frpc-log :trace "Failed to process: ~A" e)
+          nil)))))
 
 ;; -----------------------------------------------------------------
 
