@@ -94,26 +94,6 @@ the bytes read."
 (defmethod reinitialize-instance :after ((instance rpc-client) &key)
   (setf (rpc-client-initial instance) t))
 
-(defmethod initialize-instance :after ((client rpc-client) &rest initargs &key)
-  (declare (ignore initargs))
-  (let ((program (rpc-client-program client))
-        (version (rpc-client-version client))
-        (host (rpc-client-host client)))
-    (when (and host program)
-      (let ((port (frpc.bind:call-get-port program (or version 0)
-                                           :host host
-                                           :timeout (or (rpc-client-timeout client) 1)
-                                           :connection (rpc-client-connection client))))
-        (cond
-          ((zerop port) 
-           (error "Program ~A.~A not mapped by remote port mapper" 
-                  program version))
-          ((and (rpc-client-port client)
-                (not (= port (rpc-client-port client))))
-           (error "Program ~A.~A not mapped to specified port ~A" program version (rpc-client-port client)))
-          (t 
-           (setf (rpc-client-port client) port)))))))
-
 (defgeneric rpc-client-auth (client)
   (:documentation "The authenticator to use for the client request."))
 
