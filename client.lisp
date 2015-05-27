@@ -325,6 +325,13 @@ the bytes read."
 	  ((or (= count #xffffffff) (= count -1))
 	   (frpc-log :error "recvfrom returned -1"))
 	  (t
+       ;; some implementations return host addresses as htol integers, but octet vectors are more useful
+       (when (integerp remote-host)
+         (setf remote-host 
+               (let ((v (nibbles:make-octet-vector 4)))
+                 (setf (nibbles:ub32ref/be v 0) remote-host)
+                 v)))
+
 	   (frpc-log :trace "Received response from ~A:~A (length ~A)" remote-host remote-port count)
 	   (frpc.streams:with-buffer-stream (input buffer :start 0 :end count)
 ;;	   (flexi-streams:with-input-from-sequence (input buffer :start 0 :end count)
@@ -418,6 +425,7 @@ the bytes read."
 		     ;; Seems like there is a similar bug in the usocket Lispworks codes too
 		     (when (or (= count #xffffffff) (= count -1))
 		       (error "Error: recvfrom returned -1"))
+             (break)
 		     (let ((input (frpc.streams:make-buffer-stream buffer :end count)))
 ;;		       (nth-value 1 (read-response input result-type))
 		       (multiple-value-bind (msg res) (read-response input result-type)
