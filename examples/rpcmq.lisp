@@ -1,14 +1,13 @@
 ;;;; Copyright (c) Frank James 2015 <frank.a.james@gmail.com>
 ;;;; This code is licensed under the MIT license.
 
-;; This is a little example of how you might implement unidirectional message queue semantics using RPC.
-;;
+;; This is a little example of how you might implement 
+;; a unidirectional message queue using RPC.
 ;; 
 ;; On the server:
-;; (do ((q (create-queue "myname"))
-;;      (done nil))
-;;     (done)
-;;   (multiple-value-bind (data id) (receive q)
+;; (defparameter *q* (create-queue "myname"))
+;; (dotimes (i 10)
+;;   (multiple-value-bind (data id) (receive *q*)
 ;;     (format t "~D ~S~%" id data)))
 ;;      
 ;; On the client:
@@ -28,6 +27,7 @@
            #:call-open
            #:call-post
            #:call-stat
+	   #:call-dump
 
            #:receive
            #:create-queue
@@ -35,6 +35,7 @@
 
 (in-package #:rpcmq)
 
+;; a random program number I generated
 (defprogram rpcmq #x2666385D)
 
 (defxenum mqstat 
@@ -211,4 +212,21 @@ Returns a handle to use in subsequent calls."))
     (values (xunion-val res) (xunion-tag res)))
   (:handler #'handle-stat)
   (:documentation "Get information on the remote message queue."))
+
+;; ----------------------------
+
+(defun handle-dump (void)
+  (declare (ignore void))
+  (mapcar (lambda (q)
+	    (list :name (mq-name q)
+		  :handle (mq-handle q)))
+	  *mqlist*))
+
+(defrpc call-dump 4
+  :void
+  (:varray (:plist :name :string :handle :uint32))
+  (:documentation "List all available message queues.")
+  (:handler #'handle-dump)
+  (:program rpcmq 1))
+
 

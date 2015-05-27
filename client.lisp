@@ -425,7 +425,6 @@ the bytes read."
 		     ;; Seems like there is a similar bug in the usocket Lispworks codes too
 		     (when (or (= count #xffffffff) (= count -1))
 		       (error "Error: recvfrom returned -1"))
-             (break)
 		     (let ((input (frpc.streams:make-buffer-stream buffer :end count)))
 ;;		       (nth-value 1 (read-response input result-type))
 		       (multiple-value-bind (msg res) (read-response input result-type)
