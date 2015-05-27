@@ -382,22 +382,23 @@
 		   (setf (aref ,garr ,gi)
 			 ,(compile-reader form stream-sym)))
          ;; read array padding if required to, but only if an octet vector
-         ,(when (eq form :octet)
-            `(read-array-padding stream ,glen))
-		 ,garr))))
+         ,@(when (eq form :octet)
+            `((read-array-padding stream ,glen)
+		 ,garr))
+	 ,garr))))
 	 (:varray 
 	  ;; (:varray form &optional max-length)
 	  (destructuring-bind (form &optional max-length) (cdr forms)
 	    (alexandria:with-gensyms (glen gi)
 	      `(let ((,glen (read-uint32 ,stream-sym)))
 		 ,@(when max-length 
-		     `((when (> ,glen ,max-length) 
-			 (error "Length ~S exceeds maximum length ~S" ,glen ,max-length))))
-		 (loop for ,gi below ,glen collect 
-		      ,(compile-reader form stream-sym))
-         ;; read array padding if required to, but only if an octet vector
-         ,(when (eq form :octet)
-            `(read-array-padding stream ,glen))
+			 `((when (> ,glen ,max-length) 
+			     (error "Length ~S exceeds maximum length ~S" ,glen ,max-length))))
+		 (prog1 (loop :for ,gi :below ,glen :collect 
+			     ,(compile-reader form stream-sym))
+		   ;; read array padding if required to, but only if an octet vector
+		   ,@(when (eq form :octet)
+			   `((read-array-padding stream ,glen))))))))
          )))))))))
 		    
  
