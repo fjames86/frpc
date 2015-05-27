@@ -399,7 +399,7 @@
 		   ;; read array padding if required to, but only if an octet vector
 		   ,@(when (eq form :octet)
 			   `((read-array-padding stream ,glen))))))))
-         )))))))))
+         )))))
 		    
  
 (defun compile-writer (forms stream-sym obj-form)
