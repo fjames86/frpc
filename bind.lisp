@@ -68,7 +68,7 @@
 ;; ------- port mapper structs ----------
 
 (defxenum mapping-protocol
-    (:tcp 6)
+  (:tcp 6)
   (:udp 17))
 
 (defxstruct mapping ()
@@ -80,8 +80,12 @@
 (defun mapping-eql (m1 m2)
   (and (= (mapping-program m1) (mapping-program m2))
        (= (mapping-version m1) (mapping-version m2))
-       (eq (mapping-protocol m1) (mapping-protocol m2))))
-;;       (= (mapping-port m1) (mapping-port m2))))
+       (eq (mapping-protocol m1) (mapping-protocol m2))
+       (if (and (mapping-port m1) (mapping-port m2)
+                (not (zerop (mapping-port m1)))
+                (not (zerop (mapping-port m2))))
+           (= (mapping-port m1) (mapping-port m2))
+           t)))
 
 ;; ----------------------------------
 
@@ -93,7 +97,8 @@
 
 (defun add-mapping (mapping)
   "Add a port mapping."
-  (push mapping *mappings*))
+  ;; only add the mapping if it's not already mapped 
+  (pushnew mapping *mappings* :test #'mapping-eql))
 
 (defun rem-mapping (mapping)
   "Remove a port mapping."
@@ -113,59 +118,63 @@ in the mapping structure. if MAP-PORT is provided, will also match this port."
                         t)))
              *mappings*)))
 
-(defun add-all-mappings (tcp-ports udp-ports &key rpc)
-  "Add mappings for all defined RPCs to the TCP and UDP ports specified. If RPC is non-nil, the local port-mapper program will contacted using RPC, otherwise the local Lisp port-mapper program will have the mappings added directly."
-  ;; if we are using RPC to contact the local port mapper, 
-  ;; then ensure the port mapper program is actually running!
-  (when rpc
-    (handler-case (call-null :host "localhost" :protocol :udp)
-      (rpc-timeout-error ()
-        (error "Failed to contact local portmapper"))))
-  (setf *mappings* nil)
-  (dolist (ppair frpc::*handlers*)
-    (destructuring-bind (program . versions) ppair
-      (unless (and rpc (= program +pmapper-program+))
+(defun generate-mapping-list (tcp-ports udp-ports)
+  "Generate a list of all mappings for the programs hosted by this Lisp image."
+  (let (mappings-to-add)
+    (dolist (ppair frpc::*handlers*)
+      (destructuring-bind (program . versions) ppair
         (dolist (vpair versions)
           (let ((version (car vpair)))
-            ;; add all TCP port mappings
-            (dolist (port tcp-ports)
-              (let ((mapping (make-mapping :program program
-                                           :version version
-                                           :port port)))
-                (add-mapping mapping)
-                (when rpc 
-                  (call-set mapping :protocol :udp
-                            :client (make-instance 'unix-client)))))
-            ;; add all UDP port mappings
-            (dolist (port udp-ports)
-              (let ((mapping (make-mapping :program program
-                                           :version version
-                                           :protocol :udp
-                                           :port port)))
-                (add-mapping mapping)
-                (when rpc 
-                  (call-set mapping :protocol :udp
-                            :client (make-instance 'unix-client))))))))))
-  nil)
+            (dolist (uport udp-ports)
+              ;; only advertise the portmap program on port 111.
+              ;; Yes, it can be contacted on ANY port our rpc server is running, but we keep that a secret.
+              (when (or (and (= program +pmapper-program+) (= uport 111))
+                        (and (not (= program +pmapper-program+)) (not (= uport 111))))
+                (push (make-mapping :program program
+                                    :version version
+                                    :protocol :udp
+                                    :port uport)
+                      mappings-to-add)))
+            (dolist (tport tcp-ports)
+              (when (or (and (= program +pmapper-program+) (= tport 111))
+                        (and (not (= program +pmapper-program+)) (not (= tport 111))))
+                (push (make-mapping :program program
+                                    :version version
+                                    :protocol :tcp
+                                    :port tport)
+                      mappings-to-add)))))))
+    mappings-to-add))
 
-(defun remove-all-mappings (&key rpc)
-  "Remove mappings for all defined RPCs to the TCP and UDP ports specified. 
-If RPC is non-nil, the local port-mapper program will contacted using RPC, 
-otherwise the local Lisp port-mapper program will have the mappings 
-removed from the Lisp list."
-  ;; if we are using RPC to contact the local port mapper, 
-  ;; then ensure the port mapper program is actually running!
-  (when rpc
-    (handler-case (call-null :host "localhost" :protocol :udp)
-      (rpc-timeout-error ()
-        (error "Failed to contact local portmapper"))))
-  (when rpc 
-    (dolist (mapping *mappings*)
-      (call-unset mapping :protocol :udp)))
-  (setf *mappings* nil)
-  nil)
+(defun add-all-mappings (tcp-ports udp-ports &key rpc)
+  (let ((mappings-to-add (generate-mapping-list tcp-ports udp-ports)))
+    (dolist (m mappings-to-add)
+      ;; add the mapping to our local repository 
+      (add-mapping m)
+      ;; add to the remote portmap program
+      (when rpc 
+        (handler-case 
+            (call-set m 
+                      :host "localhost"
+                      :client (make-instance 'unix-client))
+          (error (e)
+            (frpc-log :info "Failed to map ~A" e))))))
+    nil)
 
-
+(defun remove-all-mappings (tcp-ports udp-ports &key rpc)
+  (let ((mappings-to-add (generate-mapping-list tcp-ports udp-ports)))
+    (dolist (m mappings-to-add)
+      ;; add the mapping to our local repository 
+      (rem-mapping m)
+      ;; call the remote portmap program
+      (when rpc 
+        (handler-case 
+            (call-unset m 
+                        :host "localhost"
+                        :client (make-instance 'unix-client))
+          (error (e)
+            (frpc-log :info "Failed to unmap ~A" e))))))
+    nil)
+  
 ;; ----------------------
 
 ;; NULL -- test communication to the port mapper 
@@ -235,7 +244,7 @@ removed from the Lisp list."
         (:arg-transformer (program version &key (query-protocol :udp))
                           (make-mapping :program program
                                         :version version
-                                        :protocol query-protocol))
+                                        :protocol (or query-protocol :udp)))
         (:documentation "Query the port for the specified program.")
         (:handler #'%handle-get-port))
 
@@ -532,28 +541,3 @@ which consists of a structure followed by an optional next structure, e.g.
   :void rpcb-stat-by-vers
   (:program port-mapper 4))
 
-
-;; ---------------------------------------------------
-
-(in-package #:frpc)
-
-;; need to put this here because it requires the rpcbind calls 
-(defmethod initialize-instance :after ((client rpc-client) &rest initargs &key)
-  (declare (ignore initargs))
-  (let ((program (rpc-client-program client))
-        (version (rpc-client-version client))
-        (host (rpc-client-host client)))
-    (when (and host program)
-      (let ((port (frpc.bind:call-get-port program (or version 0)
-                                           :host host
-                                           :timeout (or (rpc-client-timeout client) 1)
-                                           :connection (rpc-client-connection client))))
-        (cond
-          ((zerop port) 
-           (error "Program ~A.~A not mapped by remote port mapper" 
-                  program version))
-          ((and (rpc-client-port client)
-                (not (= port (rpc-client-port client))))
-           (error "Program ~A.~A not mapped to specified port ~A" program version (rpc-client-port client)))
-          (t 
-           (setf (rpc-client-port client) port)))))))

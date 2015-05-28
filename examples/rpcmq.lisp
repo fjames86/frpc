@@ -27,7 +27,7 @@
            #:call-open
            #:call-post
            #:call-stat
-	   #:call-dump
+           #:call-dump
 
            #:receive
            #:create-queue
@@ -50,8 +50,8 @@
   nil)
 
 (defrpc call-null 0 :void :void
-  (:program rpcmq 1)
-  (:handler #'handle-null))
+        (:program rpcmq 1)
+        (:handler #'handle-null))
 
 ;; ----------------------------
 
@@ -149,12 +149,12 @@ Returns (values data id)."
 (defrpc call-open 1 
   :string
   (:union mqstat
-    (:ok :uint32)
-    (otherwise :void))
+          (:ok :uint32)
+          (otherwise :void))
   (:arg-transformer (name)
-    name)
+                    name)
   (:transformer (res)
-    (values (xunion-val res) (xunion-tag res)))
+                (values (xunion-val res) (xunion-tag res)))
   (:program rpcmq 1)
   (:handler #'handle-open)
   (:documentation "Open a handle to the remote message queue. 
@@ -183,8 +183,8 @@ Returns a handle to use in subsequent calls."))
 (defrpc call-post 2
   (:list :uint32 (:varray* :octet))
   (:union mqstat
-    (:ok :uint32)
-    (otherwise :void))
+          (:ok :uint32)
+          (otherwise :void))
   (:arg-transformer (handle data) (list handle data))
   (:transformer (res) (xunion-val res))
   (:program rpcmq 1)
@@ -200,16 +200,16 @@ Returns a handle to use in subsequent calls."))
                      (list :id (mq-id q)
                            :name (mq-name q)))
         (make-xunion :notfound nil))))
-  
+
 (defrpc call-stat 3
   :uint32 
   (:union mqstat
-    (:ok (:plist :id :uint32 :name :string))
-    (:otherwise :void))
+          (:ok (:plist :id :uint32 :name :string))
+          (:otherwise :void))
   (:program rpcmq 1)
   (:arg-transformer (handle) handle)
   (:transformer (res)
-    (values (xunion-val res) (xunion-tag res)))
+                (values (xunion-val res) (xunion-tag res)))
   (:handler #'handle-stat)
   (:documentation "Get information on the remote message queue."))
 
@@ -218,9 +218,9 @@ Returns a handle to use in subsequent calls."))
 (defun handle-dump (void)
   (declare (ignore void))
   (mapcar (lambda (q)
-	    (list :name (mq-name q)
-		  :handle (mq-handle q)))
-	  *mqlist*))
+            (list :name (mq-name q)
+                  :handle (mq-handle q)))
+          *mqlist*))
 
 (defrpc call-dump 4
   :void

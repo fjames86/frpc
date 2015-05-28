@@ -29,45 +29,6 @@
 	 (*rpc-remote-auth* ,auth))
      ,@body))
 
-;; stores an assoc list for each program id
-;; each program id stores an alist of version ids
-;; each version id stores an alist of handler lists
-;; a handler list is (ARG-READER RES-WRITER HANDLER)
-(defvar *handlers* nil)
-
-(defun %defhandler (program version proc arg-type res-type handler)
-  (let ((p (assoc program *handlers*)))
-    (if p
-	(let ((v (assoc version (cdr p))))
-	  (if v
-	      (let ((c (assoc proc (cdr v))))
-		(if c
-		    (progn
-		      (setf (cdr c) (list arg-type res-type handler))
-		      (return-from %defhandler))
-		    (push (cons proc (list arg-type res-type handler)) (cdr v))))
-	      (push (cons version (list (cons proc (list arg-type res-type handler))))
-		    (cdr p))))
-	(push (cons program
-		    (list (cons version
-				(list (cons proc (list arg-type res-type handler))))))
-	      *handlers*)))
-  nil)
-
-(defun find-handler (&optional program version proc)
-  "Look up the handler(s) for the given PROGRAM, VERSION and PROC IDs."
-  ;; if no program supplied return a list of all programs currently defined
-  (unless program
-    (return-from find-handler (mapcar #'car *handlers*)))
-  ;; otherwise find the specified program/version/proc 
-  (let ((p (assoc program *handlers*)))
-    (if (and p version)
-	(let ((v (assoc version (cdr p))))
-	  (if (and v proc)
-	      (cdr (assoc proc (cdr v)))
-	      (cdr v)))
-	(cdr p))))
-
 ;; ---------------------------------------------------------
 
 ;; stores the information about the rpc server, its thread, exit flag etc
@@ -414,15 +375,45 @@ TIMEOUT specifies the duration (in seconds) that a TCP connection should remain 
 	(usocket:socket-close udp)))))
 
 (defun start-rpc-server (server)
-  "Start the RPC server in a new thread."
+  "Start the RPC server in a new thread. Adds all port mappings to the local port mapper."
+  (declare (type rpc-server server))
+
+  ;; try talking to the local port mapper
+  (let ((pmap-p (handler-case (progn (frpc.bind:call-null :host "localhost") t)
+                  (error () nil))))
+    (cond
+      (pmap-p
+       ;; add the port mappings to the remote port mapper 
+       (frpc.bind:add-all-mappings (rpc-server-tcp-ports server)
+                                   (rpc-server-udp-ports server)                              
+                                   :rpc nil))
+      (t 
+       (warn "No port mapper detected, running portmap locally.")
+       (pushnew 111 (rpc-server-udp-ports server))
+       (pushnew 111 (rpc-server-tcp-ports server))
+       ;; since we are runnign hte port mapper locally we can just directly add them to our list 
+       (frpc.bind:add-all-mappings (rpc-server-tcp-ports server)
+                                   (rpc-server-udp-ports server)                              
+                                   :rpc nil))))
+
   (setf (rpc-server-thread server)
-	(bt:make-thread (lambda ()
-			  (run-rpc-server server))
-			:name "rpc-server-thread"))
+        (bt:make-thread (lambda ()
+                          (run-rpc-server server))
+                        :name "rpc-server-thread"))
+   
   server)
 
 (defun stop-rpc-server (server)
-  "Stop the RPC server and wait until its thread to exit."
+  "Stop the RPC server and wait until its thread to exit. Removes all port mappings."
+  (declare (type rpc-server server))
+
+  ;; remove the port mappings
+  (frpc.bind:remove-all-mappings (rpc-server-udp-ports server)
+                                 (rpc-server-tcp-ports server)
+                                 :rpc t)
+
+  ;; set flag and wait for thread to exit
   (setf (rpc-server-exiting server) t)
   (bt:join-thread (rpc-server-thread server))
+
   nil)

@@ -51,7 +51,6 @@
 	   #:rpc-client 
 	   #:rpc-client-initial
 	   #:call-rpc
-	   #:call-null-proc
 	   #:*rpc-host*
 	   #:*rpc-port*
 

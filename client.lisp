@@ -3,6 +3,12 @@
 
 (in-package #:frpc)
 
+(defvar *rpc-remote-host* nil)
+(defvar *rpc-remote-port* nil)
+(defvar *rpc-remote-protocol* nil)
+(defvar *rpc-remote-auth* nil)
+
+
 (defun write-request (stream msg arg-type arg)
   "Write an RPC request to the stream."
   (%write-rpc-msg stream msg)
@@ -678,20 +684,43 @@ OPTIONS allow customization of the generated client function:
 			    ,handler))))))))
 
 
+;; -------------- handlers -----------------
 
-(defun call-null-proc (program version 
-		  &key (host *rpc-host*) (port *rpc-port*)
-		    (protocol :udp) connection (timeout 1) client)
-  (call-rpc :void nil :void 
-	    :host host
-	    :port port
-	    :program (if (symbolp program)
-			 (let ((p (find-program program)))
-			   (if p p (error "Program ~A not found" program)))
-			 program)
-	    :version version
-	    :proc 0
-	    :protocol protocol
-	    :timeout timeout
-	    :connection connection
-	    :client client))
+;; stores an assoc list for each program id
+;; each program id stores an alist of version ids
+;; each version id stores an alist of handler lists
+;; a handler list is (ARG-READER RES-WRITER HANDLER)
+(defvar *handlers* nil)
+
+(defun %defhandler (program version proc arg-type res-type handler)
+  (let ((p (assoc program *handlers*)))
+    (if p
+	(let ((v (assoc version (cdr p))))
+	  (if v
+	      (let ((c (assoc proc (cdr v))))
+		(if c
+		    (progn
+		      (setf (cdr c) (list arg-type res-type handler))
+		      (return-from %defhandler))
+		    (push (cons proc (list arg-type res-type handler)) (cdr v))))
+	      (push (cons version (list (cons proc (list arg-type res-type handler))))
+		    (cdr p))))
+	(push (cons program
+		    (list (cons version
+				(list (cons proc (list arg-type res-type handler))))))
+	      *handlers*)))
+  nil)
+
+(defun find-handler (&optional program version proc)
+  "Look up the handler(s) for the given PROGRAM, VERSION and PROC IDs."
+  ;; if no program supplied return a list of all programs currently defined
+  (unless program
+    (return-from find-handler (mapcar #'car *handlers*)))
+  ;; otherwise find the specified program/version/proc 
+  (let ((p (assoc program *handlers*)))
+    (if (and p version)
+	(let ((v (assoc version (cdr p))))
+	  (if (and v proc)
+	      (cdr (assoc proc (cdr v)))
+	      (cdr v)))
+	(cdr p))))

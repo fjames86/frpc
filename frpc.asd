@@ -16,8 +16,9 @@
    (:file "errors" :depends-on ("rpc"))
    (:file "streams")
    (:file "client" :depends-on ("errors" "streams" "gss"))
-   (:file "server" :depends-on ("client" "gss"))
-   (:file "bind" :depends-on ("server")))
+   (:file "bind" :depends-on ("client"))
+   (:file "server" :depends-on ("client" "gss" "bind"))
+   (:file "extras" :depends-on ("bind")))
   :depends-on (:alexandria :nibbles :flexi-streams :ironclad
 	       :usocket :bordeaux-threads :pounds :babel :glass))
 
