@@ -195,6 +195,7 @@
   ("default" (return (values 'default 'default)))
   ("program" (return (values 'program 'program)))
   ("version" (return (values 'version 'version)))
+  ("void" (return (values 'void 'void)))
   ("[-]?[0-9]+" (return (values 'constant (parse-integer $@))))
   ("\\w+" (return (values 'identifier (alexandria:symbolicate (string-upcase $@)))))
   ("/\\*([\\S\\s]*)\\*/" (return (values 'block-comment $1)))
@@ -342,49 +343,45 @@
    (program identifier |{| version-def |}| |=| value |;|
 	    (lambda (a b c d e f g h)
 	      (declare (ignore a c e f h))
-	      `(progn (defprogram ,b ,g)
-		      ,@d))))
+	      `(:program ,b ,g 
+			 ,@d))))
 
   (version-def 
    (version identifier |{| rpc-def-list |}| |=| value |;|
 	    (lambda (a b c d e f g h)  
 	      (declare (ignore a c e f h))
-	      (list (list :version b d g))))
+	      (list `(:version ,b ,g ,@d))))
    (version-def version identifier |{| rpc-def-list |}| |=| value |;|
 		(lambda (a b c d e f g h i)
 		  (declare (ignore b d f g i))
 		  (append a 
-			  (list (list :version c e h))))))
+			  (list `(:version ,c ,h ,@e))))))
 
   (rpc-def-list 
-   (type-specifier identifier |(| type-specifier |)| |=| value |;|
+   (rpc-type-spec identifier |(| rpc-type-spec |)| |=| value |;|
 		   (lambda (a b c d e f g h)
 		     (declare (ignore c e f h))
 		     (list `(defrpc ,b ,g ,d ,a))))
-   (rpc-def-list type-specifier identifier |(| type-specifier |)| |=| value |;|
+   (rpc-def-list rpc-type-spec identifier |(| rpc-type-spec |)| |=| value |;|
 		 (lambda (a b c d e f g h i)
 		   (declare (ignore d f g i))
 		   (append a 
 			   (list `(defrpc ,c ,h ,e ,b))))))
+
+  (rpc-type-spec 
+   (void (lambda (a) (declare (ignore a)) :void))
+   type-specifier)
 
   (definition 
     (type-def)
     (constant-def)
     (program-def))
     
-
   (specification 
    definition
    (specification definition)))
 
-
-
-
-   
-
-           
-
-
+       
 (defun test-parser (string)
   (parse-with-lexer (xdr-lexer string) *xdr-parser*))
 
