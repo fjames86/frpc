@@ -386,7 +386,7 @@ TIMEOUT specifies the duration (in seconds) that a TCP connection should remain 
        ;; add the port mappings to the remote port mapper 
        (frpc.bind:add-all-mappings (rpc-server-tcp-ports server)
                                    (rpc-server-udp-ports server)                              
-                                   :rpc nil))
+                                   :rpc t))
       (t 
        (warn "No port mapper detected, running portmap locally.")
        (pushnew 111 (rpc-server-udp-ports server))
