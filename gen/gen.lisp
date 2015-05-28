@@ -7,149 +7,17 @@
 ;;; definition. Probably some hand modifications will be required but it should at least make things easier,
 ;;; particularly with large/complicated interfaces.
 
-;; Note: this is not finished yet.
-
 ;;(ql:quickload '("yacc" "cl-lex"))
 
 (defpackage #:frpc.gen
-  (:use #:cl #:yacc #:cl-lex))
+  (:use #:cl #:yacc #:cl-lex)
+  (:export #:gen))
 
 (in-package #:frpc.gen)
 
-;; 5. THE XDR LANGUAGE SPECIFICATION
-
-;;    5.1 Notational Conventions
-
-;;    This specification uses an extended Back-Naur Form notation for
-;;    describing the XDR language.  Here is a brief description of the
-;;    notation:
-
-;;    (1) The characters '|', '(', ')', '[', ']', '"', and '*' are special.
-;;    (2) Terminal symbols are strings of any characters surrounded by
-;;    double quotes.
-;;    (3) Non-terminal symbols are strings of non-special characters.
-;;    (4) Alternative items are separated by a vertical bar ("|").
-;;    (5) Optional items are enclosed in brackets.
-;;    (6) Items are grouped together by enclosing them in parentheses.
-;;    (7) A '*' following an item means 0 or more occurrences of that item.
-
-;;    For example,  consider  the  following pattern:
-
-;;          "a " "very" (", " "very")* [" cold " "and "]  " rainy "
-;;          ("day" | "night")
-
-;;    An infinite number of strings match this pattern. A few of them are:
-;;          "a very rainy day"
-;;          "a very, very rainy day"
-;;          "a very cold and  rainy day"
-;;          "a very, very, very cold and  rainy night"
-
-;; 5.2 Lexical Notes
-
-;;    (1) Comments begin with '/*' and terminate with '*/'.
-;;    (2) White space serves to separate items and is otherwise ignored.
-;;    (3) An identifier is a letter followed by an optional sequence of
-;;    letters, digits or underbar ('_'). The case of identifiers is not
-;;    ignored.
-;;    (4) A constant is a sequence of one or more decimal digits,
-;;    optionally preceded by a minus-sign ('-').
-
-;; 5.3 Syntax Information
-
-;;       declaration:
-;;            type-specifier identifier
-;;          | type-specifier identifier "[" value "]"
-;;          | type-specifier identifier "<" [ value ] ">"
-;;          | "opaque" identifier "[" value "]"
-;;          | "opaque" identifier "<" [ value ] ">"
-;;          | "string" identifier "<" [ value ] ">"
-;;          | type-specifier "*" identifier
-;;          | "void"
-
-;;       value:
-;;            constant
-;;          | identifier
-
-;;       type-specifier:
-;;            [ "unsigned" ] "int"
-;;          | [ "unsigned" ] "hyper"
-;;          | "float"
-;;          | "double"
-;;          | "bool"
-;;          | enum-type-spec
-;;          | struct-type-spec
-;;          | union-type-spec
-;;          | identifier
-
-;;       enum-type-spec:
-;;          "enum" enum-body
-
-;;       enum-body:
-;;          "{"
-;;             ( identifier "=" value )
-;;             ( "," identifier "=" value )*
-;;          "}"
-
-;;       struct-type-spec:
-;;          "struct" struct-body
-
-;;       struct-body:
-;;          "{"
-;;             ( declaration ";" )
-;;             ( declaration ";" )*
-;;          "}"
-
-;;       union-type-spec:
-;;          "union" union-body
-
-;;       union-body:
-;;          "switch" "(" declaration ")" "{"
-;;             ( "case" value ":" declaration ";" )
-;;             ( "case" value ":" declaration ";" )*
-;;             [ "default" ":" declaration ";" ]
-;;          "}"
-
-;;       constant-def:
-;;          "const" identifier "=" constant ";"
-
-;;       type-def:
-;;            "typedef" declaration ";"
-;;          | "enum" identifier enum-body ";"
-;;          | "struct" identifier struct-body ";"
-;;          | "union" identifier union-body ";"
-
-;;       definition:
-;;            type-def
-;;          | constant-def
-
-;;       specification:
-;;            definition *
-
-;; 5.4 Syntax Notes
-
-;;    (1) The following are keywords and cannot be used as identifiers:
-;;    "bool", "case", "const", "default", "double", "enum", "float",
-;;    "hyper", "opaque", "string", "struct", "switch", "typedef", "union",
-;;    "unsigned" and "void".
-
-;;    (2) Only unsigned constants may be used as size specifications for
-;;    arrays.  If an identifier is used, it must have been declared
-;;    previously as an unsigned constant in a "const" definition.
-
-;;    (3) Constant and type identifiers within the scope of a specification
-;;    are in the same name space and must be declared uniquely within this
-;;    scope.
-
-;;    (4) Similarly, variable names must  be unique within  the scope  of
-;;    struct and union declarations. Nested struct and union declarations
-;;    create new scopes.
-
-;;    (5) The discriminant of a union must be of a type that evaluates to
-;;    an integer. That is, "int", "unsigned int", "bool", an enumerated
-;;    type or any typedefed type that evaluates to one of these is legal.
-;;    Also, the case values must be one of the legal values of the
-;;    discriminant.  Finally, a case value may not be specified more than
-;;    once within the scope of a union declaration.
+;; Usage: (gen pathspec)
+;; converts a .x file into a .lisp file which contains the sort of code
+;; for input into frpc.
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (defun select-n (n)
@@ -197,9 +65,9 @@
   ("version" (return (values 'version 'version)))
   ("void" (return (values 'void 'void)))
   ("[-]?[0-9]+" (return (values 'constant (parse-integer $@))))
-  ("\\w+" (return (values 'identifier (alexandria:symbolicate (string-upcase $@)))))
-  ("/\\*([\\S\\s]*)\\*/" (return (values 'block-comment $1)))
-  ("//(.*)\\\n" (return (values 'line-comment $1))))
+  ("\\w+" (return (values 'identifier (alexandria:symbolicate (substitute #\- #\_ (string-upcase $@))))))
+  "/\\*([\\S\\s]*)\\*/" ;; for multi-line comments
+  "//(.*)\\\n") ;; single line comments
            
 (defun test-lexer (string)
   (let ((l (xdr-lexer string)))
@@ -220,7 +88,7 @@
 	           program version))
 
   (declaration
-   (type-specifier identifier)
+   (type-specifier identifier (lambda (a b) (list b a)))
    (type-specifier identifier |[| value |]|
                    (lambda (a b c d e) (declare (ignore c e))
                            (list b `(:varray* ,a ,d))))
@@ -285,7 +153,12 @@
                            (list (list (intern (string-upcase id) :keyword) val))))))
 			   
   (struct-type-spec 
-   (struct |{|  struct-body |}| (select-n 2)))
+   (struct |{|  struct-body |}| 
+	   (lambda (a b c d) (declare (ignore a b d))
+		   `(:struct ,c)))
+   (struct |*| |{| struct-body |}|
+	   (lambda (a b c d e) (declare (ignore a b c e))
+		   `(:optional (:struct ,d)))))
 
   (struct-body 
    (declaration |;| (lambda (a b) (declare (ignore b)) (list a)))
@@ -335,6 +208,10 @@
              (declare (ignore a c e f))
              `(defxstruct ,(alexandria:symbolicate (string-upcase b))
 		  () ,@d)))
+   (struct |*| identifier |{| struct-body |}| |;|
+	   (lambda (a b c d e f g) (declare (ignore a b d f g))
+		   `(progn (defxstruct ,(alexandria:symbolicate c '*) () ,@e)
+			   (defxtype* ,c () (:optional ,(alexandria:symbolicate c '*))))))
    (union identifier union-body |;|
 	  (lambda (a b c d) (declare (ignore a d))
 		  `(defxunion ,b () ,@c))))
@@ -373,15 +250,52 @@
    type-specifier)
 
   (definition 
-    (type-def)
-    (constant-def)
-    (program-def))
+    type-def
+    constant-def
+    program-def)
     
   (specification 
-   definition
-   (specification definition)))
+   (definition)
+   (specification definition (lambda (a b) (append a (list b))))))
 
        
 (defun test-parser (string)
   (parse-with-lexer (xdr-lexer string) *xdr-parser*))
+
+(defun gen (pathspec &optional outfile)
+  (let ((forms 
+	 (test-parser 
+	  (with-open-file (f pathspec :direction :input)
+	    (with-output-to-string (s)
+	      (do ((l (read-line f nil nil) (read-line f nil nil)))
+		  ((null l))
+		(princ l s) 
+		(fresh-line s)))))))
+    (with-open-file (f (or outfile 
+			   (merge-pathnames (make-pathname :type "lisp")
+					    (pathname pathspec)))
+		       :direction :output
+		       :if-exists :supersede)
+      (terpri f)
+      (format f ";;; Autogenreated from ~A~%" pathspec)
+      (terpri f)
+      (dolist (form forms)
+	(cond
+	  ((eq (car form) :program)
+	   ;; special case 
+	   (destructuring-bind (pname id &rest versions) (cdr form)
+	     (pprint `(defprogram ,pname ,id) f)
+	     (terpri f)
+	     (dolist (version versions)
+	       (destructuring-bind (v vname num &rest rpcs) version
+		 (declare (ignore v vname))
+		 (dolist (rpc rpcs)
+		   (pprint (append rpc `((:program ,pname ,num)))
+			   f)
+		   (terpri f))))))
+	  (t 
+	   (pprint form f)
+	   (terpri f)))))))
+
+      
 

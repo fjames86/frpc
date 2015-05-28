@@ -472,7 +472,16 @@ shares the frpc log).
 
 See the pounds documentation for more information on the logging system.
 
-## 9. Notes
+## 9. XDR parser/generator
+Typically RPC interfaces are described by an "x-file" which is used as input into rpcgen. This is used to generate code for the C programming language. The file gen/gen.lisp contains a program to parse such files and generate skeleton code for use with frpc.
+
+Usage:
+```
+(frpc.gen:gen "test.x")
+```
+
+
+## 10. Notes
 
 * At the moment, reading from TCP streams requires buffering the input to cope with reading multiple fragments. This is REALLY bad if
 large payloads are sent. A fragmented-stream type could be defined to wrap the underlying socket stream so that we can avoid the buffering on reads.
@@ -484,7 +493,7 @@ This makes it impossible to inform the port mapper of where to direct traffic.
 * The XDR serializer is probably not as efficient as it could be, but who really cares so long as it works.
 * Developed using SBCL on Windows and Linux, also tested with CCL and LispWorks on Windows.
 
-## 10. License
+## 11. License
 
 Released under the terms of the MIT license.
 
