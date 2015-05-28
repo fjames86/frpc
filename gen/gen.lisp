@@ -9,6 +9,8 @@
 
 ;; Note: this is not finished yet.
 
+;;(ql:quickload '("yacc" "cl-lex"))
+
 (defpackage #:frpc.gen
   (:use #:cl #:yacc #:cl-lex))
 
@@ -149,21 +151,19 @@
 ;;    discriminant.  Finally, a case value may not be specified more than
 ;;    once within the scope of a union declaration.
 
-
-
-
-(defun select-n (n)
-  (lambda (&rest args) (nth n args)))
-
-(defun select-these (nums)
-  (lambda (&rest args) 
-    (do ((i 0 (1+ i))
-         (res nil)
-         (n nums (cdr n))
-         (l args (cdr l)))
-        ((null l) (nreverse res))
-      (when (= (car n) i)
-        (push (car l) res)))))
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defun select-n (n)
+    (lambda (&rest args) (nth n args)))
+  
+  (defun select-these (nums)
+    (lambda (&rest args) 
+      (do ((i 0 (1+ i))
+	   (res nil)
+	   (n nums (cdr n))
+	   (l args (cdr l)))
+	  ((null l) (nreverse res))
+	(when (= (car n) i)
+	  (push (car l) res))))))
 
 (define-string-lexer xdr-lexer 
   ("\\=" (return (values '|=| '|=|)))
@@ -177,6 +177,7 @@
   ("\\]" (return (values '|]| '|]|)))
   ("\\(" (return (values '|(| '|(|)))
   ("\\)" (return (values '|)| '|)|)))
+  ("\\*" (return (values '|*| '|*|)))
   ("struct" (return (values 'struct 'struct)))
   ("enum" (return (values 'enum 'enum)))
   ("typedef" (return (values 'typedef 'typedef)))
@@ -189,8 +190,13 @@
   ("string" (return (values 'string 'string)))
   ("default" (return (values 'default 'default)))
   ("bool" (return (values 'bool 'bool)))
+  ("opaque" (return (values 'opaque 'opaque)))
+  ("case" (return (values 'case 'case)))
+  ("default" (return (values 'default 'default)))
+  ("program" (return (values 'program 'program)))
+  ("version" (return (values 'version 'version)))
   ("[-]?[0-9]+" (return (values 'constant (parse-integer $@))))
-  ("\\w+" (return (values 'identifier $@)))
+  ("\\w+" (return (values 'identifier (alexandria:symbolicate (string-upcase $@)))))
   ("/\\*([\\S\\s]*)\\*/" (return (values 'block-comment $1)))
   ("//(.*)\\\n" (return (values 'line-comment $1))))
            
@@ -205,28 +211,48 @@
 
 
 (define-parser *xdr-parser*
-  (:start-symbol definition)
-  (:terminals (|;| |{| |}| |=| |(| |)| |,|
+  (:start-symbol specification)
+  (:terminals (|;| |{| |}| |=| |(| |)| |,| |[| |]| |<| |>| |*|
                    identifier constant 
-                   struct union enum typedef const default
-                   unsigned int hyper float double bool void string opaque))
-  (:precedence ((:left |<| |;|) (:left |[| |;|)))
+                   struct union enum typedef const default case 
+                   unsigned int hyper float double bool void string opaque
+	           program version))
 
-  (definition 
-    (type-def (lambda (x) (list x)))
-    (constant-def (lambda (x) (list x)))
-    (definition type-def (lambda (a b) (append a (list b))))
-    (definition constant-def (lambda (a b) (append a (list b)))))
+  (declaration
+   (type-specifier identifier)
+   (type-specifier identifier |[| value |]|
+                   (lambda (a b c d e) (declare (ignore c e))
+                           (list b `(:varray* ,a ,d))))
+   (type-specifier identifier |<| value |>|
+                   (lambda (a b c d e) (declare (ignore c e))
+                           (list b `(:varray ,a ,d))))
+   (type-specifier identifier |<| |>|
+                   (lambda (a b c e) (declare (ignore c e))
+                           (list b `(:varray ,a))))
+   (opaque identifier |[| value |]|
+	   (lambda (a b c d e) (declare (ignore a c e))
+		   (list b `(:varray* :octet ,d))))
+   (opaque identifier |<| |>|
+	   (lambda (a b c d) (declare (ignore a c d))
+		   (list b `(:varray* :octet))))
+   (opaque identifier |<| value |>|
+	   (lambda (a b c d e) (declare (ignore a c e))
+		   (list b `(:varray* :octet ,d))))
+   (string identifier |<| |>| 
+           (lambda (a b c e) (declare (ignore a c e))
+                   (list b :string)))
+   (string identifier |<| value |>| 
+           (lambda (a b c d e) (declare (ignore a c d e))
+                   (list b :string)))
+   (type-specifier |*| identifier
+		   (lambda (a b c) (declare (ignore b))
+			   (list c `(:optional ,a))))
+   (void (lambda (a) (declare (ignore a)) :void)))
+
   
   (value 
    constant 
    identifier)
-
-  (constant-def 
-   (const identifier |=| constant |;|
-          (lambda (c identifier e const term)
-            (declare (ignore c e term))
-            `(defconstant ,(alexandria:symbolicate '+ (string-upcase identifier) '+) ,const))))
 
   (type-specifier 
    (unsigned int (lambda (u i) (declare (ignore u i)) :uint32))
@@ -235,20 +261,28 @@
    (hyper (lambda (h) (declare (ignore h)) :int64))
    (float (lambda (f) (declare (ignore f)) :real32))
    (double (lambda (d) (declare (ignore d)) :real64))
-   (bool (lambda (b) (declare (ignore b)) :boolean)))
-   
+   (bool (lambda (b) (declare (ignore b)) :boolean))
+   enum-type-spec
+   struct-type-spec
+   union-type-spec
+   identifier)
+
+  (enum-type-spec 
+   (enum enum-body (lambda (a b) (declare (ignore a)) b)))
+
   (enum-body 
    (|{| enum-body-list |}| (select-n 1)))
 
   (enum-body-list 
    (identifier |=| value 
-               (lambda (a b c) (declare (ignore b)) (list (list (intern (string-upcase a) :keyword) c))))
+               (lambda (a b c) (declare (ignore b)) 
+		       (list (list (intern (string-upcase a) :keyword) c))))
    (enum-body-list |,| identifier |=| value
                    (lambda (prev comma id eq val)
                      (declare (ignore comma eq))
                      (append prev 
                            (list (list (intern (string-upcase id) :keyword) val))))))
-
+			   
   (struct-type-spec 
    (struct |{|  struct-body |}| (select-n 2)))
 
@@ -258,40 +292,90 @@
                                   (declare (ignore c))
                                   (append a (list b)))))
 
-  (declaration
-   (type-specifier identifier
-                   (lambda (tspec identifier)
-                     (list tspec identifier)))
-   (type-specifier identifier |[| value |]|
-                   (lambda (a b c d e) (declare (ignore c e))
-                           (list a b d)))
-   (type-specifier identifier |<| value |>|
-                   (lambda (a b c d e) (declare (ignore c e))
-                           (list a b d)))
-   (type-specifier identifier |<| |>|
-                   (lambda (a b c e) (declare (ignore c e))
-                           (list a b nil)))
-   (string identifier |<| |>| 
-           (lambda (a b c e) (declare (ignore a c e))
-                   (list :string b nil)))
-   (string identifier |<| value |>| 
-           (lambda (a b c d e) (declare (ignore a c e))
-                   (list :string b d))))
+  (union-type-spec 
+   (union union-body (lambda (a b) (declare (ignore a)) b)))
+
+  (union-body-list 
+   (case value |:| declaration |;| 
+	 (lambda (a b c d e) (declare (ignore a c e))
+		 (list `(,b ,d))))
+   (union-body-list case value |:| declaration |;|
+		    (lambda (a b c d e f) (declare (ignore b d f))
+			    (append a 
+				    (list `(,c ,e)))))
+   (union-body-list default |:| declaration |;|
+		    (lambda (a b c d e) (declare (ignore b c e))
+			    (append a 
+				    (list `(otherwise ,d))))))
+
+  (union-body 
+   (switch |(| declaration |)| |{| union-body-list |}|
+	   (lambda (a b c d e f g) (declare (ignore a b d e g))
+		   `(:union ,c ,@f))))
+
+  (constant-def 
+   (const identifier |=| constant |;|
+          (lambda (a b c d e) (declare (ignore a c e))
+		  `(defconstant ,(alexandria:symbolicate '+ b '+)
+		     ,d))))
 
   (type-def 
    (typedef declaration |;|
             (lambda (td decl sc)
               (declare (ignore td sc))
-              (destructuring-bind (tname name) decl
-                `(defxtype* ,(alexandria:symbolicate name) () ,tname))))
+	      `(defxtype* ,(alexandria:symbolicate (string-upcase (car decl)))
+		   () ,(cadr decl))))
    (enum identifier enum-body |;| 
          (lambda (e id b c)
            (declare (ignore e c))
            `(defxenum ,id () ,@b)))
    (struct identifier |{| struct-body |}| |;|
-           (lambda (a b c d) 
-             (declare (ignore a d))
-             `(defxstruct ,(alexandria:symbolicate b) () ,@c)))))
+           (lambda (a b c d e f) 
+             (declare (ignore a c e f))
+             `(defxstruct ,(alexandria:symbolicate (string-upcase b))
+		  () ,@d)))
+   (union identifier union-body |;|
+	  (lambda (a b c d) (declare (ignore a d))
+		  `(defxunion ,b () ,@c))))
+
+  (program-def
+   (program identifier |{| version-def |}| |=| value |;|
+	    (lambda (a b c d e f g h)
+	      (declare (ignore a c e f h))
+	      `(progn (defprogram ,b ,g)
+		      ,@d))))
+
+  (version-def 
+   (version identifier |{| rpc-def-list |}| |=| value |;|
+	    (lambda (a b c d e f g h)  
+	      (declare (ignore a c e f h))
+	      (list (list :version b d g))))
+   (version-def version identifier |{| rpc-def-list |}| |=| value |;|
+		(lambda (a b c d e f g h i)
+		  (declare (ignore b d f g i))
+		  (append a 
+			  (list (list :version c e h))))))
+
+  (rpc-def-list 
+   (type-specifier identifier |(| type-specifier |)| |=| value |;|
+		   (lambda (a b c d e f g h)
+		     (declare (ignore c e f h))
+		     (list `(defrpc ,b ,g ,d ,a))))
+   (rpc-def-list type-specifier identifier |(| type-specifier |)| |=| value |;|
+		 (lambda (a b c d e f g h i)
+		   (declare (ignore d f g i))
+		   (append a 
+			   (list `(defrpc ,c ,h ,e ,b))))))
+
+  (definition 
+    (type-def)
+    (constant-def)
+    (program-def))
+    
+
+  (specification 
+   definition
+   (specification definition)))
 
 
 
