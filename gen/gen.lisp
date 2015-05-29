@@ -46,7 +46,10 @@
   ("\\(" (return (values '|(| '|(|)))
   ("\\)" (return (values '|)| '|)|)))
   ("\\*" (return (values '|*| '|*|)))
+  ("\\:" (return (values '|:| '|:|)))
   ("struct" (return (values 'struct 'struct)))
+  ("union" (return (values 'union 'union)))
+  ("switch" (return (values 'switch 'switch)))
   ("enum" (return (values 'enum 'enum)))
   ("typedef" (return (values 'typedef 'typedef)))
   ("const" (return (values 'const 'const)))
@@ -64,10 +67,14 @@
   ("program" (return (values 'program 'program)))
   ("version" (return (values 'version 'version)))
   ("void" (return (values 'void 'void)))
+  ("0x([0-9a-fA-F]+)" (return (values 'constant (parse-integer (or $1 "") :radix 16))))
   ("[-]?[0-9]+" (return (values 'constant (parse-integer $@))))
+  ("\\\"([0-9a-fA-F]+)\\\"" (return (values 'constant (parse-integer (or $1 "") :radix 16))))
   ("\\w+" (return (values 'identifier (alexandria:symbolicate (substitute #\- #\_ (string-upcase $@))))))
-  "/\\*.*?\\*/" ;; for multi-line comments
-  "//(.*)\\\n") ;; single line comments
+  "/\\*(.|\\\n)*?\\*/" ;; for multi-line comments
+  "//(.*)\\\n"  ;; single line comments
+  "\\%.*?\\\n"
+  "\\#.*?\\\n")
            
 (defun test-lexer (string)
   (let ((l (xdr-lexer string)))
@@ -81,9 +88,9 @@
 
 (define-parser *xdr-parser*
   (:start-symbol specification)
-  (:terminals (|;| |{| |}| |=| |(| |)| |,| |[| |]| |<| |>| |*|
+  (:terminals (|;| |{| |}| |=| |(| |)| |,| |[| |]| |<| |>| |*| |:|
                    identifier constant 
-                   struct union enum typedef const default case 
+                   struct union enum typedef const default case switch
                    unsigned int hyper float double bool void string opaque
 	           program version))
 
@@ -116,7 +123,9 @@
    (type-specifier |*| identifier
 		   (lambda (a b c) (declare (ignore b))
 			   (list c `(:optional ,a))))
-   (void (lambda (a) (declare (ignore a)) :void)))
+   (void (lambda (a) (declare (ignore a)) :void))
+   (struct identifier identifier (lambda (a b c) (declare (ignore a))
+					 (list c b))))
 
   
   (value 
@@ -125,6 +134,7 @@
 
   (type-specifier 
    (unsigned int (lambda (u i) (declare (ignore u i)) :uint32))
+   (unsigned (lambda (a) (declare (ignore a)) :uint32))
    (int (lambda (i) (declare (ignore i)) :int32))
    (unsigned hyper (lambda (u h) (declare (ignore u h)) :uint64))
    (hyper (lambda (h) (declare (ignore h)) :int64))
@@ -143,9 +153,13 @@
    (|{| enum-body-list |}| (select-n 1)))
 
   (enum-body-list 
+   (identifier (lambda (a) (list (list (intern (string-upcase a) :keyword) 0))))
    (identifier |=| value 
                (lambda (a b c) (declare (ignore b)) 
 		       (list (list (intern (string-upcase a) :keyword) c))))
+   (enum-body-list |,| identifier
+		   (lambda (a b c) (declare (ignore b))
+			   (append a (list (list (intern (string-upcase c) :keyword) (length a))))))
    (enum-body-list |,| identifier |=| value
                    (lambda (prev comma id eq val)
                      (declare (ignore comma eq))
@@ -213,9 +227,27 @@
 	   (lambda (a b c d e f g) (declare (ignore a b d f g))
 		   `(progn (defxstruct ,(alexandria:symbolicate c '*) () ,@e)
 			   (defxtype* ,c () (:optional ,(alexandria:symbolicate c '*))))))
+;;   (typedef struct identifier identifier |;|
+;;	    (lambda (a b c d e) (declare (ignore a b e))
+;;		    `(defxtype* ,d () ,c)))
+   (typedef struct identifier |*| identifier |;|
+	    (lambda (a b c d e f) (declare (ignore a b d f))
+		    `(defxtype* ,e () (:optional ,c))))
    (union identifier union-body |;|
 	  (lambda (a b c d) (declare (ignore a d))
-		  `(defxunion ,b () ,@c))))
+		  `(defxunion ,b (,(car (cadr c)))
+		     ,@(mapcar (lambda (decl)
+				 (destructuring-bind (id type) decl
+				   (list (cond
+					   ((eq id 'otherwise) 
+					     id)
+					   ((integerp id) id)
+					   (t
+					    (intern (string id) :keyword)))
+					 (if (listp type)
+					     (cadr type)
+					     type))))					     
+			       (cddr c))))))
 
   (program-def
    (program identifier |{| version-def |}| |=| value |;|
@@ -239,16 +271,18 @@
    (rpc-type-spec identifier |(| rpc-type-spec |)| |=| value |;|
 		   (lambda (a b c d e f g h)
 		     (declare (ignore c e f h))
-		     (list `(defrpc ,b ,g ,d ,a))))
+		     (list `(defrpc ,(alexandria:symbolicate 'call- b) ,g ,d ,a))))
    (rpc-def-list rpc-type-spec identifier |(| rpc-type-spec |)| |=| value |;|
 		 (lambda (a b c d e f g h i)
 		   (declare (ignore d f g i))
 		   (append a 
-			   (list `(defrpc ,c ,h ,e ,b))))))
+			   (list `(defrpc ,(alexandria:symbolicate 'call- c) ,h ,e ,b))))))
 
   (rpc-type-spec 
    (void (lambda (a) (declare (ignore a)) :void))
-   type-specifier)
+   type-specifier
+   (struct identifier (lambda (a b) (declare (ignore a))
+			      `(:struct ,b))))
 
   (definition 
     (type-def (lambda (a) a))
@@ -272,7 +306,7 @@
 		 ((null l))
 	       (princ l s) 
 	       (fresh-line s))))))
-;;    (test-lexer body)
+    (test-lexer body)
     (let ((forms (test-parser body)))
       (with-open-file (f (or outfile 
 			     (merge-pathnames (make-pathname :type "lisp")
@@ -285,6 +319,9 @@
 		  pathspec 
 		  year month day hour min sec))
 	(terpri f)
+	(let ((name (pathname-name (pathname pathspec))))
+	  (format f "(defpackage #:~A (:use #:cl #:frpc))~%" name)
+	  (format f "(in-package #:~A)~%" name))
 	(dolist (form forms)
 	  (cond
 	    ((eq (car form) :program)
