@@ -1,9 +1,11 @@
 # frpc
 This is an implementation of the ONC-RPC ("SunRPC") protocol in Common Lisp. It provides both a generalized 
-eXtensible Data Representation (XDR) serializer and a flexible RPC framework to build robust, secure networked 
+eXtensible Data Representation (XDR) serializer and a flexible Remote Procedure Call (RPC) framework to build robust, secure networked 
 services. It supports the most commonly used authentication flavours (see below) including RPCSEC_GSS (i.e. Kerberos).
 
 See the related project [nefarious](https://github.com/fjames86/nefarious), which uses FRPC to implement an NFSv3 client and server.
+
+An xdr parser/generator is also included, which provides similar functionality to rpcgen typically used with the C programming language.
 
 ## 1. Defining RPC interfaces
 RPC interfaces are given a unique integer called a program number. Each program may have multiple
@@ -432,8 +434,36 @@ CL-USER> (frpc.bind:call-dump :host "10.1.1.1")
 
 ## 7. Examples
 
-I have typed in some simple example programs. 
-For more serious usages, see port-mapper.lisp or Nefarious, an NFS implementation in Common Lisp.
+Several example programs are included. For more serious usages, see Nefarious, an NFS implementation in Common Lisp.
+
+### 7.1 Hello world (hello.lisp)
+This program shows the basics, provides a function to upcase a string. An xfile is also included for testing with rpcgen.
+On Linux, 
+```
+$ rpcgen -a hello.x 
+$ Make -f Makefile.hello
+```
+You will probably need to modify the client, hello_client.c, to pass in correct arguments. 
+
+### 7.2 Message queue example
+The the rpcmq defines a simple message queue using RPC.
+
+```
+;; on the server
+CL-USER> (defparameter *q* (rpcmq:create-queue "queue1"))
+CL-USER> (rpcmq:receive *q*) ;; this blocks until a message is received
+
+;; on the client
+CL-USER> (defparameter *handle* (rpcmq:call-open "queue1"))
+;; send a message to the queue, returns the ID of the message that was sent
+CL-USER> (rpcmq:call-post *handle* #(1 2 3 4))
+1
+
+;; on the server, the receive call returns (values data id):
+CL-USER> (rpcmq:recevive *q*)
+#(1 2 3 4)
+1
+```
 
 ## 8. Logging 
 
@@ -473,13 +503,16 @@ shares the frpc log).
 See the pounds documentation for more information on the logging system.
 
 ## 9. XDR parser/generator
-Typically RPC interfaces are described by an "x-file" which is used as input into rpcgen. This is used to generate code for the C programming language. The file gen/gen.lisp contains a program to parse such files and generate skeleton code for use with frpc.
+Typically RPC interfaces are described by an "x-file" which is used as input into rpcgen, this is used to generate code for the C programming language. 
+The file gen/gen.lisp contains a program to parse such files and generate skeleton code for use with frpc. Note that this requires the packages "yacc" and "cl-lex".
 
 Usage:
 ```
 (frpc.gen:gen "test.x")
 ```
 
+This generates a file called "test.lisp" which contains Lisp code suitable for use with frpc. Some hand modifications will be probably be required but it 
+should at least provide a reasonable starting point.
 
 ## 10. Notes
 
@@ -491,7 +524,7 @@ This makes it impossible to inform the port mapper of where to direct traffic.
 * Could make it easier to add more transports, e.g. SSL/TLS stream, writing to shared memory etc. Probably not much call for this though.
 * UDP multicast? 
 * The XDR serializer is probably not as efficient as it could be, but who really cares so long as it works.
-* Developed using SBCL on Windows and Linux, also tested with CCL and LispWorks on Windows.
+* Developed using SBCL on Windows, also tested with CCL and LispWorks on Windows and SBCL on Linux.
 
 ## 11. License
 
