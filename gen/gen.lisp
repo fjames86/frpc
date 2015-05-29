@@ -216,7 +216,7 @@
    (enum identifier enum-body |;| 
          (lambda (e id b c)
            (declare (ignore e c))
-           `(defxenum ,id () ,@b)))
+           `(defxenum ,id ,@b)))
    (struct identifier |{| struct-body |}| |;|
            (lambda (a b c d e f) 
              (declare (ignore a c e f))
@@ -299,6 +299,10 @@
   (parse-with-lexer (xdr-lexer string) *xdr-parser*))
 
 (defun gen (pathspec &optional outfile)
+  "Parse the XDR definition file named by PATHSPEC. Generates a lisp file named by OUTFILE or PATHSPEC.lisp 
+with Lisp content suitable for use with frpc. Some hand modifications will be required.
+
+Returns the parsed contents.")
   (let ((body
 	 (with-open-file (f pathspec :direction :input)
 	   (with-output-to-string (s)
@@ -306,7 +310,7 @@
 		 ((null l))
 	       (princ l s) 
 	       (fresh-line s))))))
-    (test-lexer body)
+;;    (test-lexer body)
     (let ((forms (test-parser body)))
       (with-open-file (f (or outfile 
 			     (merge-pathnames (make-pathname :type "lisp")
@@ -320,7 +324,19 @@
 		  year month day hour min sec))
 	(terpri f)
 	(let ((name (pathname-name (pathname pathspec))))
-	  (format f "(defpackage #:~A (:use #:cl #:frpc))~%" name)
+	  (format f "(defpackage #:~A~%" name)
+	  (format f "    (:use #:cl #:frpc)~%")
+	  (format f "    (:export ~%")
+	  (dolist (form forms)
+	    (when (eq (car form) :program)
+	      (destructuring-bind (pname id &rest versions) (cdr form)
+		(declare (ignore pname id))
+		(dolist (version versions)
+		  (destructuring-bind (v vname num &rest rpcs) version
+		    (declare (ignore v vname num))
+		    (dolist (rpc rpcs)
+		      (format f "    #:~A~%" (cadr rpc))))))))
+	  (format f "))~%~%")
 	  (format f "(in-package #:~A)~%" name))
 	(dolist (form forms)
 	  (cond
