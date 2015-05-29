@@ -19,20 +19,6 @@
 ;; converts a .x file into a .lisp file which contains the sort of code
 ;; for input into frpc.
 
-(eval-when (:compile-toplevel :load-toplevel :execute)
-  (defun select-n (n)
-    (lambda (&rest args) (nth n args)))
-  
-  (defun select-these (nums)
-    (lambda (&rest args) 
-      (do ((i 0 (1+ i))
-	   (res nil)
-	   (n nums (cdr n))
-	   (l args (cdr l)))
-	  ((null l) (nreverse res))
-	(when (= (car n) i)
-	  (push (car l) res))))))
-
 (define-string-lexer xdr-lexer 
   ("\\=" (return (values '|=| '|=|)))
   ("\\{" (return (values '|{| '|{|)))
@@ -150,7 +136,7 @@
    (enum enum-body (lambda (a b) (declare (ignore a)) b)))
 
   (enum-body 
-   (|{| enum-body-list |}| (select-n 1)))
+   (|{| enum-body-list |}| (lambda (a b c) (declare (ignore a c)) b)))
 
   (enum-body-list 
    (identifier (lambda (a) (list (list (intern (string-upcase a) :keyword) 0))))
@@ -302,7 +288,7 @@
   "Parse the XDR definition file named by PATHSPEC. Generates a lisp file named by OUTFILE or PATHSPEC.lisp 
 with Lisp content suitable for use with frpc. Some hand modifications will be required.
 
-Returns the parsed contents.")
+Returns the parsed contents."
   (let ((body
 	 (with-open-file (f pathspec :direction :input)
 	   (with-output-to-string (s)
