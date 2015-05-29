@@ -6,6 +6,7 @@
   :author "Frank James <frank.a.james@gmail.com>"
   :description "An ONC-RPC implementation."
   :license "MIT"
+  :version "1.2.2"
   :components
   ((:file "package")
    (:file "log" :depends-on ("package"))
