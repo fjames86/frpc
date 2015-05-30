@@ -3,7 +3,7 @@
 
 (asdf:defsystem :frpcgen
   :name "frpcgen"
-  :author "Frank James"
+  :author "Frank James <frank.a.james@gmail.com>"
   :description "A protocol compiler for frpc."
   :license "MIT"
   :components 
