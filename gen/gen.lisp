@@ -227,7 +227,7 @@
 		    `(defxtype* ,e () (:optional ,c))))
    (union identifier union-body |;|
 	  (lambda (a b c d) (declare (ignore a d))
-		  `(defxunion ,b (,(car (cadr c)))
+		  `(defxunion ,b (,(cadr (cadr c)))
 		     ,@(mapcar (lambda (decl)
 				 (destructuring-bind (id type) decl
 				   (list (cond
