@@ -40,6 +40,7 @@
   ("typedef" (return (values 'typedef 'typedef)))
   ("const" (return (values 'const 'const)))
   ("int" (return (values 'int 'int)))
+  ("long" (return (values 'int 'int)))
   ("hyper" (return (values 'hyper 'hyper)))
   ("float" (return (values 'float 'float)))
   ("double" (return (values 'double 'double)))
@@ -309,7 +310,8 @@ Returns the parsed contents."
 		  pathspec 
 		  year month day hour min sec))
 	(terpri f)
-	(let ((name (pathname-name (pathname pathspec))))
+	(let ((name (pathname-name (pathname pathspec)))
+	      (*print-case* :downcase))
 	  (format f "(defpackage #:~A~%" name)
 	  (format f "    (:use #:cl #:frpc)~%")
 	  (format f "    (:export ~%")
@@ -324,23 +326,24 @@ Returns the parsed contents."
 		      (format f "    #:~A~%" (cadr rpc))))))))
 	  (format f "))~%~%")
 	  (format f "(in-package #:~A)~%" name))
-	(dolist (form forms)
-	  (cond
-	    ((eq (car form) :program)
-	     ;; special case for program specifications
-	     (destructuring-bind (pname id &rest versions) (cdr form)
-	       (pprint `(defprogram ,pname ,id) f)
-	       (terpri f)
-	       (dolist (version versions)
-		 (destructuring-bind (v vname num &rest rpcs) version
-		   (declare (ignore v vname))
-		   (dolist (rpc rpcs)
-		     (pprint (append rpc `((:program ,pname ,num)))
-			     f)
-		     (terpri f))))))
-	    (t 
-	     (pprint form f)
-	     (terpri f))))
+	(let ((*print-case* :downcase))
+	  (dolist (form forms)
+	    (cond
+	      ((eq (car form) :program)
+	       ;; special case for program specifications
+	       (destructuring-bind (pname id &rest versions) (cdr form)
+		 (pprint `(defprogram ,pname ,id) f)
+		 (terpri f)
+		 (dolist (version versions)
+		   (destructuring-bind (v vname num &rest rpcs) version
+		     (declare (ignore v vname))
+		     (dolist (rpc rpcs)
+		       (pprint (append rpc `((:program ,pname ,num)))
+			       f)
+		       (terpri f))))))
+	      (t 
+	       (pprint form f)
+	       (terpri f)))))
 	forms))))
 
       
