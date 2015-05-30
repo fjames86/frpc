@@ -600,6 +600,25 @@
      ',name)))
 
 
+(defun read-xtype-list (stream type)
+  "A useful utility function to read a list-type object. I.e. a type
+which consists of a structure followed by an optional next structure, e.g.
+\(defxstruct a \(x :int32\) \(y :int32\) \(next \(:optional a\)\)\)
+"
+  (do ((list nil)
+       (done nil))
+      (done list)
+    (push (read-xtype type stream) list)
+    (let ((b (read-xtype :boolean stream)))
+      (unless b (setf done t)))))
+
+(defun write-xtype-list (stream type list)
+  (do ((list list (cdr list)))
+      ((null list))
+    (write-xtype type stream (car list))
+    (if (cdr list)
+        (write-xtype stream :boolean t)
+        (write-xtype stream :boolean nil))))
 
 ;; ----------
 

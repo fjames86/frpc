@@ -353,31 +353,11 @@ function available.")
   (addr :string)
   (owner :string))
 
-(defun read-type-list (stream type)
-  "A useful utility function to read a list-type object. I.e. a type
-which consists of a structure followed by an optional next structure, e.g.
-\(defxstruct a \(x :int32\) \(y :int32\) \(next \(:optional a\)\)\)
-"
-  (do ((list nil)
-       (done nil))
-      (done list)
-    (push (read-xtype type stream) list)
-    (let ((b (read-xtype :boolean stream)))
-      (unless b (setf done t)))))
-
-(defun write-type-list (stream type list)
-  (do ((list list (cdr list)))
-      ((null list))
-    (write-xtype type stream (car list))
-    (if (cdr list)
-        (write-xtype stream :boolean t)
-        (write-xtype stream :boolean nil))))
-
 (defxtype binding-list ()
   ((stream)
-   (read-type-list stream 'binding))
+   (read-xtype-list stream 'binding))
   ((stream mappings)
-   (write-type-list stream 'binding mappings)))
+   (write-xtype-list stream 'binding mappings)))
 
 (defxstruct rpcb-remote-call-arg ()
   (program :uint32)
@@ -398,9 +378,9 @@ which consists of a structure followed by an optional next structure, e.g.
 
 (defxtype rpcb-entry-list ()
   ((stream)
-   (read-type-list stream 'rpcb-entry))
+   (read-xtype-list stream 'rpcb-entry))
   ((stream list)
-   (write-type-list stream 'rpcb-entry list)))
+   (write-xtype-list stream 'rpcb-entry list)))
 
 
 (defconstant +rpcbs-highproc+ 13)
@@ -414,8 +394,8 @@ which consists of a structure followed by an optional next structure, e.g.
   (netid :string))
 
 (defxtype rpcbs-addr-list ()
-  ((stream) (read-type-list stream 'rpcbs-addr))
-  ((stream list) (write-type-list stream 'rpbs-addr list)))
+  ((stream) (read-xtype-list stream 'rpcbs-addr))
+  ((stream list) (write-xtype-list stream 'rpbs-addr list)))
 
 (defxstruct rpcbs-rmtcall ()
   (program :uint32)
@@ -427,8 +407,8 @@ which consists of a structure followed by an optional next structure, e.g.
   (netid :string))
 
 (defxtype rpcbs-rmtcall-list () 
-  ((stream) (read-type-list stream 'rpcbs-rmtcall))
-  ((stream list) (write-type-list stream 'rpcbs-rmtcall list)))
+  ((stream) (read-xtype-list stream 'rpcbs-rmtcall))
+  ((stream list) (write-xtype-list stream 'rpcbs-rmtcall list)))
 
 (defxtype* rpcbs-proc () (:array :int32 +rpcbs-highproc+))
 

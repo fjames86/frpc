@@ -7,13 +7,11 @@
 ;;; definition. Probably some hand modifications will be required but it should at least make things easier,
 ;;; particularly with large/complicated interfaces.
 
-;;(ql:quickload '("yacc" "cl-lex"))
-
-(defpackage #:frpc.gen
+(defpackage #:frpcgen
   (:use #:cl #:yacc #:cl-lex #:frpc)
   (:export #:gen))
 
-(in-package #:frpc.gen)
+(in-package #:frpcgen)
 
 ;; Usage: (gen pathspec)
 ;; converts a .x file into a .lisp file which contains the sort of code
@@ -207,8 +205,15 @@
    (struct identifier |{| struct-body |}| |;|
            (lambda (a b c d e f) 
              (declare (ignore a c e f))
-             (let ((res `(defxstruct ,(alexandria:symbolicate (string-upcase b))
-			     () ,@d)))
+             (let ((res (cond
+			  ((<= (length d) 4)
+			   `(defxtype* ,(alexandria:symbolicate (string-upcase b)) ()
+			      (:plist ,@(mapcan (lambda (slot) 
+						  (destructuring-bind (name type) slot 
+						    `(,name ,type)))
+						d))))
+			  (t `(defxstruct ,(alexandria:symbolicate (string-upcase b))
+				  () ,@d)))))
 	       res)))
    (struct |*| identifier |{| struct-body |}| |;|
 	   (lambda (a b c d e f g) (declare (ignore a b d f g))

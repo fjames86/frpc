@@ -24,6 +24,8 @@
 	   #:write-xtype
 	   #:xtype-reader
 	   #:xtype-writer
+	   #:read-xtype-list
+	   #:write-xtype-list
 
 	   ;; enums/unions
 	   #:enum
