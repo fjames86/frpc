@@ -97,8 +97,8 @@ TIMEOUT specifies the duration (in seconds) that a TCP connection should remain 
 (defun process-rpc-call (input-stream output-stream 
 			 &key host port protocol id auth verf program version proc)
   "Process the actual call. read the argument, handle it and write the response."
-  (frpc-log :info "Call ~A:~A ~A:~A:~A ~S"
-            host port 
+  (frpc-log :info "Call ~A:~A ~S ~A:~A:~A ~S"
+            host port protocol
             program version proc 
             (opaque-auth-flavour auth))
   (let ((rverf (process-rpc-auth output-stream auth verf id)))
@@ -375,8 +375,20 @@ TIMEOUT specifies the duration (in seconds) that a TCP connection should remain 
 	(usocket:socket-close udp)))))
 
 (defun start-rpc-server (server)
-  "Start the RPC server in a new thread. Adds all port mappings to the local port mapper."
+  "Start the RPC server in a new thread. Adds all port mappings to the local port mapper.
+
+If no ports are provided then will add wildcard ports to TCP and UDP."
   (declare (type rpc-server server))
+
+  (setf (rpc-server-exiting server) nil)
+
+  (unless *handlers* (warn "No programs registered."))
+
+  (unless (and (rpc-server-udp-ports server)
+	       (rpc-server-tcp-ports server))
+    (warn "No ports selected, listening on wildcard port.")
+    (push 0 (rpc-server-udp-ports server))
+    (push 0 (rpc-server-tcp-ports server)))
 
   ;; try talking to the local port mapper
   (let ((pmap-p (handler-case (progn (frpc.bind:call-null :host "localhost") t)
@@ -391,7 +403,7 @@ TIMEOUT specifies the duration (in seconds) that a TCP connection should remain 
        (warn "No port mapper detected, running portmap locally.")
        (pushnew 111 (rpc-server-udp-ports server))
        (pushnew 111 (rpc-server-tcp-ports server))
-       ;; since we are runnign hte port mapper locally we can just directly add them to our list 
+       ;; since we are running the port mapper locally we can just directly add them to our list 
        (frpc.bind:add-all-mappings (rpc-server-tcp-ports server)
                                    (rpc-server-udp-ports server)                              
                                    :rpc nil))))

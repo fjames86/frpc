@@ -309,7 +309,7 @@ The equivalent macros using FLET are WITH-READER and WITH-WRITER.
 
 ## 5. Authentication
 
-The authentication system that was used for the request is bound to *RPC-REMOTE-AUTH* special 
+The authentication system that was used for the request is bound to `*RPC-REMOTE-AUTH*` special 
 variable in the context of an rpc handler function. This allows handlers to implemente *authorization*, 
 i.e. determining whether the client is permitted to perform the action requested. 
 
@@ -504,11 +504,11 @@ See the pounds documentation for more information on the logging system.
 
 ## 9. XDR parser/generator
 Typically RPC interfaces are described by an "x-file" which is used as input into rpcgen, this is used to generate code for the C programming language. 
-The file gen/gen.lisp contains a program to parse such files and generate skeleton code for use with frpc. Note that this requires the packages "yacc" and "cl-lex".
+The system frpcgen (file gen/gen.lisp) provides a function to parse xfiles and generate a Lisp file with contents suitable for use with frpc.
 
 Usage:
 ```
-(frpc.gen:gen "test.x")
+(frpcgen:gen "test.x")
 ```
 
 This generates a file called "test.lisp" which contains Lisp code suitable for use with frpc. Some hand modifications will be probably be required but it 
@@ -519,12 +519,10 @@ should at least provide a reasonable starting point.
 * At the moment, reading from TCP streams requires buffering the input to cope with reading multiple fragments. This is REALLY bad if
 large payloads are sent. A fragmented-stream type could be defined to wrap the underlying socket stream so that we can avoid the buffering on reads.
 You still need to buffer writes because you need to know how much you intend to write before you've written it.
-* You can start listening on wildcard ports (by supplying 0 as a port number), but there is no way to find out what ports were selected. 
-This makes it impossible to inform the port mapper of where to direct traffic. 
 * Could make it easier to add more transports, e.g. SSL/TLS stream, writing to shared memory etc. Probably not much call for this though.
 * UDP multicast? 
 * The XDR serializer is probably not as efficient as it could be, but who really cares so long as it works.
-* Developed using SBCL on Windows, also tested with CCL and LispWorks on Windows and SBCL on Linux.
+* Developed using SBCL on Windows. Also tested with Clozure CL on Windows, LispWorks on Windows and SBCL on Linux.
 
 ## 11. License
 
