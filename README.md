@@ -3,9 +3,9 @@ This is an implementation of the ONC-RPC ("SunRPC") protocol in Common Lisp. It 
 eXtensible Data Representation (XDR) serializer and a flexible Remote Procedure Call (RPC) framework to build robust, secure networked 
 services. It supports the most commonly used authentication flavours (see below) including RPCSEC_GSS (i.e. Kerberos).
 
-See the related project [nefarious](https://github.com/fjames86/nefarious), which uses FRPC to implement an NFSv3 client and server.
+See the related project [nefarious](https://github.com/fjames86/nefarious), which uses frpc to implement an NFSv3 client and server.
 
-An xdr parser/generator is also included, which provides similar functionality to rpcgen typically used with the C programming language.
+An xdr parser/generator is also included, which provides similar functionality to rpcgen typically used with the C programming language (see section 9).
 
 ## 1. Defining RPC interfaces
 RPC interfaces are given a unique integer called a program number. Each program may have multiple
@@ -146,10 +146,10 @@ It may serve a subset of available RPC programs, by default serving all programs
 
 ```
 ;; make a server instance
-(defvar *server* (make-rpc-server))
+(defvar *server* (make-rpc-server :tcp-ports '(8000) :udp-ports '(8000)))
 
 ;; start the server in a new thread, it will listen for requests on TCP and UDP ports 8000
-(start-rpc-server *server* :tcp-ports '(8000) :udp-ports '(8000))
+(start-rpc-server *server*)
 
 ;; stop the server thread
 (stop-rpc-server *server*)
@@ -409,15 +409,15 @@ CL-USER> (frpc:gss-init)
 
 ### 5.5 Reauthentication
 RPC servers are free to flush their tables of allocated nicknames/handles. When this happens you will 
-receive a RPC-AUTH-ERROR (AUTH-REJECTED) error. You should set your client back to its initial state and retry,
+receive an RPC-AUTH-ERROR (AUTH-REJECTED) error. You should set your client back to its initial state and retry,
 this should reallocate a new nickname/context handle.
 
 ```
-CL-USER> (setf (frpc:rpc-client-initial *client*) t)
+CL-USER> (reinitialize-instance *client*)
 ```
 
 ### 5.6 Authorization
-When server handlers are executed, the special variable *RPC-REMOTE-AUTH* is bound to the authenticator 
+When server handlers are executed, the special variable `*RPC-REMOTE-AUTH*` is bound to the authenticator 
 that was used in the request. This allows the server to decide whether to honour the request or 
 to signal an RPC-AUTH-ERROR instead. 
 
@@ -483,16 +483,18 @@ shares the frpc log).
 See the pounds documentation for more information on the logging system.
 
 ## 9. XDR parser/generator
-Typically RPC interfaces are described by an "x-file" which is used as input into rpcgen, this is used to generate code for the C programming language. 
+Typically RPC interfaces are described by an "x-file" which is used as input into the program rpcgen which generates code for the C programming language. 
 The system frpcgen (file gen/gen.lisp) provides a function to parse xfiles and generate a Lisp file with contents suitable for use with frpc.
+
+This makes it easy to freely interoperate between Lisp and C services using RPC, because they will both be derived from the same definition.
 
 Usage:
 ```
 (frpcgen:gen "test.x")
 ```
 
-This generates a file called "test.lisp" which contains Lisp code suitable for use with frpc. Some hand modifications will be probably be required but it 
-should at least provide a reasonable starting point.
+This generates a file called "test.lisp" which contains Lisp code suitable for use with frpc. Some hand modifications will be probably be required 
+to make the generated code more usable, but it should at least provide a reasonable starting point. 
 
 ## 10. Notes
 
