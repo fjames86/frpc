@@ -287,6 +287,16 @@ Returns a response verifier to be sent back to the client or nil in the case of 
 	(frpc-log :info "DES authentication failed: ~A" e)
 	nil))))
 
+
+(defmethod auth-principal-name ((type (eql :auth-des)) data)
+  (let ((auth (unpack #'%read-authdes-cred data)))
+    (if (eq (xunion-tag auth) :fullname)
+	(authdes-fullname-name (xunion-val auth))
+	(let ((c (find-des-context (xunion-val auth))))
+	  (break)
+	  (unless c (error "No DES context found"))
+	  (des-context-fullname c)))))
+
 ;; GSS authentication 
 
 (defmethod pack-auth-data ((type (eql :auth-gss)) data)
@@ -302,13 +312,6 @@ Returns a response verifier to be sent back to the client or nil in the case of 
       (frpc-log :trace "GSS authenticated")
       (make-opaque-auth :auth-null nil))))
 
-
-(defmethod auth-principal-name ((type (eql :auth-des)) data)
-  (if (eq (xunion-tag data) :authdes-fullname)
-      (authdes-fullname-name (xunion-val data))
-      (let ((c (find-des-context (xunion-val data))))
-	(unless c (error "No DES context found"))
-	(des-context-fullname c))))
 
 ;; ---------------------------------------------------------
 

@@ -162,7 +162,7 @@ the bytes read."
 
 (defmethod initialize-instance :after ((inst des-client) &key)
   ;; just check that the name, secret and public have been provided
-  (unless (des-client-name inst) (error "Must provide a client NAME"))
+  (unless (des-client-name inst) (error "Must provide a client name"))
   (unless (des-client-secret inst) (error "Must provide a client secret key"))
   (unless (des-client-public inst) (error "Must provide a server public key"))
   inst)

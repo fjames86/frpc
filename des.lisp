@@ -215,10 +215,13 @@ VERIFIER should be T. Otherwise VERIFIER should be nil."
       (des-key-key d))))
 
 (defun des-public (secret)
+  (declare (type integer secret))
   (dh-public-key secret))
 
 (defun des-public-key (name public)
   "Make a DES public key to pass to DES-INIT"
+  (declare (type string name)
+	   (type integer public))
   (make-des-key :fullname name 
 		:key public))
 
@@ -246,6 +249,9 @@ VERIFIER should be T. Otherwise VERIFIER should be nil."
 
 (defun des-init (secret public-keys &key (max-contexts 10))
   "Initialize the server with its secret key so it can accept DES authentication."
+  (dolist (k public-keys)
+    (unless (typep k 'des-key)
+      (error "Public key ~S not a DES-KEY" k)))
   (setf *des-private-key* secret
 	*des-public-keys* public-keys
 	*des-contexts* (make-cyclic-buffer max-contexts)))
