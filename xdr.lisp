@@ -184,16 +184,17 @@
 
 (defconstant +max-octet-array-length+ (* 50 1024 1024))
 
-(defun read-octet-array (stream)
+(defun read-octet-array (stream &optional buffer)
   (let ((len (read-uint32 stream)))
     (when (> len +max-octet-array-length+)
       (break)
       (error "Attempted to read a silly size array ~DMB" (truncate len (* 1024 1024))))
-    (let ((sequence (nibbles:make-octet-vector len)))
+    (let ((sequence (or buffer (nibbles:make-octet-vector len))))
       (dotimes (i len)
         (setf (elt sequence i)
               (read-octet stream)))
       sequence)))
+
 (defun write-octet-array (stream sequence &key (start 0) end)
   (unless end (setf end (length sequence)))
   (let ((len (- end start)))
@@ -229,7 +230,7 @@
 ;; we could of course just define them all as consts -- that would not be ideal
 ;; instead store each set as an alist in an ht
 
-(defparameter *enums* (make-hash-table))
+(defvar *enums* (make-hash-table))
 
 (defmacro defxenum (name &rest slots)
   `(eval-when (:compile-toplevel :load-toplevel :execute)
@@ -536,7 +537,8 @@
          ;; write padding at the end, but only if this is an octet array
          ,(when (eq form :octet)
            `(write-array-padding ,stream-sym ,glen))
-		 nil)))))))))
+		 nil))))
+	 )))))
   
 ) ;; eval-when
 

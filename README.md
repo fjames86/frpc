@@ -171,6 +171,12 @@ the caller is authorized to call the function.
 If any other error is signalled, then the RPC server will be silent, i.e. not return any response to the caller. 
 Some APIs require this behaviour, this is the way server handlers should support it.
 
+Please note that because the RPC server is singly threaded, your handler function must not block execution because that will prevent 
+the server from processing other requests. If your handler needs to do work which takes an extended period of time 
+(lots of disk IO, making other RPCs etc.) then you should design your API in such a way that the initial call returns 
+immediately with the work taking place in another thread; the client can poll for progress or 
+be notified on completion (e.g. via a callback RPC).
+
 ## 4. XDR serializer
 
 The XDR serializer is largely decoupled from the rpc implementation. This means it 
