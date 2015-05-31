@@ -177,6 +177,24 @@ the server from processing other requests. If your handler needs to do work whic
 immediately with the work taking place in another thread; the client can poll for progress or 
 be notified on completion (e.g. via a callback RPC).
 
+### 3.2 Restricting programs
+By default, an RPC server will serve all available programs. However, it might be that you want
+only a subset of defined programs to be served from a particular RPC server. For instance, you might want an NFS server 
+to run from one thread and your portmap to run from another. To do this, supply a list of program identifiers (integers, symbols or strings)
+naming the programs you wish to run in that server.
+
+```
+CL-USER> (defparameter *portmap* (frpc:make-rpc-server :udp-ports '(111) :tcp-ports '(111) :programs '(100000)))
+CL-USER> (defparameter *nfs* (frpc:make-rpc-server :programs '("nfs" "nfs.mount" "nsm")))
+CL-USER> (frpc:start-rpc-server *portmap*)
+CL-USER> (frpc:start-rpc-server *nfs*)
+```
+
+### 3.3 Listening on wildcard ports
+If you don't supply any ports to `MAKE-RPC-SERVER` then a wildcard port will be selected for TCP and UDP (port number 0), this
+allows for a randomly allocated high-numberd port to be used. You may enforce such befhaviour yourself by supplying 0 as a port number
+if you wish. 
+
 ## 4. XDR serializer
 
 The XDR serializer is largely decoupled from the rpc implementation. This means it 
@@ -426,6 +444,8 @@ CL-USER> (reinitialize-instance *client*)
 When server handlers are executed, the special variable `*RPC-REMOTE-AUTH*` is bound to the authenticator 
 that was used in the request. This allows the server to decide whether to honour the request or 
 to signal an RPC-AUTH-ERROR instead. 
+
+You may call `RPC-AUTH-PRINCIPAL` to get a string representing the authenticated caller. This can be used to aid authorization.
 
 ## 6. Portmap/rpcbind
 Typically each RPC service listens on a randomly allocated high-numbered port. In order to find out 

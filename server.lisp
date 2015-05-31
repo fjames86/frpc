@@ -53,7 +53,11 @@ These lists will be replaced with the ports actually used once the server starts
 
 TIMEOUT specifies the duration (in seconds) that a TCP connection should remain open.
 "
-  (%make-rpc-server :programs programs
+  (%make-rpc-server :programs (mapcar (lambda (p)
+					(if (integerp p)
+					    p
+					    (program-id p)))
+				      programs)
 		    :udp-ports udp-ports
 		    :tcp-ports tcp-ports
 		    :timeout timeout))
@@ -280,6 +284,20 @@ TIMEOUT specifies the duration (in seconds) that a TCP connection should remain 
 	   (setf (rpc-server-udp-ports server)
 		 (mapcar #'usocket:get-local-port udp-sockets))
 
+
+	   ;; if we are adding to the remote port mapper then do it now. 
+	   ;; this allows us to resolve wildcard port numbers
+	   (let ((pmap-p (or (member 111 (rpc-server-tcp-ports server))
+			     (member 111 (rpc-server-udp-ports server)))))
+	     (unless pmap-p
+	       ;; add the port mappings to the remote port mapper 
+	       (handler-case (frpc.bind:add-all-mappings (rpc-server-tcp-ports server)
+							 (rpc-server-udp-ports server)                              
+							 :rpc t
+							 :programs (rpc-server-programs server))
+		  (error (e)
+		    (frpc-log :info "Failed to add port mapping: ~A" e)))))	   
+
 	   ;; the polling-loop
 	   (do ((udp-buffer (nibbles:make-octet-vector 65507))
 		(prev-time (get-universal-time)))
@@ -393,20 +411,16 @@ If no ports are provided then will add wildcard ports to TCP and UDP."
   ;; try talking to the local port mapper
   (let ((pmap-p (handler-case (progn (frpc.bind:call-null :host "localhost") t)
                   (error () nil))))
-    (cond
-      (pmap-p
-       ;; add the port mappings to the remote port mapper 
-       (frpc.bind:add-all-mappings (rpc-server-tcp-ports server)
-                                   (rpc-server-udp-ports server)                              
-                                   :rpc t))
-      (t 
-       (warn "No port mapper detected, running portmap locally.")
-       (pushnew 111 (rpc-server-udp-ports server))
-       (pushnew 111 (rpc-server-tcp-ports server))
-       ;; since we are running the port mapper locally we can just directly add them to our list 
-       (frpc.bind:add-all-mappings (rpc-server-tcp-ports server)
-                                   (rpc-server-udp-ports server)                              
-                                   :rpc nil))))
+    (unless pmap-p
+      (warn "No port mapper detected, running portmap locally.")
+      (pushnew 111 (rpc-server-udp-ports server))
+      (pushnew 111 (rpc-server-tcp-ports server))
+      ;; since we are running the port mapper locally we just add them here
+      (frpc.bind:add-all-mappings (rpc-server-tcp-ports server)
+				  (rpc-server-udp-ports server)                              
+				  :rpc nil
+				  :programs (rpc-server-programs server))))
+	
 
   (setf (rpc-server-thread server)
         (bt:make-thread (lambda ()
@@ -422,10 +436,20 @@ If no ports are provided then will add wildcard ports to TCP and UDP."
   ;; remove the port mappings
   (frpc.bind:remove-all-mappings (rpc-server-udp-ports server)
                                  (rpc-server-tcp-ports server)
-                                 :rpc t)
+                                 :rpc t
+				 :programs (rpc-server-programs server))
 
   ;; set flag and wait for thread to exit
   (setf (rpc-server-exiting server) t)
   (bt:join-thread (rpc-server-thread server))
 
   nil)
+
+
+;; ------------------------
+
+(defun rpc-auth-principal (&optional (auth *rpc-remote-auth*))
+  "Returns a string representing the authenticated caller, or nil if none available."
+  (auth-principal-name (opaque-auth-flavour auth)
+		       (opaque-auth-data auth)))
+

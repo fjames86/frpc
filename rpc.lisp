@@ -204,6 +204,14 @@ Returns a response verifier to be sent back to the client or nil in the case of 
 ;; default method for authentication rejects all requests
 (defmethod authenticate (flavour data verf) nil)
 
+
+(defgeneric auth-principal-name (type data)
+  (:documentation "Returns a string representing the principal that was authenticated, or nil if none available."))
+
+;; default method returns nil
+(defmethod auth-principal-name (type data) 
+  nil)
+
 ;; 9.1 null authentication
 (defmethod authenticate ((flavour (eql :auth-null)) data verf)
   (make-opaque-auth :auth-null nil))
@@ -225,6 +233,14 @@ Returns a response verifier to be sent back to the client or nil in the case of 
 
 (defmethod unpack-auth-data ((type (eql :auth-unix)) data)
   (unpack #'%read-auth-unix data))
+
+(defmethod auth-principal-name ((type (eql :auth-unix)) data)       
+  (format nil "~A@~A" (auth-unix-uid data) (auth-unix-machine-name data)))
+
+(defmethod auth-principal-name ((type (eql :auth-short)) data)
+  (let ((c (find-unix-context data)))
+    (unless c (error "No UNIX context found for nickname"))
+    (format nil "~A@~A" (auth-unix-uid c) (auth-unix-machine-name c))))
 
 (defvar *unix-contexts* (make-cyclic-buffer 10)
   "Table of AUTH-UNIX contexts that have been granted.")
@@ -285,6 +301,14 @@ Returns a response verifier to be sent back to the client or nil in the case of 
     (when authp
       (frpc-log :trace "GSS authenticated")
       (make-opaque-auth :auth-null nil))))
+
+
+(defmethod auth-principal-name ((type (eql :auth-des)) data)
+  (if (eq (xunion-tag data) :authdes-fullname)
+      (authdes-fullname-name (xunion-val data))
+      (let ((c (find-des-context (xunion-val data))))
+	(unless c (error "No DES context found"))
+	(des-context-fullname c))))
 
 ;; ---------------------------------------------------------
 

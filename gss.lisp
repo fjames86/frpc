@@ -146,8 +146,14 @@
   (setf *server-credentials* (glass:acquire-credentials :kerberos nil)
 	*gss-contexts* (make-cyclic-buffer max-contexts)))
 
-
-
+(defmethod auth-principal-name ((type (eql :auth-gss)) data)
+  "users need a way of converting the gss context into a principal name"
+  (let ((a (opaque-auth-data data)))
+    (let ((c (find-gss-context (gss-cred-handle a))))
+      (if c 
+	  (glass:context-principal-name (gss-context-context c))
+	  (error "Context not found for handle")))))
+      
 ;; -----------------------------------------
 
 ;; used by the server 

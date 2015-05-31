@@ -117,35 +117,39 @@ in the mapping structure. if MAP-PORT is provided, will also match this port."
                         t)))
              *mappings*)))
 
-(defun generate-mapping-list (tcp-ports udp-ports)
+(defun generate-mapping-list (tcp-ports udp-ports &key programs)
   "Generate a list of all mappings for the programs hosted by this Lisp image."
   (let (mappings-to-add)
     (dolist (ppair frpc::*handlers*)
       (destructuring-bind (program . versions) ppair
-        (dolist (vpair versions)
-          (let ((version (car vpair)))
-            (dolist (uport udp-ports)
-              ;; only advertise the portmap program on port 111.
-              ;; Yes, it can be contacted on ANY port our rpc server is running, but we keep that a secret.
-              (when (or (and (= program +pmapper-program+) (= uport 111))
-                        (and (not (= program +pmapper-program+)) (not (= uport 111))))
-                (push (make-mapping :program program
-                                    :version version
-                                    :protocol :udp
-                                    :port uport)
-                      mappings-to-add)))
-            (dolist (tport tcp-ports)
-              (when (or (and (= program +pmapper-program+) (= tport 111))
-                        (and (not (= program +pmapper-program+)) (not (= tport 111))))
-                (push (make-mapping :program program
-                                    :version version
-                                    :protocol :tcp
-                                    :port tport)
-                      mappings-to-add)))))))
+	(when (or (= program 100000)
+		  (if programs 
+		      (member program programs)
+		      t))		  
+	  (dolist (vpair versions)
+	    (let ((version (car vpair)))
+	      (dolist (uport udp-ports)
+		;; only advertise the portmap program on port 111.
+		;; Yes, it can be contacted on ANY port our rpc server is running, but we keep that a secret.
+		(when (or (and (= program +pmapper-program+) (= uport 111))
+			  (and (not (= program +pmapper-program+)) (not (= uport 111))))
+		  (push (make-mapping :program program
+				      :version version
+				      :protocol :udp
+				      :port uport)
+			mappings-to-add)))
+	      (dolist (tport tcp-ports)
+		(when (or (and (= program +pmapper-program+) (= tport 111))
+			  (and (not (= program +pmapper-program+)) (not (= tport 111))))
+		  (push (make-mapping :program program
+				      :version version
+				      :protocol :tcp
+				      :port tport)
+			mappings-to-add))))))))
     mappings-to-add))
 
-(defun add-all-mappings (tcp-ports udp-ports &key rpc)
-  (let ((mappings-to-add (generate-mapping-list tcp-ports udp-ports)))
+(defun add-all-mappings (tcp-ports udp-ports &key rpc programs)
+  (let ((mappings-to-add (generate-mapping-list tcp-ports udp-ports :programs programs)))
     (dolist (m mappings-to-add)
       ;; add the mapping to our local repository 
       (add-mapping m)
@@ -159,8 +163,8 @@ in the mapping structure. if MAP-PORT is provided, will also match this port."
             (frpc-log :info "Failed to map ~A" e))))))
     nil)
 
-(defun remove-all-mappings (tcp-ports udp-ports &key rpc)
-  (let ((mappings-to-add (generate-mapping-list tcp-ports udp-ports)))
+(defun remove-all-mappings (tcp-ports udp-ports &key rpc programs)
+  (let ((mappings-to-add (generate-mapping-list tcp-ports udp-ports :programs programs)))
     (dolist (m mappings-to-add)
       ;; add the mapping to our local repository 
       (rem-mapping m)

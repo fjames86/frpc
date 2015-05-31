@@ -66,6 +66,7 @@
 	   #:*rpc-remote-port*
 	   #:*rpc-remote-protocol*
 	   #:*rpc-remote-auth*
+	   #:rpc-auth-principal
 
 	   ;; errors
 	   #:rpc-error
