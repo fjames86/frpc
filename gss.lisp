@@ -148,11 +148,10 @@
 
 (defmethod auth-principal-name ((type (eql :auth-gss)) data)
   "users need a way of converting the gss context into a principal name"
-  (let ((a (opaque-auth-data data)))
-    (let ((c (find-gss-context (gss-cred-handle a))))
-      (if c 
-	  (glass:context-principal-name (gss-context-context c))
-	  (error "Context not found for handle")))))
+  (let ((c (find-gss-context (gss-cred-handle data))))
+    (if c 
+	(glass:context-principal-name (gss-context-context c))
+	(error "Context not found for handle"))))
       
 ;; -----------------------------------------
 
