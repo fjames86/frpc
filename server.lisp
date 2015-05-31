@@ -29,6 +29,12 @@
 	 (*rpc-remote-auth* ,auth))
      ,@body))
 
+(defun rpc-auth-principal (&optional (auth *rpc-remote-auth*))
+  "Returns a string representing the authenticated caller, or nil if none available."
+  (auth-principal-name (opaque-auth-flavour auth)
+		       (opaque-auth-data auth)))
+
+
 ;; ---------------------------------------------------------
 
 ;; stores the information about the rpc server, its thread, exit flag etc
@@ -448,9 +454,3 @@ If no ports are provided then will add wildcard ports to TCP and UDP."
 
 ;; ------------------------
 
-(defun rpc-auth-principal (&optional (auth *rpc-remote-auth*))
-  "Returns a string representing the authenticated caller, or nil if none available."
-  (auth-principal-name (opaque-auth-flavour auth)
-		       (opaque-auth-data auth)))
-
-  
