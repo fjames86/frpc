@@ -101,10 +101,10 @@ TIMEOUT specifies the duration (in seconds) that a TCP connection should remain 
 (defun process-rpc-call (input-stream output-stream 
 			 &key host port protocol id auth verf program version proc)
   "Process the actual call. read the argument, handle it and write the response."
-  (frpc-log :info "Call ~A:~A ~S ~A:~A:~A ~S"
+  (frpc-log :info "~A:~A:~A ~A:~A:~A ~A ~S"
             host port protocol
             program version proc 
-            (opaque-auth-flavour auth))
+            (rpc-auth-principal auth) (opaque-auth-flavour auth))
   (let ((rverf (process-rpc-auth output-stream auth verf id)))
     ;; check the verifier
     (unless rverf 
@@ -450,6 +450,8 @@ If no ports are provided then will add wildcard ports to TCP and UDP."
 
 (defun rpc-auth-principal (&optional (auth *rpc-remote-auth*))
   "Returns a string representing the authenticated caller, or nil if none available."
-  (auth-principal-name (opaque-auth-flavour auth)
-		       (opaque-auth-data auth)))
+  (handler-case (auth-principal-name (opaque-auth-flavour auth)
+				     (opaque-auth-data auth))
+    (error () nil)))
 
+  
