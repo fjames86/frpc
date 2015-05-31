@@ -604,6 +604,10 @@ OPTIONS allow customization of the generated client function:
 
 \(:handler function-designator\) specifies a server handler for the rpc. It should designate a function of a single parameter.
 "
+  ;; check a program has been provided, otherwise signal a style warning
+  (unless (assoc :program options)
+    (alexandria:simple-style-warning "Implicit program identifier is DEPRECATED. Use a (:program progname version) option."))
+
   (alexandria:with-gensyms (gprogram gversion gproc)
     (let ((arg-reader (alexandria:symbolicate '%read- name '-arg))
 	  (arg-writer (alexandria:symbolicate '%write- name '-arg))

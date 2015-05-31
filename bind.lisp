@@ -64,7 +64,6 @@
 (defprogram port-mapper 100000)
 (use-rpc-host '*rpc-host* 111)
 
-
 ;; ------- port mapper structs ----------
 
 (defxenum mapping-protocol
@@ -184,8 +183,8 @@ in the mapping structure. if MAP-PORT is provided, will also match this port."
   nil)
 
 (defrpc call-null 0 :void :void
-        (:program port-mapper 2)
-        (:handler #'%handle-null))
+  (:program port-mapper 2)
+  (:handler #'%handle-null))
 
 ;; ---------------
 
@@ -205,10 +204,10 @@ in the mapping structure. if MAP-PORT is provided, will also match this port."
   t)
 
 (defrpc call-set 1 mapping :boolean
-        (:program port-mapper 2)
-        (:arg-transformer (mapping) mapping)
-        (:documentation "Set a port mapping.")
-        (:handler #'%handle-set))
+  (:program port-mapper 2)
+  (:arg-transformer (mapping) mapping)
+  (:documentation "Set a port mapping.")
+  (:handler #'%handle-set))
 
 ;; -------------------
 
@@ -221,10 +220,10 @@ in the mapping structure. if MAP-PORT is provided, will also match this port."
     t))
 
 (defrpc call-unset 2 mapping :boolean
-        (:program port-mapper 2)
-        (:arg-transformer (mapping) mapping)
-        (:documentation "Remove a port mapping.")
-        (:handler #'%handle-unset))
+  (:program port-mapper 2)
+  (:arg-transformer (mapping) mapping)
+  (:documentation "Remove a port mapping.")
+  (:handler #'%handle-unset))
 
 ;; ----------------------
 
@@ -240,13 +239,13 @@ in the mapping structure. if MAP-PORT is provided, will also match this port."
         0)))
 
 (defrpc call-get-port 3 mapping :uint32
-        (:program port-mapper 2)
-        (:arg-transformer (program version &key (query-protocol :udp))
-                          (make-mapping :program program
-                                        :version version
-                                        :protocol (or query-protocol :udp)))
-        (:documentation "Query the port for the specified program.")
-        (:handler #'%handle-get-port))
+  (:program port-mapper 2)
+  (:arg-transformer (program version &key (query-protocol :udp))
+		    (make-mapping :program program
+				  :version version
+				  :protocol (or query-protocol :udp)))
+  (:documentation "Query the port for the specified program.")
+  (:handler #'%handle-get-port))
 
 ;; ------------------------
 
@@ -315,7 +314,7 @@ in the mapping structure. if MAP-PORT is provided, will also match this port."
         (mapping
          ;; we have a mapping, but no handler defined. this means
          ;; the rpc server lives out-of-process i.e. in another Lisp image
-         ;; we must therefore contact it via UDP and await a response
+         ;; we must therefore contact it via UDP and await a response.
          ;; NOTE: if the handler really is living in our image then
          ;; this will lock for 1 second because we have sent a 
          ;; message to ourselves.
