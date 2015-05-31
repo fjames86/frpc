@@ -169,7 +169,9 @@ TIMEOUT specifies the duration (in seconds) that a TCP connection should remain 
 					       :accept :garbage-args :id id)
 			   (return-from process-rpc-call)))))
 	      
-	      (let ((res (handler-case (with-caller-binded (host port protocol auth) (funcall handler arg))
+	      (let ((res (handler-case 
+			     (with-caller-binded (host port protocol auth)
+			       (funcall handler arg))
                        (rpc-auth-error (e)
                          (frpc-log :trace "Handler signalled an auth error")
                          (write-rpc-response output-stream
@@ -181,7 +183,7 @@ TIMEOUT specifies the duration (in seconds) that a TCP connection should remain 
 			     (frpc-log :trace "Failed to invoke handler: ~A" e)
 			     ;; be silent if the handler errors, this allows us to 
 			     ;; provide the "silent" semantics that some APIs require
-			     ;;			   (write-rpc-response output-stream :accept :garbage-args :id id)
+			     ;;	(write-rpc-response output-stream :accept :garbage-args :id id) ;; This is what I used to do
 			     (return-from process-rpc-call)))))
 		
 		(write-rpc-response output-stream :accept :success :id id :verf rverf)
