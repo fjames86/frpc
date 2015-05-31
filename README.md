@@ -445,26 +445,6 @@ $ Make -f Makefile.hello
 ```
 You will probably need to modify the client, hello_client.c, to pass in correct arguments. 
 
-### 7.2 Message queue example
-The the rpcmq defines a simple message queue using RPC.
-
-```
-;; on the server
-CL-USER> (defparameter *q* (rpcmq:create-queue "queue1"))
-CL-USER> (rpcmq:receive *q*) ;; this blocks until a message is received
-
-;; on the client
-CL-USER> (defparameter *handle* (rpcmq:call-open "queue1"))
-;; send a message to the queue, returns the ID of the message that was sent
-CL-USER> (rpcmq:call-post *handle* #(1 2 3 4))
-1
-
-;; on the server, the receive call returns (values data id):
-CL-USER> (rpcmq:recevive *q*)
-#(1 2 3 4)
-1
-```
-
 ## 8. Logging 
 
 Debug logging is provided by [pounds](https://github.com/fjames86/pounds). By default this will 
