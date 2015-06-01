@@ -335,16 +335,13 @@ in the mapping structure. if MAP-PORT is provided, will also match this port."
              (list port res))))))))
 
 (defrpc call-callit 5 
-  (:list :uint32 :uint32 :uint32 (:varray* :octet)) ;;prog version proc args
+  (:list :uint32 :uint32 :uint32 (:varray* :octet)) ;; prog version proc args
   (:list :uint32 (:varray* :octet)) ;; port result 
   (:program port-mapper 2)
   (:arg-transformer (program version proc packed-args)
                     (list program version proc packed-args))
-  (:transformer (res)
-    (destructuring-bind (port b) res
-      (values b port)))
   (:documentation 
-   "Execute an RPC via the remote port mapper proxy. Returns (values PORT RES) where RES is an opaque array
+   "Execute an RPC via the remote port mapper proxy. Returns (list PORT RES) where RES is an opaque array
 of the packed result. The result needs to be extracted using FRPC:UNPACK. The result type is 
 recommended to be a well-defined type, i.e. represented by a symbol, so that it has an easy reader
 function available.")
