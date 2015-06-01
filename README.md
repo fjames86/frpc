@@ -414,7 +414,7 @@ this is provided by [cerberus](https://github.com/fjames86/cerberus), you should
 the required methods. 
 
 RPCSEC_GSS provides both integrity (checksumming) and privacy (encryption) of the call arguments/results. Set 
-the :SERVICE level to `:INTEGITY` for checksumming and `:PRIVACY` for encryption and checksumming of the call
+the :SERVICE level to `:INTEGRITY` for checksumming and `:PRIVACY` for encryption and checksumming of the call
 arguments/results. The default is `:NONE` which sends the args/results as normal.
 
 ```
