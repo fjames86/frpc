@@ -728,3 +728,77 @@ OPTIONS allow customization of the generated client function:
 	      (cdr (assoc proc (cdr v)))
 	      (cdr v)))
 	(cdr p))))
+
+;;-----------------------
+
+;; these could be used in some sort of asynchronous way.
+;; For this to be useful we need the following which is currently only implemented in CALL-RPC:
+;; * client provides default values
+;; * authentication using a client
+;; * GSS integrity/privacy levels modify the call args/result 
+;; 
+;; I imagine something like this, which sends 10 requests and receives replies
+;; (with-rpc-connection (c host port)
+;;   (do ((ids nil) (i 0 (1+ i))) ((= i 10) ids)
+;;     (let ((id (send-rpc c 'my-arg (my-arg))))
+;;       (push (list id) ids)
+;;       (multiple-value-bind (res rid) (receive-rpc c 'res-type nil)
+;;         ;; match up the response id with a sent id
+;;         (let ((pair (assoc rid ids)))
+;;           (when pair (setf (cadr pair) res)))))))
+
+;; (defun send-rpc (connection arg-type arg &key (program 0) (version 0) (proc 0))
+;;   "Send a request and return immediately (does not block). Returns the request ID."
+;;   (etypecase connection
+;;     (usocket:stream-usocket
+;;      (let ((stream (usocket:socket-stream connection))
+;;            (req (make-rpc-request program proc 
+;;                                   :version version)))
+;;        (let ((buffer (flexi-streams:with-output-to-sequence (output)
+;;                        (write-request output 
+;;                                       req
+;;                                       arg-type
+;;                                       arg))))
+;;          ;; write as a single fragment to the socket
+;;          (write-uint32 stream (logior #x80000000 (length buffer)))
+;;          (write-sequence buffer stream)
+;;          (force-output stream))
+;;        (rpc-msg-xid req)))
+;;     (usocket:datagram-usocket 
+;;      (let ((buffer (frpc.streams:allocate-buffer))
+;;            (req (make-rpc-request program proc 
+;;                                   :version version)))
+;;        (let ((count (frpc.streams:with-buffer-stream (stream buffer)
+;;                       (write-request stream 
+;;                                      req
+;;                                      arg-type
+;;                                      arg))))
+;;          (usocket:socket-send connection buffer count ))
+;;        (rpc-msg-xid req)))))
+
+;; (defun receive-rpc (connection result-type &optional (timeout 1))
+;;   "Wait for an RPC reply from the connection. Returns nil if the timeout expires before a response is received.
+;; Returns (values result xid)."
+;;   (when (usocket:wait-for-input connection :timeout timeout :ready-only t)
+;;     ;; the socket is ready to receive a response
+;;     (etypecase connection
+;;       (usocket:stream-usocket    
+;;        (let ((stream (usocket:socket-stream connection)))
+;;          (flexi-streams:with-input-from-sequence (input (read-fragmented-message stream))
+;;            (multiple-value-bind (msg res) (read-response input result-type)
+;;              (values res (rpc-msg-xid msg))))))
+;;       (usocket:datagram-usocket
+;;        (let ((buffer (frpc.streams:allocate-buffer)))
+;;          (multiple-value-bind (%buffer count remote-host remote-port) (progn (usocket:socket-receive connection buffer 65507))
+;;            (declare (ignore %buffer))
+;;            (frpc-log :trace "Received response from ~A:~A (count ~A)" remote-host remote-port count)
+;;            ;; sbcl bug 1426667: socket-receive on x64 windows doesn't correctly check for errors 
+;;            ;; workaround is to check for -1 as an unsigned int.
+;;            ;; Seems like there is a similar bug in the usocket Lispworks codes too
+;;            (when (or (= count #xffffffff) (= count -1))
+;;              (error "Error: recvfrom returned -1"))
+;;            (let ((input (frpc.streams:make-buffer-stream buffer :end count)))
+;;              (multiple-value-bind (msg res) (read-response input result-type)
+;;                (values res (rpc-msg-xid msg))))))))))
+
+    

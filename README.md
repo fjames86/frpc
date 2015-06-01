@@ -529,6 +529,9 @@ large payloads are sent. A fragmented-stream type could be defined to wrap the u
 You still need to buffer writes because you need to know how much you intend to write before you've written it.
 * Could make it easier to add more transports, e.g. SSL/TLS stream, writing to shared memory etc. Probably not much call for this though.
 * UDP multicast? 
+* Currently no way to define transient programs, i.e. programs which get assigned a random program number at runtime. 
+* Need to support batching in some sort of useful way. So that a client can setup a connection and use wait-for-input to process replies. 
+Basically need a pair of functions to send requests and receive replies from the connection.
 * The XDR serializer is probably not as efficient as it could be, but who really cares so long as it works.
 * Developed using SBCL on Windows. Also tested with Clozure CL on Windows, LispWorks on Windows and SBCL on Linux.
 
