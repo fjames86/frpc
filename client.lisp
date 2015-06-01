@@ -490,10 +490,10 @@ CLIENT should be an instance of RPC-CLIENT or its subclasses. This is the ONLY w
 
     ;; when a client is provided use it to fill in authenticator and verifier
     ;; fill out the other parameters with values from the client 
-    (setf host (or host (rpc-client-host client))
-	  port (or port (rpc-client-port client))
-	  protocol (or protocol (rpc-client-protocol client))
-	  timeout (or timeout (rpc-client-timeout client))
+    (setf host (or (rpc-client-host client) host)
+	  port (or (rpc-client-port client) port)
+	  protocol (or (rpc-client-protocol client) protocol)
+	  timeout (or (rpc-client-timeout client) timeout)
 	  program (or program (rpc-client-program client))
 	  version (or version (rpc-client-version client))
 	  connection (or connection (rpc-client-connection client))
