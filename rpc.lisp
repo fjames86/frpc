@@ -41,6 +41,7 @@
   (:auth-short 2)
   (:auth-des 3)
   (:auth-kerb4 4) ;; kerberos v4, we don't support this
+  (:auth-rsa 5) ;; AUTH_RSA/Gluster, the Gluster protocols use this for their own flavour 
   (:auth-gss 6))
 
 ;; --------------
@@ -358,7 +359,12 @@ NUMBER ::= a positive integer specifying the program number.
      (%defprogram ',name ,number)))
 
 (defun find-program (id)
-  "Lookup the program identifier"
+  "Lookup the program identifier. The type of ID changes behaviour:
+Integer: the program with a this program number is returned. 
+String: the first program with a case-insensitive program name is returned.
+Symbol: the program with a matching symbol name is returned.
+
+In all cases returns a list of (name number) or nil if not found."
   (etypecase id
     (symbol
      (assoc id *programs*))
