@@ -240,7 +240,8 @@ Returns a response verifier to be sent back to the client or nil in the case of 
 (defmethod auth-principal-name ((type (eql :auth-short)) data)
   (let ((c (find-unix-context data)))
     (unless c (error "No UNIX context found for nickname"))
-    (format nil "~A@~A" (auth-unix-uid c) (auth-unix-machine-name c))))
+    (let ((u (unix-context-unix c)))
+      (format nil "~A@~A" (auth-unix-uid u) (auth-unix-machine-name u)))))
 
 (defvar *unix-contexts* (make-cyclic-buffer 10)
   "Table of AUTH-UNIX contexts that have been granted.")
