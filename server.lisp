@@ -297,14 +297,19 @@ TIMEOUT specifies the duration (in seconds) that a TCP connection should remain 
 	   ;; this allows us to resolve wildcard port numbers
 	   (let ((pmap-p (or (member 111 (rpc-server-tcp-ports server))
 			     (member 111 (rpc-server-udp-ports server)))))
-	     (unless pmap-p
-	       ;; add the port mappings to the remote port mapper 
-	       (handler-case (frpc.bind:add-all-mappings (rpc-server-tcp-ports server)
-							 (rpc-server-udp-ports server)                              
-							 :rpc t
-							 :programs (rpc-server-programs server))
-		  (error (e)
-		    (frpc-log :info "Failed to add port mapping: ~A" e)))))	   
+	     (if pmap-p
+		 ;; since we are running the port mapper from this image
+		 (frpc.bind:add-all-mappings (rpc-server-tcp-ports server)
+					     (rpc-server-udp-ports server)                              
+					     :rpc nil
+					     :programs (rpc-server-programs server))
+		 ;; add the port mappings to the remote port mapper 
+		 (handler-case (frpc.bind:add-all-mappings (rpc-server-tcp-ports server)
+							   (rpc-server-udp-ports server)                              
+							   :rpc t
+							   :programs (rpc-server-programs server))
+		   (error (e)
+		     (frpc-log :info "Failed to add port mapping: ~A" e)))))
 
 	   ;; the polling-loop
 	   (do ((udp-buffer (nibbles:make-octet-vector 65507))
@@ -422,12 +427,7 @@ If no ports are provided then will add wildcard ports to TCP and UDP."
     (unless pmap-p
       (warn "No port mapper detected, running portmap locally.")
       (pushnew 111 (rpc-server-udp-ports server))
-      (pushnew 111 (rpc-server-tcp-ports server))
-      ;; since we are running the port mapper locally we just add them here
-      (frpc.bind:add-all-mappings (rpc-server-tcp-ports server)
-				  (rpc-server-udp-ports server)                              
-				  :rpc nil
-				  :programs (rpc-server-programs server))))
+      (pushnew 111 (rpc-server-tcp-ports server))))
 	
 
   (setf (rpc-server-thread server)
