@@ -250,29 +250,6 @@ VERIFIER should be T. Otherwise VERIFIER should be nil."
 
 ;;; -----------------------------------
 
-;; key management API
-;; we store a list of all known keys in a local file and read them on first access
-;; all subsequent writes are routed through this file.
-;;
-
-(defvar *des-key-path* (merge-pathnames "deskey.dat"))
-(defvar *des-keylist* nil)
-
-(defun write-des-keylist ()
-  "Write the keylist to this file whenever we add new credentials"
-  (with-open-file (f *des-key-path* 
-                     :direction :output
-                     :if-exists :supersede)
-    (pprint *des-keylist* f)))
-
-(defun read-des-keylist ()
-  "Read the initial keylist from the file on first access to an empty *keylist*."
-  (with-open-file (f *des-key-path* 
-                     :direction :input
-                     :if-does-not-exist :create)
-    (setf *des-keylist* (read f nil nil))))
-
-
 (defun des-init (secret public-keys &optional (max-contexts 10))
   "Initialize the server with its secret key so it can accept DES authentication."
   (dolist (k public-keys)
