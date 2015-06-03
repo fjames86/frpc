@@ -34,6 +34,14 @@
   (auth-principal-name (opaque-auth-flavour auth)
 		       (opaque-auth-data auth)))
 
+(defun get-unix-creds (&optional (auth *rpc-remote-auth*))
+  "Get the UNIX credentials from this authenticator. Returns the AUTH-UNIX associated with this authenticator
+if it is of type :AUTH-UNIX or :AUTH-SHORT. Returns nil if could not be found."
+  (case (opaque-auth-flavour auth)
+    (:auth-unix (opaque-auth-data auth))
+    (:auth-short 
+     (let ((c (find-unix-context (opaque-auth-data auth))))
+       (when c (unix-context-unix c))))))
 
 ;; ---------------------------------------------------------
 
@@ -107,10 +115,6 @@ TIMEOUT specifies the duration (in seconds) that a TCP connection should remain 
 (defun process-rpc-call (input-stream output-stream 
 			 &key host port protocol id auth verf program version proc)
   "Process the actual call. read the argument, handle it and write the response."
-  (frpc-log :info "~A:~A:~A ~A:~A:~A ~A ~S"
-            host port protocol
-            program version proc 
-            (rpc-auth-principal auth) (opaque-auth-flavour auth))
   (let ((rverf (process-rpc-auth output-stream auth verf id)))
     ;; check the verifier
     (unless rverf 
@@ -118,6 +122,10 @@ TIMEOUT specifies the duration (in seconds) that a TCP connection should remain 
 			  :reject :auth-error
 			  :auth-stat :auth-rejected)
       (return-from process-rpc-call))
+    (frpc-log :info "~A:~A:~A ~A:~A:~A ~A ~S"
+              host port protocol
+              program version proc 
+              (rpc-auth-principal auth) (opaque-auth-flavour auth))
     ;; go ahead and try to invoke the handler
     (let ((h (find-handler program version proc)))
       (unless h

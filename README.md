@@ -8,9 +8,11 @@ See the related project [nefarious](https://github.com/fjames86/nefarious), whic
 An xdr parser/generator is also included, which provides similar functionality to rpcgen typically used with the C programming language (see section 9).
 
 ## 1. Defining RPC interfaces
-RPC interfaces are given a unique integer called a program number. Each program may have multiple
-versions of its interface, with each version having a different set of functions/arguments. Each procedure
-in the interface is also given a unique integer. Together these 3 integers define the procedure identifier.
+RPC interfaces are given a unique integer called a program number, see 
+[IANA](http://www.iana.org/assignments/rpc-program-numbers/rpc-program-numbers.xhtml) 
+for a detailed list. Each program may have multiple versions of its interface, with each version 
+having a different set of functions/arguments. Each procedure in the interface is also given a 
+unique integer. Together these 3 integers define the procedure identifier.
 
 In frpc, both clients and servers must define the interface. This supplies argument and result types.
 Servers must additionally implement handlers for each procedure they wish to support.

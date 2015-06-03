@@ -207,6 +207,9 @@ VERIFIER should be T. Otherwise VERIFIER should be nil."
 
 (defstruct des-key fullname key)
 
+;; FIXME: at the moment we assume we have local access to a list of public keys.
+;; this function should instead call out to the keyserv service.
+;; Of course, it may well be that this process is also hosting the keyservice, but we can't guarantee that.
 (defun find-des-public-key (fullname)
   (let ((d (find-if (lambda (d)
 		      (string-equal (des-key-fullname d) fullname))
@@ -247,7 +250,7 @@ VERIFIER should be T. Otherwise VERIFIER should be nil."
 		    (= (des-context-nickname c) nickname))
 		  *des-contexts*))
 
-(defun des-init (secret public-keys &key (max-contexts 10))
+(defun des-init (secret public-keys &optional (max-contexts 10))
   "Initialize the server with its secret key so it can accept DES authentication."
   (dolist (k public-keys)
     (unless (typep k 'des-key)

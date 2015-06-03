@@ -88,6 +88,8 @@
 	   #:auth-unix-uid
 	   #:auth-unix-gid
 	   #:auth-unix-gids
+       #:get-unix-creds
+       #:unix-init
 
 	   ;; debug logging
 	   #:*frpc-log*

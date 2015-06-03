@@ -241,13 +241,17 @@ Returns a response verifier to be sent back to the client or nil in the case of 
 (defvar *unix-contexts* (make-cyclic-buffer 10)
   "Table of AUTH-UNIX contexts that have been granted.")
 
+(defun unix-init (&optional (max-contexts 10))
+  "Initialize the UNIX authentication context table. MAX-CONTEXTS is the maximum number of valid contexts that will be granted, slots in the table will be cleared and reused once the table has been filled."
+  (setf *unix-contexts* (make-cyclic-buffer max-contexts)))
+
 (defstruct unix-context unix short)
 
 (defmethod auth-principal-name ((type (eql :auth-short)) data)
   (let ((c (find-unix-context data)))
-    (unless c (error "No UNIX context found for nickname"))
-    (let ((u (unix-context-unix c)))
-      (format nil "~A@~A" (auth-unix-uid u) (auth-unix-machine-name u)))))
+    (when c 
+      (let ((u (unix-context-unix c)))
+        (format nil "~A@~A" (auth-unix-uid u) (auth-unix-machine-name u))))))
 
 (defun add-unix-context (unix)
   (let ((c (make-unix-context :unix unix
@@ -273,7 +277,7 @@ Returns a response verifier to be sent back to the client or nil in the case of 
     (if c
 	(make-opaque-auth :auth-null nil)
 	nil)))
-
+   
 ;; 9.3 DES authentication
 
 ;; DES authentication is different to the other flavours because its authenticator and verifier structures
