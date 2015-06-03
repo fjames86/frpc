@@ -3,26 +3,6 @@
 
 (in-package  #:frpc)
 
-;; there is often a need to allocate a number of contexts, which may periodically be flushed
-;; to avoid over-allocating contexts, store them in a fixed-size array. when it is exhausted, they 
-;; are overwritten
-(defun make-cyclic-buffer (len)
-  (cons 0
-	(make-array len :initial-element nil)))
-
-(defun cyclic-push (cbuffer val)
-  (setf (aref (cdr cbuffer) (car cbuffer))
-	val)
-  (setf (car cbuffer)
-	(mod (1+ (car cbuffer)) (length (cdr cbuffer)))))
-
-(defun cyclic-find-if (predicate cbuffer)
-  (dotimes (i (length (cdr cbuffer)))
-    (let ((item (aref (cdr cbuffer) i)))
-      (when (and item (funcall predicate item))
-	(return-from cyclic-find-if item))))
-  nil)
-
 ;; Authentication using GSS requires the following:
 ;; 1. context creation
 ;; 2. data exchange

@@ -244,9 +244,8 @@ in the mapping structure. if MAP-PORT is provided, will also match this port."
 
 (defrpc call-get-port 3 mapping :uint32
   (:program port-mapper 2)
-  (:arg-transformer (program version &key (query-protocol :udp))
+  (:arg-transformer (program &key (query-protocol :udp))
 		    (make-mapping :program program
-				  :version version
 				  :protocol (or query-protocol :udp)))
   (:documentation "Query the port for the specified program.")
   (:handler #'%handle-get-port))

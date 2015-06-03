@@ -80,14 +80,15 @@ the bytes read."
 ;; ------------- default/null authentication ---------------
 
 (defclass rpc-client ()
-  ((host :initarg :host :initform nil :accessor rpc-client-host)
-   (port :initarg :port :initform nil :accessor rpc-client-port)
+  ((host :initarg :host :initform *rpc-host* :accessor rpc-client-host)
+   (port :initarg :port :initform *rpc-port* :accessor rpc-client-port)
+   (protocol :initarg :protocol :initform :udp :accessor rpc-client-protocol)
+   (timeout :initarg :timeout :initform 1 :accessor rpc-client-timeout)
+   ;; extras
    (program :initarg :program :initform nil :accessor rpc-client-program)
    (version :initarg :version :initform nil :accessor rpc-client-version)
    (initial :initform t :accessor rpc-client-initial)
-   (connection :initarg :connection :initform nil :accessor rpc-client-connection)
-   (protocol :initarg :protocol :initform nil :accessor rpc-client-protocol)
-   (timeout :initarg :timeout :initform nil :accessor rpc-client-timeout)))
+   (connection :initarg :connection :initform nil :accessor rpc-client-connection)))
 
 (defmethod print-object ((client rpc-client) stream)
   (print-unreadable-object (client stream :type t :identity t)
@@ -148,62 +149,6 @@ the bytes read."
     (setf (unix-client-nickname client) (opaque-auth-data verf)
 	  (rpc-client-initial client) nil))
   t)
-
-;; ----------------- des -----------------
-
-(defclass des-client (rpc-client)
-  ((name :initform nil :initarg :name :accessor des-client-name)
-   (secret :initform nil :initarg :secret :accessor des-client-secret)
-   (public :initform nil :initarg :public :accessor des-client-public)
-   (key :initarg :key :initform (des-conversation) :accessor des-client-key)
-   (window :initform 300 :initarg :window :accessor des-client-window)
-   (nickname :initform nil :accessor des-client-nickname)
-   (timestamp :initform nil :accessor des-client-timestamp))) ;; timestamp used in request
-
-(defmethod initialize-instance :after ((inst des-client) &key)
-  ;; just check that the name, secret and public have been provided
-  (unless (des-client-name inst) (error "Must provide a client name"))
-  (unless (des-client-secret inst) (error "Must provide a client secret key"))
-  (unless (des-client-public inst) (error "Must provide a server public key"))
-  inst)
-
-(defmethod print-object ((client des-client) stream)
-  (print-unreadable-object (client stream :type t)
-    (format stream ":NICKNAME ~A" (des-client-nickname client))))
-
-(defmethod rpc-client-auth ((client des-client))
-  ;; if initial request then send a fullname cred, otherwise send a nickname 
-  (if (rpc-client-initial client)
-      (let ((timestamp (des-timestamp)))
-	;; store the timestamp so we can compare with the response timestamp
-	(setf (des-client-timestamp client) timestamp)
-	(des-initial-auth (des-client-key client)
-			  (des-client-name client)
-			  (des-client-secret client)
-			  (des-client-public client)
-			  (des-client-window client)
-			  timestamp))
-      (let ((timestamp (des-timestamp)))
-	;; store the timestamp so we can compare with the response timestamp
-	(setf (des-client-timestamp client) timestamp)
-	(des-auth (des-client-nickname client)))))
-
-(defmethod rpc-client-verf ((client des-client))
-  (if (rpc-client-initial client)
-      (des-initial-verf (des-client-key client) 
-			(des-client-window client)
-			(des-client-timestamp client))
-      (des-verf (des-client-key client))))
-
-(defmethod verify ((client des-client) verf)
-  (let ((v (unpack #'%read-authdes-verf-server (opaque-auth-data verf))))
-    (unless (des-valid-server-verifier (des-client-key client)
-				       (des-client-timestamp client)
-				       v)
-      (error 'rpc-error :description "Invalid DES verifier"))
-    ;; store the nickname 
-    (setf (des-client-nickname client) (authdes-verf-server-adv-nickname v)
-	  (rpc-client-initial client) nil)))
 
 ;; ----------------- gss ---------------
 
@@ -490,10 +435,10 @@ CLIENT should be an instance of RPC-CLIENT or its subclasses. This is the ONLY w
 
     ;; when a client is provided use it to fill in authenticator and verifier
     ;; fill out the other parameters with values from the client 
-    (setf host (or (rpc-client-host client) host)
-	  port (or (rpc-client-port client) port)
-	  protocol (or (rpc-client-protocol client) protocol)
-	  timeout (or (rpc-client-timeout client) timeout)
+    (setf host (rpc-client-host client)
+	  port (rpc-client-port client)
+	  protocol (rpc-client-protocol client)
+	  timeout (rpc-client-timeout client)
 	  program (or program (rpc-client-program client))
 	  version (or version (rpc-client-version client))
 	  connection (or connection (rpc-client-connection client))
@@ -540,13 +485,13 @@ CLIENT should be an instance of RPC-CLIENT or its subclasses. This is the ONLY w
 	     (setf (usocket:socket-option conn :receive-timeout) timeout))
 	   
 	   (unwind-protect 
-		(call-rpc-server conn arg-type arg result-type 
-				 :request-id request-id
-				 :program program
-				 :version version
-				 :proc proc
-				 :auth auth
-				 :verf verf)
+            (call-rpc-server conn arg-type arg result-type 
+                             :request-id request-id
+                             :program program
+                             :version version
+                             :proc proc
+                             :auth auth
+                             :verf verf)
 	     (unless connection 
 	       (rpc-close conn)))))
 	(:udp

@@ -278,30 +278,6 @@ Returns a response verifier to be sent back to the client or nil in the case of 
 	(make-opaque-auth :auth-null nil)
 	nil)))
    
-;; 9.3 DES authentication
-
-;; DES authentication is different to the other flavours because its authenticator and verifier structures
-;; are not the same. This means we can't define functions to pack/unpack its data. We therefore leave it as
-;; an opaque buffer and parse it as required.
-
-(defmethod authenticate ((flavour (eql :auth-des)) data verf)
-  ;; start by parsing the data 
-  (let ((auth (unpack #'%read-authdes-cred data))
-	(v (unpack #'%read-authdes-verf-client (opaque-auth-data verf))))
-    (handler-case (des-valid-client-request (xunion-val auth) v)
-      (error (e)
-	(frpc-log :info "DES authentication failed: ~A" e)
-	nil))))
-
-
-(defmethod auth-principal-name ((type (eql :auth-des)) data)
-  (let ((auth (unpack #'%read-authdes-cred data)))
-    (if (eq (xunion-tag auth) :fullname)
-	(authdes-fullname-name (xunion-val auth))
-	(let ((c (find-des-context (xunion-val auth))))
-	  (break)
-	  (unless c (error "No DES context found"))
-	  (des-context-fullname c)))))
 
 ;; GSS authentication 
 
@@ -335,6 +311,7 @@ Returns a response verifier to be sent back to the client or nil in the case of 
   `(eval-when (:compile-toplevel :load-toplevel :execute)
      (setf *rpc-program* ,program
 	   *rpc-version* ,version)))
+
 ;; ----------------------------------
 
 

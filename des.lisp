@@ -212,10 +212,9 @@ VERIFIER should be T. Otherwise VERIFIER should be nil."
 ;; Of course, it may well be that this process is also hosting the keyservice, but we can't guarantee that.
 (defun find-des-public-key (fullname)
   (let ((d (find-if (lambda (d)
-		      (string-equal (des-key-fullname d) fullname))
-		    *des-public-keys*)))
-    (when d 
-      (des-key-key d))))
+                      (string-equal (des-key-fullname d) fullname))
+                    *des-public-keys*)))
+    (when d (des-key-key d))))
 
 (defun des-public (secret)
   (declare (type integer secret))
@@ -225,8 +224,7 @@ VERIFIER should be T. Otherwise VERIFIER should be nil."
   "Make a DES public key to pass to DES-INIT"
   (declare (type string name)
 	   (type integer public))
-  (make-des-key :fullname name 
-		:key public))
+  (make-des-key :fullname name :key public))
 
 
 ;; client contexts -- basically information about which clients have been authenticated
@@ -250,6 +248,31 @@ VERIFIER should be T. Otherwise VERIFIER should be nil."
 		    (= (des-context-nickname c) nickname))
 		  *des-contexts*))
 
+;;; -----------------------------------
+
+;; key management API
+;; we store a list of all known keys in a local file and read them on first access
+;; all subsequent writes are routed through this file.
+;;
+
+(defvar *des-key-path* (merge-pathnames "deskey.dat"))
+(defvar *des-keylist* nil)
+
+(defun write-des-keylist ()
+  "Write the keylist to this file whenever we add new credentials"
+  (with-open-file (f *des-key-path* 
+                     :direction :output
+                     :if-exists :supersede)
+    (pprint *des-keylist* f)))
+
+(defun read-des-keylist ()
+  "Read the initial keylist from the file on first access to an empty *keylist*."
+  (with-open-file (f *des-key-path* 
+                     :direction :input
+                     :if-does-not-exist :create)
+    (setf *des-keylist* (read f nil nil))))
+
+
 (defun des-init (secret public-keys &optional (max-contexts 10))
   "Initialize the server with its secret key so it can accept DES authentication."
   (dolist (k public-keys)
@@ -260,11 +283,15 @@ VERIFIER should be T. Otherwise VERIFIER should be nil."
 	*des-contexts* (make-cyclic-buffer max-contexts)))
 
 
+;; --------------------------------------
+
+
 ;; server validates the client request. Returns a server verifier.
 (defun des-valid-client-request (auth verf)
   "This runs on the server and validates the initial client request. Returns a server verifier."
   (etypecase auth
     (authdes-fullname 
+     ;;(let ((conversation (keyserv:call-decrypt (authdes-fullname-name auth) :client (make-instance 'frpc:unix-client))))
      (let* ((public (or (find-des-public-key (authdes-fullname-name auth))
 			(error "No public key for ~A" (authdes-fullname-name auth))))
 	    (common (dh-common-key *des-private-key* public)))
@@ -282,7 +309,7 @@ VERIFIER should be T. Otherwise VERIFIER should be nil."
 	   ;; unpack it 
 	   (destructuring-bind (timestamp window winverf) (unpack #'read-des-enc-block v)
 	     ;; compare the timestamp and window
-	     ;; if it is valid then return allocate and return a context
+	     ;; if it is valid then allocate a context
 	     (let ((ts (getf (des-timestamp) :seconds)))
 	       (if (and (< (abs (- (getf timestamp :seconds) ts)) window)
 			(= winverf (1- window)))
@@ -357,3 +384,87 @@ VERIFIER should be T. Otherwise VERIFIER should be nil."
 		    (pack #'%write-authdes-verf-client 
 			  (make-authdes-verf-client :adv-timestamp (encrypt-des-timestamp conversation)
 						    :adv-winverf (nibbles:make-octet-vector 4)))))
+
+
+;; 9.3 DES authentication
+
+;; DES authentication is different to the other flavours because its authenticator and verifier structures
+;; are not the same. This means we can't define functions to pack/unpack its data. We therefore leave it as
+;; an opaque buffer and parse it as required.
+
+(defmethod authenticate ((flavour (eql :auth-des)) data verf)
+  ;; start by parsing the data 
+  (let ((auth (unpack #'%read-authdes-cred data))
+	(v (unpack #'%read-authdes-verf-client (opaque-auth-data verf))))
+    (handler-case (des-valid-client-request (xunion-val auth) v)
+      (error (e)
+	(frpc-log :info "DES authentication failed: ~A" e)
+	nil))))
+
+
+(defmethod auth-principal-name ((type (eql :auth-des)) data)
+  (let ((auth (unpack #'%read-authdes-cred data)))
+    (if (eq (xunion-tag auth) :fullname)
+	(authdes-fullname-name (xunion-val auth))
+	(let ((c (find-des-context (xunion-val auth))))
+	  (break)
+	  (unless c (error "No DES context found"))
+	  (des-context-fullname c)))))
+
+
+
+;; ----------------- des client -----------------
+
+(defclass des-client (rpc-client)
+  ((name :initform nil :initarg :name :accessor des-client-name)
+   (secret :initform nil :initarg :secret :accessor des-client-secret)
+   (public :initform nil :initarg :public :accessor des-client-public)
+   (key :initarg :key :initform (des-conversation) :accessor des-client-key)
+   (window :initform 300 :initarg :window :accessor des-client-window)
+   (nickname :initform nil :accessor des-client-nickname)
+   (timestamp :initform nil :accessor des-client-timestamp))) ;; timestamp used in request
+
+(defmethod initialize-instance :after ((inst des-client) &key)
+  ;; just check that the name, secret and public have been provided
+  (unless (des-client-name inst) (error "Must provide a client name"))
+  (unless (des-client-secret inst) (error "Must provide a client secret key"))
+  (unless (des-client-public inst) (error "Must provide a server public key"))
+  inst)
+
+(defmethod print-object ((client des-client) stream)
+  (print-unreadable-object (client stream :type t)
+    (format stream ":NICKNAME ~A" (des-client-nickname client))))
+
+(defmethod rpc-client-auth ((client des-client))
+  ;; if initial request then send a fullname cred, otherwise send a nickname 
+  (if (rpc-client-initial client)
+      (let ((timestamp (des-timestamp)))
+	;; store the timestamp so we can compare with the response timestamp
+	(setf (des-client-timestamp client) timestamp)
+	(des-initial-auth (des-client-key client)
+			  (des-client-name client)
+			  (des-client-secret client)
+			  (des-client-public client)
+			  (des-client-window client)
+			  timestamp))
+      (let ((timestamp (des-timestamp)))
+	;; store the timestamp so we can compare with the response timestamp
+	(setf (des-client-timestamp client) timestamp)
+	(des-auth (des-client-nickname client)))))
+
+(defmethod rpc-client-verf ((client des-client))
+  (if (rpc-client-initial client)
+      (des-initial-verf (des-client-key client) 
+			(des-client-window client)
+			(des-client-timestamp client))
+      (des-verf (des-client-key client))))
+
+(defmethod verify ((client des-client) verf)
+  (let ((v (unpack #'%read-authdes-verf-server (opaque-auth-data verf))))
+    (unless (des-valid-server-verifier (des-client-key client)
+				       (des-client-timestamp client)
+				       v)
+      (error 'rpc-error :description "Invalid DES verifier"))
+    ;; store the nickname 
+    (setf (des-client-nickname client) (authdes-verf-server-adv-nickname v)
+	  (rpc-client-initial client) nil)))

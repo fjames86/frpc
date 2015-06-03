@@ -16,7 +16,8 @@
            #:call-encrypt
            #:call-decrypt
            #:call-gen
-           #:call-get))
+           #:call-get
+           #:*keylist-path*))
 
 (in-package #:keyserv)
 
@@ -36,6 +37,21 @@
 
 (defxtype* des-block () (:array :octet 8))
 (defxtype* keybuf () (:varray* :octet +hex-key-bytes+))
+
+(defun integer-keybuf (integer)
+  "Convert a bignum to a keybuffer"
+  (do ((nums nil)
+       (n integer (ash n -8)))
+      ((zerop n) (apply #'vector (nreverse nums)))
+    (push (mod n 256) nums)))
+
+(defun keybuf-integer (keybuf)
+  "Convert a keybuffer back to a bignum."
+  (do ((i (1- (length keybuf)) (1- i))
+       (n 0))
+      ((< i 0) n)
+    (setf n (+ (ash n 8) (aref keybuf i)))))
+
 (defxtype* netnamestr () :string)
 
 (defxtype* cryptkeyarg () 
@@ -72,8 +88,7 @@
 
 (defun auth-or-fail ()
   "The caller MUST be authenticated using AUTH-UNIX (or AUTH-SHORT)."
-  (unless (equalp *rpc-remote-host* #(127 0 0 1))
-    (error 'rpc-auth-error))
+  (unless (equalp *rpc-remote-host* #(127 0 0 1)) (error 'rpc-auth-error))
   (let ((creds (get-unix-creds)))
     (if creds
         creds
@@ -82,7 +97,7 @@
 (defvar *keylist* nil
   "List of (unix-creds netname secret-key public-key) for each known host.")
 
-(defvar *keyfile-path* (merge-pathnames "keyprot.dat")
+(defvar *keyfile-path* (merge-pathnames "keyserv.dat")
   "Pathname of where the key database file is located.")
 
 (defun write-keylist ()
@@ -97,19 +112,16 @@
   (with-open-file (f *keyfile-path* 
                      :direction :input
                      :if-does-not-exist :create)
-    (read f nil nil)))
+    (setf *keylist* (read f nil nil))))
 
 (defun add-key-entry (creds netname secret-key)
   (declare (type frpc::auth-unix creds)
            (type string netname)
            (type vector secret-key))
-  ;; convert the array version of the key into a bignum
+  (unless *keylist* (read-keylist))
   (push 
-   (let ((secret 
-          (do ((i 0 (1+ i))
-               (n 0))
-              ((= i (length secret-key)) n)
-            (setf n (+ (ash n 8) (aref secret-key i))))))
+   ;; convert the array version of the secret key into a bignum
+   (let ((secret (keybuf-integer secret-key))) 
      (list creds 
            netname 
            secret 
@@ -118,6 +130,7 @@
   (write-keylist))
 
 (defun find-key-entry (netname)
+  "Find the entry for this netname. Reads from the local database if the entry list if empty."
   (unless *keylist* (read-keylist))
   (find-if (lambda (entry)
              (let ((name (second entry)))
@@ -133,7 +146,10 @@
 
 (defrpc call-set 1 keybuf keystatus 
   (:program key-prog 1)
-  (:arg-transformer (key) key)
+  (:arg-transformer (key) 
+    (etypecase key 
+      (integer (integer-keybuf key))
+      (vector key)))
   (:transformer (res)
     (if (eq res :success) 
         nil
