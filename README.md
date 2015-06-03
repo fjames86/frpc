@@ -5,7 +5,7 @@ services. It supports the most commonly used authentication flavours (see below)
 
 See the related project [nefarious](https://github.com/fjames86/nefarious), which uses frpc to implement an NFSv3 client and server.
 
-An xdr parser/generator is also included, which provides similar functionality to rpcgen typically used with the C programming language (see section 9).
+An XDR protocol compiler is also included, which provides similar functionality to rpcgen typically used with the C programming language (see section 9).
 
 ## 1. Defining RPC interfaces
 RPC interfaces are given a unique integer called a program number, see 
