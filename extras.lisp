@@ -12,7 +12,7 @@
         (host (rpc-client-host client)))
 
     ;; if the program is named by a symbol/string then find its number or fail
-    (unless (integerp program)
+    (unless (or (null program) (integerp program))
       (let ((p (find-program program)))
         (if p 
             (setf program (second p)
