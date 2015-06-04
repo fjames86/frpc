@@ -27,7 +27,7 @@
   (:auth-error 1))
 
 (defxenum auth-stat
- (:auth-badcred 1)
+  (:auth-badcred 1)
   (:auth-rejected 2)
   (:auth-badverf 3)
   (:auth-rejectedverf 4)
@@ -35,16 +35,42 @@
   (:gss-cred-problem 13)
   (:gss-context-problem 14))
 
-(defxenum auth-flavour 
-  (:auth-null 0)
-  (:auth-unix 1)
-  (:auth-short 2)
-  (:auth-des 3)
-  (:auth-kerb4 4) ;; kerberos v4, we don't support this
-  (:auth-rsa 5) ;; AUTH_RSA/Gluster, the Gluster protocols use this for their own flavour 
-  (:auth-gss 6))
+;; ---------------------------------------
+;; authentication definition
 
-;; --------------
+(defvar *auth-flavours* nil 
+  "List of known authentication flavours.")
+
+(defxtype auth-flavour ()
+  ((stream) 
+   (let ((n (read-uint32 stream)))
+     (let ((f (find n *auth-flavours* :key #'cadr :test #'=)))
+       (if f (car f) (error "Unknown authentication flavour ~S" n)))))
+  ((stream flavour)
+   (let ((f (find flavour *auth-flavours* :key #'car :test #'eq)))
+     (if f (write-uint32 stream (cadr f)) (error "Unknown authentication flavour ~S" flavour)))))
+
+(defmacro define-auth-flavour (name val)
+  `(push (list ',name ,val) *auth-flavours*))
+
+(define-auth-flavour :auth-null 0)
+(define-auth-flavour :auth-unix 1)
+(define-auth-flavour :auth-short 2)
+(define-auth-flavour :auth-des 3)
+(define-auth-flavour :auth-kerb4 4)
+(define-auth-flavour :auth-rsa 5)
+(define-auth-flavour :auth-gss 6)
+
+;; (defxenum auth-flavour 
+;;   (:auth-null 0)
+;;   (:auth-unix 1)
+;;   (:auth-short 2)
+;;   (:auth-des 3)
+;;   (:auth-kerb4 4) ;; kerberos v4, we don't support this
+;;   (:auth-rsa 5) ;; AUTH_RSA/Gluster, the Gluster protocols use this for their own flavour 
+;;   (:auth-gss 6))
+
+;; -------------------------------------------
 
 ;; structs
 

@@ -110,5 +110,19 @@
 	   #:gss-client
 	   #:gss-init
 
+
+       ;; for authentication providers
+       ;; generally 
+       #:define-auth-flavour 
+       #:pack-auth-data
+       #:unpack-auth-data
+       ;; for server support
+       #:authenticate
+       #:auth-principal-name
+       ;; for client support 
+       #:verify 
+       #:rpc-client-auth
+       #:rpc-client-verf
+
 	   ))
 
