@@ -7,6 +7,7 @@
   (:export #:use-rpc-program
 	   #:use-rpc-host
 	   #:defrpc
+       #:defhandler
 	   #:find-handler
 	   #:generate-program-number
 	   #:defprogram
@@ -83,6 +84,7 @@
 
 	   ;; unix auth
 	   #:unix-client
+       #:auth-unix
 	   #:auth-unix-stamp
 	   #:auth-unix-machine-name
 	   #:auth-unix-uid
@@ -97,29 +99,16 @@
 	   #:*frpc-log-levels*
 	   #:frpc-log
 
-	   ;; for des security
-	   #:des-client
-	   #:des-init
-	   #:des-public
-	   #:des-public-key
-	   #:des-conversation
-	   #:des-auth
-	   #:des-verf
-
 	   ;; for gss security
 	   #:gss-client
 	   #:gss-init
 
-
-       ;; for authentication providers
-       ;; generally 
+       ;; for defining authentication providers
        #:define-auth-flavour 
        #:pack-auth-data
        #:unpack-auth-data
-       ;; for server support
        #:authenticate
        #:auth-principal-name
-       ;; for client support 
        #:verify 
        #:rpc-client-auth
        #:rpc-client-verf

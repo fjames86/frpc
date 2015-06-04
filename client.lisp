@@ -66,9 +66,6 @@ the bytes read."
 
 ;; ---------------------------------------
 
-(defparameter *rpc-host* "localhost")
-(defparameter *rpc-port* 111)
-
 (defparameter *default-rpc-host* '*rpc-host*)
 (defparameter *default-rpc-port* '*rpc-port*)
 
@@ -76,135 +73,6 @@ the bytes read."
   `(eval-when (:load-toplevel :compile-toplevel :execute)
      (setf *default-rpc-host* ,host
 	   *default-rpc-port* ,port)))
-
-;; ------------- default/null authentication ---------------
-
-(defclass rpc-client ()
-  ((host :initarg :host :initform *rpc-host* :accessor rpc-client-host)
-   (port :initarg :port :initform *rpc-port* :accessor rpc-client-port)
-   (protocol :initarg :protocol :initform :udp :accessor rpc-client-protocol)
-   (timeout :initarg :timeout :initform 1 :accessor rpc-client-timeout)
-   ;; extras
-   (program :initarg :program :initform nil :accessor rpc-client-program)
-   (version :initarg :version :initform nil :accessor rpc-client-version)
-   (initial :initform t :accessor rpc-client-initial)
-   (connection :initarg :connection :initform nil :accessor rpc-client-connection)))
-
-(defmethod print-object ((client rpc-client) stream)
-  (print-unreadable-object (client stream :type t :identity t)
-    (format stream ":HOST ~S :PORT ~A :PROGRAM ~A"
-	    (rpc-client-host client)
-	    (rpc-client-port client)
-	    (rpc-client-program client))))
-
-;; reinitializing the instance just means setting its initial flag again
-(defmethod reinitialize-instance :after ((instance rpc-client) &key)
-  (setf (rpc-client-initial instance) t))
-
-(defgeneric rpc-client-auth (client)
-  (:documentation "The authenticator to use for the client request."))
-
-(defgeneric rpc-client-verf (client)
-  (:documentation "The verifier to use for the client request."))
-
-(defgeneric verify (client verf)
-  (:documentation "Verify the response received from the server. Signals an error on failure."))
-
-
-;; default methods for auth-null flavour authentication 
-(defmethod rpc-client-auth ((client rpc-client))
-  (make-opaque-auth :auth-null nil))
-
-(defmethod rpc-client-verf ((client rpc-client))
-  (make-opaque-auth :auth-null nil))
-
-(defmethod verify ((client rpc-client) verf) t)
-
-;; ---------------- unix ----------------
-
-(defclass unix-client (rpc-client)
-  ((uid :initarg :uid :initform 0 :accessor unix-client-uid)
-   (gid :initarg :gid :initform 0 :accessor unix-client-gid)
-   (gids :initarg :gids :initform nil :accessor unix-client-gids)
-   (nickname :initform nil :accessor unix-client-nickname)))
-
-(defmethod print-object ((client unix-client) stream)
-  (print-unreadable-object (client stream :type t)
-    (format stream ":NICKNAME ~A" (unix-client-nickname client))))
-
-(defmethod rpc-client-auth ((client unix-client))
-  (if (rpc-client-initial client)
-      (make-opaque-auth :auth-unix
-			(make-auth-unix :stamp (- (get-universal-time) 
-						  (encode-universal-time 0 0 0 1 1 1970 0))
-					:machine-name (machine-instance)
-					:uid (unix-client-uid client)
-					:gid (unix-client-gid client)
-					:gids (unix-client-gids client)))
-      (make-opaque-auth :auth-short 
-			(unix-client-nickname client))))
-
-(defmethod verify ((client unix-client) verf)
-  (when (eq (opaque-auth-flavour verf) :auth-short)
-    (setf (unix-client-nickname client) (opaque-auth-data verf)
-	  (rpc-client-initial client) nil))
-  t)
-
-;; ----------------- gss ---------------
-
-(defclass gss-client (rpc-client)
-  ((context :initform nil :accessor gss-client-context)
-   (creds :initarg :credentials :accessor gss-client-credentials)
-   (handle :initform nil :accessor gss-client-handle)
-   (seqno :initform 0 :accessor gss-client-seqno)
-   (service :initarg :service :initform :none :accessor gss-client-service)))
-
-(defmethod print-object ((client gss-client) stream)
-  (print-unreadable-object (client stream :type t)
-    (format stream ":HANDLE ~S" (gss-client-handle client))))
-		     
-(defmethod rpc-client-auth ((client gss-client))
-  (when (rpc-client-initial client)
-    (frpc-log :trace "Initiating GSS client context")
-    ;; FIXME: the client may wish to use mutual authentication, in which case the server should 
-    ;; return a verification token. We currently don't support this.
-    (multiple-value-bind (context buffer) (glass:initialize-security-context (gss-client-credentials client))
-      (setf (gss-client-context client) context)
-      (let ((res 
-	     (call-rpc #'%write-gss-init-arg
-		       buffer
-		       #'%read-gss-init-res
-		       :host (rpc-client-host client)
-		       :port (rpc-client-port client)
-		       :program (rpc-client-program client)
-		       :version (rpc-client-version client)
-		       :auth (make-opaque-auth :auth-gss
-					       (make-gss-cred :proc :init
-							      :seqno (gss-client-seqno client)
-							      :service :none))
-		       :protocol (rpc-client-protocol client)
-		       :timeout (rpc-client-timeout client)
-		       :connection (rpc-client-connection client))))
-	;; store the handle for future requests.
-	;; FIXME: if mutual authentication requested then this will also contain a verification token
-	;; to be passed to GSS:INITIALIZE-SECURITY-CONTEXT. We currently don't support mutual authentication.
-	(setf (gss-client-handle client) (gss-init-res-handle res)
-	      (rpc-client-initial client) nil))))
-
-  ;; increment the seqno
-  (incf (gss-client-seqno client))
-
-  ;; return authenticator
-  (make-opaque-auth :auth-gss
-		    (make-gss-cred :proc :data
-				   :seqno (gss-client-seqno client)
-				   :service (gss-client-service client) 
-				   :handle (gss-client-handle client))))
-
-;; the client does not send a verifier 
-
-;; FIXME: if mutual authentication was requested, there may be a verifier returned???
-
 
 ;; ---------------------------------------------------------
 
@@ -642,22 +510,33 @@ OPTIONS allow customization of the generated client function:
 (defvar *handlers* nil)
 
 (defun %defhandler (program version proc arg-type res-type handler)
+  ;; lookup the program. allow it to be specified by symbol as well as by number.
+  (let ((pg (find-program program)))
+    (if pg (setf program (cadr pg))))
+
   (let ((p (assoc program *handlers*)))
     (if p
-	(let ((v (assoc version (cdr p))))
-	  (if v
-	      (let ((c (assoc proc (cdr v))))
-		(if c
-		    (progn
-		      (setf (cdr c) (list arg-type res-type handler))
-		      (return-from %defhandler))
-		    (push (cons proc (list arg-type res-type handler)) (cdr v))))
-	      (push (cons version (list (cons proc (list arg-type res-type handler))))
-		    (cdr p))))
-	(push (cons program
-		    (list (cons version
-				(list (cons proc (list arg-type res-type handler))))))
-	      *handlers*)))
+        (let ((v (assoc version (cdr p))))
+          (if v
+              (let ((c (assoc proc (cdr v))))
+                (if c
+                    (destructuring-bind (old-arg-type old-res-type old-handler) c 
+                      ;; only replace the handler, arg-type and res-type if we have been 
+                      ;; provided with them here, otherwise leave them alone.
+                      ;; basically this allows use to define a handler some time AFTER 
+                      ;; the associated DEFRPC form. This avoids potential circular dependencies
+                      ;; where the handlers implicitly depend on the client calls.
+                      (setf (cdr c) (list (or arg-type old-arg-type)
+                                          (or res-type old-res-type)
+                                          (or handler old-handler)))
+                      (return-from %defhandler))
+                    (push (cons proc (list arg-type res-type handler)) (cdr v))))
+              (push (cons version (list (cons proc (list arg-type res-type handler))))
+                    (cdr p))))
+        (push (cons program
+                    (list (cons version
+                                (list (cons proc (list arg-type res-type handler))))))
+              *handlers*)))
   nil)
 
 (defun find-handler (&optional program version proc)
@@ -674,7 +553,14 @@ OPTIONS allow customization of the generated client function:
 	      (cdr v)))
 	(cdr p))))
 
-;;-----------------------
+(defmacro defhandler (name (var program version proc) &body body)
+  "Define a server handler for the procedure named by PROGRAM,VERSION,PROC."
+  `(progn
+     (defun ,name (,var) ,@body)
+     (%defhandler ',program ,version ,proc
+                  nil nil #',name)))
+
+;;------------------------------------------------------------------------
 
 ;; these could be used in some sort of asynchronous way.
 ;; For this to be useful we need the following which is currently only implemented in CALL-RPC:

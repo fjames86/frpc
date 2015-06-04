@@ -50,25 +50,22 @@
    (let ((f (find flavour *auth-flavours* :key #'car :test #'eq)))
      (if f (write-uint32 stream (cadr f)) (error "Unknown authentication flavour ~S" flavour)))))
 
+(defun %define-auth-flavour (name val)
+  (let ((pair (assoc name *auth-flavours*)))
+    (if pair
+        (setf (cdr pair) (list val))
+        (push (list name val) *auth-flavours*))))
+
 (defmacro define-auth-flavour (name val)
-  `(push (list ',name ,val) *auth-flavours*))
+  `(%define-auth-flavour ',name ,val))
 
 (define-auth-flavour :auth-null 0)
 (define-auth-flavour :auth-unix 1)
 (define-auth-flavour :auth-short 2)
 (define-auth-flavour :auth-des 3)
 (define-auth-flavour :auth-kerb4 4)
-(define-auth-flavour :auth-rsa 5)
+(define-auth-flavour :auth-rsa 5) ;; AUTH_RSA/Gluster, the Gluster protocols use this for their own flavour 
 (define-auth-flavour :auth-gss 6)
-
-;; (defxenum auth-flavour 
-;;   (:auth-null 0)
-;;   (:auth-unix 1)
-;;   (:auth-short 2)
-;;   (:auth-des 3)
-;;   (:auth-kerb4 4) ;; kerberos v4, we don't support this
-;;   (:auth-rsa 5) ;; AUTH_RSA/Gluster, the Gluster protocols use this for their own flavour 
-;;   (:auth-gss 6))
 
 ;; -------------------------------------------
 
@@ -236,94 +233,16 @@ Returns a response verifier to be sent back to the client or nil in the case of 
   (:documentation "Returns a string representing the principal that was authenticated, or nil if none available."))
 
 ;; default method returns nil
-(defmethod auth-principal-name (type data) 
-  nil)
+(defmethod auth-principal-name (type data) nil)
 
-;; 9.1 null authentication
+
+;; null authentication just returns nil
 (defmethod authenticate ((flavour (eql :auth-null)) data verf)
   (make-opaque-auth :auth-null nil))
-
 (defmethod pack-auth-data ((flavour (eql :auth-null)) data) nil)
 (defmethod unpack-auth-data ((flavour (eql :auth-null)) data) nil)
 
-;; 9.2 UNIX authentication
-
-(defxstruct auth-unix ()
-  (stamp :uint32)
-  (machine-name :string)
-  (uid :uint32)
-  (gid :uint32)
-  (gids (:varray :uint32 16)))
-
-(defmethod pack-auth-data ((type (eql :auth-unix)) data)
-  (pack #'%write-auth-unix data))
-
-(defmethod unpack-auth-data ((type (eql :auth-unix)) data)
-  (unpack #'%read-auth-unix data))
-
-(defmethod auth-principal-name ((type (eql :auth-unix)) data)       
-  (format nil "~A@~A" (auth-unix-uid data) (auth-unix-machine-name data)))
-
-(defvar *unix-contexts* (make-cyclic-buffer 10)
-  "Table of AUTH-UNIX contexts that have been granted.")
-
-(defun unix-init (&optional (max-contexts 10))
-  "Initialize the UNIX authentication context table. MAX-CONTEXTS is the maximum number of valid contexts that will be granted, slots in the table will be cleared and reused once the table has been filled."
-  (setf *unix-contexts* (make-cyclic-buffer max-contexts)))
-
-(defstruct unix-context unix short)
-
-(defmethod auth-principal-name ((type (eql :auth-short)) data)
-  (let ((c (find-unix-context data)))
-    (when c 
-      (let ((u (unix-context-unix c)))
-        (format nil "~A@~A" (auth-unix-uid u) (auth-unix-machine-name u))))))
-
-(defun add-unix-context (unix)
-  (let ((c (make-unix-context :unix unix
-			      :short (let ((v (nibbles:make-octet-vector 4)))
-				       (setf (nibbles:ub32ref/be v 0) (random (expt 2 32)))
-				       v))))
-    (cyclic-push *unix-contexts* c)
-    c))
-
-(defun find-unix-context (short)
-  (cyclic-find-if (lambda (c)
-		    (equalp (unix-context-short c) short))
-		  *unix-contexts*))
-
-(defmethod authenticate ((flavour (eql :auth-unix)) data verf)
-  (declare (ignore verf))
-  (let ((c (add-unix-context data)))
-    (make-opaque-auth :auth-short (unix-context-short c))))
-
-(defmethod authenticate ((flavour (eql :auth-short)) data verf)
-  (declare (ignore verf))
-  (let ((c (find-unix-context data)))
-    (if c
-	(make-opaque-auth :auth-null nil)
-	nil)))
-   
-
-;; GSS authentication 
-
-(defmethod pack-auth-data ((type (eql :auth-gss)) data)
-  (pack #'%write-gss-cred data))
-
-(defmethod unpack-auth-data ((type (eql :auth-gss)) data)
-  (unpack #'%read-gss-cred data))
-
-;; lookup the handle specified
-(defmethod authenticate ((flavour (eql :auth-gss)) data verf)
-  (let ((authp (gss-authenticate-handle data)))
-    (when authp
-      (frpc-log :trace "GSS authenticated")
-      (make-opaque-auth :auth-null nil))))
-
-
-;; ---------------------------------------------------------
-
-;; -------- DEPRECATED -------------
+;; -------- DEPRECATED --------------------------------
 ;; this was the old way to define RPC interfaces. It involved modifying 
 ;; a pair of globals at compile time so that the macroexpander could insert
 ;; program/version numbers. 
@@ -338,7 +257,7 @@ Returns a response verifier to be sent back to the client or nil in the case of 
      (setf *rpc-program* ,program
 	   *rpc-version* ,version)))
 
-;; ----------------------------------
+;; ------------------------------------------------------
 
 
 (defvar *programs* nil
@@ -393,3 +312,50 @@ In all cases returns a list of (name number) or nil if not found."
       (etypecase id
         ((or symbol string) (cadr p))
         (integer (car p))))))
+
+
+;; ----------------------------------------------------
+
+(defparameter *rpc-host* "localhost")
+(defparameter *rpc-port* 111)
+
+(defclass rpc-client ()
+  ((host :initarg :host :initform *rpc-host* :accessor rpc-client-host)
+   (port :initarg :port :initform *rpc-port* :accessor rpc-client-port)
+   (protocol :initarg :protocol :initform :udp :accessor rpc-client-protocol)
+   (timeout :initarg :timeout :initform 1 :accessor rpc-client-timeout)
+   ;; extras
+   (program :initarg :program :initform nil :accessor rpc-client-program)
+   (version :initarg :version :initform nil :accessor rpc-client-version)
+   (initial :initform t :accessor rpc-client-initial)
+   (connection :initarg :connection :initform nil :accessor rpc-client-connection)))
+
+(defmethod print-object ((client rpc-client) stream)
+  (print-unreadable-object (client stream :type t :identity t)
+    (format stream ":HOST ~S :PORT ~A :PROGRAM ~A"
+	    (rpc-client-host client)
+	    (rpc-client-port client)
+	    (rpc-client-program client))))
+
+;; reinitializing the instance just means setting its initial flag again
+(defmethod reinitialize-instance :after ((instance rpc-client) &key)
+  (setf (rpc-client-initial instance) t))
+
+(defgeneric rpc-client-auth (client)
+  (:documentation "The authenticator to use for the client request."))
+
+(defgeneric rpc-client-verf (client)
+  (:documentation "The verifier to use for the client request."))
+
+(defgeneric verify (client verf)
+  (:documentation "Verify the response received from the server. Signals an error on failure."))
+
+
+;; default methods for auth-null flavour authentication 
+(defmethod rpc-client-auth ((client rpc-client))
+  (make-opaque-auth :auth-null nil))
+
+(defmethod rpc-client-verf ((client rpc-client))
+  (make-opaque-auth :auth-null nil))
+
+(defmethod verify ((client rpc-client) verf) t)
