@@ -335,7 +335,8 @@ VERIFIER should be T. Otherwise VERIFIER should be nil."
   (dh-conversation-key))
 
 (defun des-initial-auth (conversation name client-secret server-public window timestamp)
-  "Make a DES authenticator for initial requets."
+  "Make a DES authenticator for initial requests."
+  ;;(keyserv:call-encrypt server-name conversation)
   (let ((common (dh-common-key client-secret server-public)))
     ;; form a 2-block array and encrypt using the conversation key in CBC mode
     (let ((v (dh-encrypt (make-dh-cipher conversation t)
@@ -360,13 +361,13 @@ VERIFIER should be T. Otherwise VERIFIER should be nil."
 						      :adv-winverf (subseq v 12 16))))))
 
 (defun des-auth (nickname)
-  "Make a DES authenticator for subsequence client calls."
+  "Make a DES authenticator for subsequent client calls."
   (make-opaque-auth :auth-des
 		    (pack #'%write-authdes-cred 
 			  (make-xunion :nickname nickname))))
 
 (defun des-verf (conversation)
-  "Make a DES verifier for subsequence client calls."
+  "Make a DES verifier for subsequent client calls."
   (make-opaque-auth :auth-des
 		    (pack #'%write-authdes-verf-client 
 			  (make-authdes-verf-client :adv-timestamp (encrypt-des-timestamp conversation)

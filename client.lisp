@@ -520,12 +520,7 @@ OPTIONS allow customization of the generated client function:
           (if v
               (let ((c (assoc proc (cdr v))))
                 (if c
-                    (destructuring-bind (old-arg-type old-res-type old-handler) c 
-                      ;; only replace the handler, arg-type and res-type if we have been 
-                      ;; provided with them here, otherwise leave them alone.
-                      ;; basically this allows use to define a handler some time AFTER 
-                      ;; the associated DEFRPC form. This avoids potential circular dependencies
-                      ;; where the handlers implicitly depend on the client calls.
+                    (destructuring-bind (old-arg-type old-res-type old-handler) (cdr c)
                       (setf (cdr c) (list (or arg-type old-arg-type)
                                           (or res-type old-res-type)
                                           (or handler old-handler)))

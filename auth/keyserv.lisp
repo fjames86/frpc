@@ -76,8 +76,13 @@
 
 ;; ------------------------------
 
+(defun handle-void (void)
+  (declare (ignore void))
+  nil)
+
 (defrpc call-null 0 :void :void
-  (:program keyserv 1))
+  (:program keyserv 1)
+  (:handler #'handle-void))
 
 ;; ----------------------------------------
 
@@ -91,7 +96,8 @@
     (if (eq res :success) 
         nil
         (error 'key-error :stat res)))
-  (:documentation "This is my secret key, store it for me."))
+  (:documentation "This is my secret key, store it for me.")
+  (:handler #'handle-void))
 
 ;; ---------------------------------
 
@@ -103,7 +109,8 @@
     (if (eq (xunion-tag res) :success)
         (xunion-val res)
         (error 'key-error :stat (xunion-tag res))))
-  (:documentation "I want to talk to X, encrypt a conversation key for me."))
+  (:documentation "I want to talk to X, encrypt a conversation key for me.")
+  (:handler #'handle-void))
 
 ;; ---------------------------------
 
@@ -115,13 +122,15 @@
     (if (eq (xunion-tag res) :success)
         (xunion-val res)
         (error 'key-error :stat (xunion-tag res))))
-  (:documentation "X just sent me a message, decrypt the conversation key for me."))
+  (:documentation "X just sent me a message, decrypt the conversation key for me.")
+  (:handler #'handle-void))
 
 ;; ---------------------------------
 
 (defrpc call-gen 4 :void des-block 
   (:program keyserv 1)
-  (:documentation "Generate a conversation key for me."))
+  (:documentation "Generate a conversation key for me.")
+  (:handler #'handle-void))
 
 ;; ---------------------------------
 
