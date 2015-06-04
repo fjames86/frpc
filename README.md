@@ -342,13 +342,14 @@ i.e. determining whether the client is permitted to perform the action requested
 Supported flavours:
 - [x] AUTH-NULL: i.e. no authentication
 - [x] AUTH-UNIX and AUTH-SHORT: uid/gid and machine name. Not really authentication as such, 
-but a simple tagging mechanism.
+but a simple tagging mechanism. Provided directly by frpc.
 - [x] AUTH-DES: public-key exchange verified by encrypted timestamps. This requires both the client 
 and server have access to the public keys for each other. Traditionally this is implemented using some shared
 repository accessable via RPC (usually NIS or NIS+), however frpc does not assume such a repository is available.
-Key management is left as an exercise for future development.
+Key management is left as an exercise for future development. Provided by FRPC-DES system.
 - [x] AUTH-GSS: GSS (i.e. Kerberos) authentication, supports authentication, integrity validation and privacy.
-Uses the package [cerberus](https://github.com/fjames86/cerberus) to implement Kerberos v5 authentication.
+Uses the package [cerberus](https://github.com/fjames86/cerberus) to implement Kerberos v5 authentication. 
+Provided by FRPC-GSS system.
 
 
 To use client authentication you must create an instance of a subclass of RPC-CLIENT (see below). This can
@@ -380,7 +381,12 @@ This is the default mechanism and requires no special treatment.
 ```
 
 ### 5.3 AUTH-DES
+This is provided by the FRPC-DES system and should be loaded first, e.g.
+```
+CL-USER> (ql:quickload "frpc-des")
+```
 
+All extra symbols are put into the frpc package. Usage:
 ```
 ;; for this example, we explicitly define the secret keys
 ;; in reality, only the client knows its secret key, only the server knows its secret key
@@ -410,10 +416,10 @@ CL-USER> (frpc:des-init *server-secret* (list (frpc:des-public-key "xxxx" *clien
 ```
 
 ### 5.4 AUTH-GSS (Kerberos)
-
-GSS support provided by [glass](https://github.com/fjames86/glass). Please note, if you want Kerberos support
-this is provided by [cerberus](https://github.com/fjames86/cerberus), you should load this package to provide 
-the required methods. 
+This is provided by the FRPC-GSS system, load using e.g.
+```
+CL-USER> (ql:quickload "frpc-gss")
+```
 
 RPCSEC_GSS provides both integrity (checksumming) and privacy (encryption) of the call arguments/results. Set 
 the :SERVICE level to `:INTEGRITY` for checksumming and `:PRIVACY` for encryption and checksumming of the call
