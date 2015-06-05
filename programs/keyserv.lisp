@@ -6,7 +6,6 @@
 ;;;
 ;;; This file defines a keyserver (as defined in key_prot.x) to distribute secret/public keys for use with 
 ;;; AUTH-DES authentication flavour. 
-;;; Essentially this is an RPC interface to the functionality in des.lisp.
 ;;; 
 
 (defpackage #:keyserv
