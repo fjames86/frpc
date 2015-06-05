@@ -8,11 +8,20 @@
            #:des-public
            #:des-conversation
 
-	   #:call-null
+	   ;; access to local database
+	   #:add-public-key
+	   #:remove-public-key
+	   #:public-key-list
+	   #:find-public-key
+
+	   ;; RPC interface to database
+           #:call-null
+           #:call-get
            #:call-set
-           #:call-encrypt
-           #:call-decrypt
-           #:call-gen
-           #:call-get))
+	   #:call-unset
+	   #:call-list))
+
+
+
 
 

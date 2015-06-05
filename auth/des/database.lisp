@@ -31,14 +31,20 @@
     ;; read the header, if the count is less than the size then remap
     (let ((real-count (key-db-count)))
       (cond
-	((zerop count)
+	((zerop real-count)
 	 ;; the count is zero ,this means it is a freshly created file
 	 ;; write the initial count
+	 (file-position *key-db-stream* 0)
 	 (nibbles:write-ub32/be count *key-db-stream*))
 	((> real-count count)
 	 ;; the real count is larger than the requested count, means we need to remap to a larger size
 	 (close-key-file)
-	 (open-key-file real-count))))))
+	 (open-key-file real-count))
+	((< real-count count)
+	 ;; the requested count is smaller than the current count
+	 ;; write a new count to the header
+	 (file-position *key-db-stream* 0)
+	 (nibbles:write-ub32/be count *key-db-stream*))))))
 
 ;;(defxstruct key-list-header ()
 ;;  (count :uint32))
@@ -47,7 +53,7 @@
   (active :boolean)
   (timestamp :uint64)
   (name :string)
-  (key keybuf))
+  (key (:varray* :octet 48)))
 
 (defun integer-keybuf (integer)
   "Convert a bignum to a keybuffer"
@@ -64,16 +70,17 @@
     (setf n (+ (ash n 8) (aref keybuf i)))))
 
 
-(defun add-key-list-entry (name public)
+(defun add-public-key (name public)
   "Create a new entry in the database. If this entry already exists then it is modified."
   (declare (type string name)
-	   (type integer secret))
+	   (type integer public))
   ;; walk the mapping to find an empty entry, otherwise expand the mapping 
-  (let (count)
+  (let ((count 0))
     (pounds:with-locked-mapping (*key-db-stream*)
       (setf count (key-db-count))
-      (dotimes (i (1- count))
-	(file-position *key-db-stream* (* +key-entry-size+ (1+ i)))
+      (do ((i 1 (1+ i)))
+	  ((>= i count))
+	(file-position *key-db-stream* (* +key-entry-size+ i))
 	(let ((entry (read-key-list-entry *key-db-stream*)))
 	  (cond
 	    ((and (key-list-entry-active entry)
@@ -81,18 +88,18 @@
 	     ;; this is the entry, update its key and timestamp
 	     (setf (key-list-entry-key entry) (integer-keybuf public)
 		   (key-list-entry-timestamp entry) (get-universal-time))
-	     (file-position *key-db-stream* (* +key-entry-size+ (1+ i)))
+	     (file-position *key-db-stream* (* +key-entry-size+ i))
 	     (write-key-list-entry *key-db-stream* entry)
-	     (return-from add-key-list-entry))
-	    (t 
+	     (return-from add-public-key))
+	    ((not (key-list-entry-active entry))
 	     ;; this entry is free, use it
 	     (setf (key-list-entry-active entry) t
 		   (key-list-entry-timestamp entry) (get-universal-time)
 		   (key-list-entry-name entry) name
 		   (key-list-entry-key entry) (integer-keybuf public))
-	     (file-position *key-db-stream* (* +key-entry-size+ (1+ i)))
+	     (file-position *key-db-stream* (* +key-entry-size+ i))
 	     (write-key-list-entry *key-db-stream* entry)
-	     (return-from add-key-list-entry))))))
+	     (return-from add-public-key))))))
     ;; no free entries, expand the mapping 
     (close-key-file)
     (open-key-file (* count 2))
@@ -105,7 +112,7 @@
 	(write-key-list-entry *key-db-stream* entry))))
   nil)
 
-(defun remove-key-list-entry (name)
+(defun remove-public-key (name)
   "Delete the entry for this name from the database."
   (declare (type string name))
   ;; walk the mapping to find the entry
@@ -120,7 +127,8 @@
 	    (setf (key-list-entry-active entry) nil)
 	    (file-position *key-db-stream* (* +key-entry-size+ (1+ i)))
 	    (write-key-list-entry *key-db-stream* entry)
-	    (return-from remove-key-list-entry nil)))))))
+	    (return-from remove-public-key nil))))))
+  nil)
 
 (defun find-public-key (name)
   "Look up the public key for this name. Returns the public key or nil if not found."
@@ -143,7 +151,7 @@
     (let ((count (key-db-count)))
       (do ((i 1 (1+ i))
 	   (entries nil))
-	  ((= i count))
+	  ((= i count) entries)
 	(file-position *key-db-stream* (* +key-entry-size+ i))
 	(let ((entry (read-key-list-entry *key-db-stream*)))
 	  (when (key-list-entry-active entry)
@@ -152,23 +160,3 @@
 			:timestamp (key-list-entry-timestamp entry))
 		  entries)))))))
   
-
-;; ----------------------------------------------
-
-(defvar *server-secret* nil)
-
-(defun des-init (name secret &optional (max-contexts 10))
-  "Initialize the server with its secret key so it can accept DES authentication."
-  (declare (type string name)
-	   (type integer secret)
-	   (type integer max-contexts))
-  (setf *des-contexts* (frpc::make-cyclic-buffer max-contexts)
-	*server-secret* secret)
-  (open-key-file)
-  (add-key-list-entry name (des-public secret)))
-  
-;; ---------------------------------------------------
-
-
-;; to facilitate external access to the local database we provide a custom RPC interface, see frpc-des.x
-

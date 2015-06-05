@@ -414,3 +414,24 @@ VERIFIER should be T. Otherwise VERIFIER should be nil."
     ;; store the nickname 
     (setf (des-client-nickname client) (authdes-verf-server-adv-nickname v)
 	  (frpc::rpc-client-initial client) nil)))
+
+
+
+
+
+
+;; ----------------------------------------------
+
+(defvar *server-secret* nil)
+
+(defun des-init (name secret &optional (max-contexts 10))
+  "Initialize the server with its secret key so it can accept DES authentication."
+  (declare (type string name)
+	   (type integer secret)
+	   (type integer max-contexts))
+  (setf *des-contexts* (frpc::make-cyclic-buffer max-contexts)
+	*server-secret* secret)
+  (open-key-file)
+  (add-public-key name (des-public secret)))
+  
+;; ---------------------------------------------------
