@@ -615,12 +615,12 @@ which consists of a structure followed by an optional next structure, e.g.
       (unless b (setf done t)))))
 
 (defun write-xtype-list (stream type list)
-  (do ((list list (cdr list)))
-      ((null list))
-    (write-xtype type stream (car list))
-    (if (cdr list)
-        (write-xtype stream :boolean t)
-        (write-xtype stream :boolean nil))))
+  (do ((%list list (cdr %list)))
+      ((null %list))
+    (write-xtype type stream (car %list))
+    (if (cdr %list)
+        (write-xtype :boolean stream t)
+        (write-xtype :boolean stream nil))))
 
 ;; ----------
 

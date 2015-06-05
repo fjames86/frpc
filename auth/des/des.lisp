@@ -237,6 +237,8 @@ VERIFIER should be T. Otherwise VERIFIER should be nil."
 
 ;;; -----------------------------------
 
+(defvar *server-secret* nil)
+
 ;; server validates the client request. Returns a server verifier.
 (defun des-valid-client-request (auth verf)
   "This runs on the server and validates the initial client request. Returns a server verifier."
@@ -421,8 +423,6 @@ VERIFIER should be T. Otherwise VERIFIER should be nil."
 
 
 ;; ----------------------------------------------
-
-(defvar *server-secret* nil)
 
 (defun des-init (name secret &optional (max-contexts 10))
   "Initialize the server with its secret key so it can accept DES authentication."

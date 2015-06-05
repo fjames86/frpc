@@ -386,33 +386,48 @@ This is provided by the FRPC-DES system and should be loaded first, e.g.
 CL-USER> (ql:quickload "frpc-des")
 ```
 
-All extra symbols are put into the frpc package. Usage:
+#### 5.3.1 Overview 
+AUTH-DES authentication is based on a Diffie-Hellman key exchange. Each party (client and server) have a secret 
+key, from which public keys are derived. The public keys are exchanged beforehand by some unspecified mechanism.
+Traditionally this was implemented using an RPC service (defined by key_prot.x) but this is somewhat award to use.
+Frpc instead implements its own shared database of public keys, which is exported using RPC so that remote machines
+can access its entries. Local processes can simply read from the database.
+
+The local API is 
+* FIND-PUBLIC-KEY name ::= lookup the public key for this name
+* ADD-PUBLIC-KEY name public ::= store the public key for this name
+* REMOVE-PUBLIC-KEY name ::= delete the entry for this name
+* LIST-PUBLIC-KEYS ::= list all entries in the local database.
+
+The RPC API is:
+* CALL-GET name ::= lookup the public key for this name
+* CALL-SET name public ::= set the public key for this name
+* CALL-UNSET name ::= delete the entry for this name
+* CALL-LIST ::= enumerate all entries
+
+CALL-SET and CALL-UNSET may only be called by the same user, and must already been authenticated using AUTH-DES.
+
+#### 5.3.2 Usage
+Note that the client must know the name of the principal the service is running under. That has to be 
+agreed in advance.
+
+On the server:
 ```
-;; for this example, we explicitly define the secret keys
-;; in reality, only the client knows its secret key, only the server knows its secret key
-CL-USER> (defvar *client-secret* 123123211212320)
-*CLIENT-SECRET*
-CL-USER> (defvar *server-secret* 66554433223432)
-*SERVER-SECRET*
+;; open the database and ensure the database has an entry with the service name and secret key
+CL-USER> (frpc-des:des-init "service-user" 123123123)
+```
 
-;; the client acquires its secret key and the server's public key
-CL-USER> (defvar *server-public* (frpc:des-public *server-secret*)) 
-*SERVER-PUBLIC*
-;; allocate a client 
-CL-USER> (defvar *client* (make-instance 'frpc:des-client :secret *client-secret* :public *server-public* :name "xxxx"))
-*CLIENT2*
-;; first call uses fullname authentication
-CL-USER> (frpc.bind:call-null :client *client*)
-NIL
-;; subsequent calls use an allocated nickname
-CL-USER> (frpc.bind:call-null :client *client*)
+On the client:
+```
+;; get the public key for the service user
+CL-USER> (defvar *service-public* (frpc-des:call-get "service-user"))
 
-;; the server acquires its secret key and the client's public key 
-CL-USER> (defvar *client-public* (frpc:des-public *client-secret*))
-*CLIENT-PUBLIC*
-;; initializes itself and is ready to accept DES requests
-;; note: the server will only be able to accept requests from the clients listed here
-CL-USER> (frpc:des-init *server-secret* (list (frpc:des-public-key "xxxx" *client-public*)))
+;; create a client
+CL-USER> (defvar *client* (make-instance 'frpc-des:des-client :name "user-name" :secret 111122223333 :public *service-public*))
+
+;; call a function, e.g. change my database entry
+CL-USER> (frpc-des:call-set "user-name" 666666666 :client *client*)
+
 ```
 
 ### 5.4 AUTH-GSS (Kerberos)
