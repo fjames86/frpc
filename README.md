@@ -344,9 +344,8 @@ Supported flavours:
 - [x] AUTH-UNIX and AUTH-SHORT: uid/gid and machine name. Not really authentication as such, 
 but a simple tagging mechanism. Provided directly by frpc.
 - [x] AUTH-DES: public-key exchange verified by encrypted timestamps. This requires both the client 
-and server have access to the public keys for each other. Traditionally this is implemented using some shared
-repository accessable via RPC (usually NIS or NIS+), however frpc does not assume such a repository is available.
-Key management is left as an exercise for future development. Provided by FRPC-DES system.
+and server have access to the public keys for each other. frpc implements its own system using a shared database
+for local access and an RPC interface for remote access.
 - [x] AUTH-GSS: GSS (i.e. Kerberos) authentication, supports authentication, integrity validation and privacy.
 Uses the package [cerberus](https://github.com/fjames86/cerberus) to implement Kerberos v5 authentication. 
 Provided by FRPC-GSS system.
@@ -389,7 +388,7 @@ CL-USER> (ql:quickload "frpc-des")
 #### 5.3.1 Overview 
 AUTH-DES authentication is based on a Diffie-Hellman key exchange. Each party (client and server) have a secret 
 key, from which public keys are derived. The public keys are exchanged beforehand by some unspecified mechanism.
-Traditionally this was implemented using an RPC service (defined by key_prot.x) but this is somewhat award to use.
+Traditionally this was implemented using an RPC service (defined by key_prot.x, see programs/keyserv.lisp) but this is somewhat award to use.
 Instead frpc implements its own shared database of public keys, which is exported using RPC so that remote machines
 can access its entries. Local processes can simply read from the database, remote processes use the RPC interface.
 
@@ -405,7 +404,8 @@ The RPC API is:
 * CALL-UNSET name ::= delete the entry for this name
 * CALL-LIST ::= enumerate all entries
 
-CALL-SET and CALL-UNSET may only be called by the named user and must have been authenticated using AUTH-DES.
+CALL-SET and CALL-UNSET may only be called by the named user and must have been authenticated using AUTH-DES. Note that 
+this means the database entry can only be created using the local API. However, they can be modified/deleted remotely.
 
 #### 5.3.2 Usage
 Note that the client must know the name of the principal the service is running under. That has to be 
@@ -426,7 +426,7 @@ CL-USER> (defvar *service-public* (frpc-des:call-get "service-user"))
 CL-USER> (defvar *client* (make-instance 'frpc-des:des-client :name "user-name" :secret 111122223333 :public *service-public*))
 
 ;; call a function, e.g. change my database entry
-CL-USER> (frpc-des:call-set "user-name" 666666666 :client *client*)
+CL-USER> (frpc-des:call-set "user-name" (frpc-des:des-public 666666666) :client *client*)
 ```
 
 ### 5.4 AUTH-GSS (Kerberos)
