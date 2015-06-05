@@ -405,7 +405,7 @@ The RPC API is:
 * CALL-UNSET name ::= delete the entry for this name
 * CALL-LIST ::= enumerate all entries
 
-CALL-SET and CALL-UNSET may only be called by the same user, and must already been authenticated using AUTH-DES.
+CALL-SET and CALL-UNSET may only be called by the same user and must have been authenticated using AUTH-DES.
 
 #### 5.3.2 Usage
 Note that the client must know the name of the principal the service is running under. That has to be 
@@ -427,7 +427,6 @@ CL-USER> (defvar *client* (make-instance 'frpc-des:des-client :name "user-name" 
 
 ;; call a function, e.g. change my database entry
 CL-USER> (frpc-des:call-set "user-name" 666666666 :client *client*)
-
 ```
 
 ### 5.4 AUTH-GSS (Kerberos)
