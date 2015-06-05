@@ -37,6 +37,7 @@
 		      :components
 		      ((:file "package")
 		       (:file "database" :depends-on ("package"))
+		       (:file "interface" :depends-on ("database"))
 		       (:file "des" :depends-on ("database")))))))
   :depends-on (:frpc :ironclad))
 
