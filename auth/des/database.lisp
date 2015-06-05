@@ -78,7 +78,7 @@
     (setf n (+ (ash n 8) (aref keybuf i)))))
 
 
-(defun add-public-key (name public)
+(defun add-public-key (name public &optional (modify t))
   "Create a new entry in the database. If this entry already exists then it is modified."
   (declare (type string name)
 	   (type integer public))
@@ -92,8 +92,9 @@
 	(let ((entry (read-key-list-entry *key-db-stream*)))
 	  (cond
 	    ((and (key-list-entry-active entry)
-		  (string-equal (key-list-entry-name entry) name))
-	     ;; this is the entry, update its key and timestamp
+		  (string-equal (key-list-entry-name entry) name)
+		  modify)
+	     ;; this is the same entry, update its key and timestamp
 	     (setf (key-list-entry-key entry) (integer-keybuf public)
 		   (key-list-entry-timestamp entry) (get-universal-time))
 	     (file-position *key-db-stream* (* +key-entry-size+ i))

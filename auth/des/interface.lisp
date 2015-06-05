@@ -26,11 +26,11 @@
    (write-xtype-list stream 'frpc-des-entry list)))
 
 ;; a random program number I generated
-(frpc:defprogram frpc-des-prog 814857052)
+(defprogram frpc-des-prog 814857052)
 
 ;; -----------------------------------
 
-(frpc:defrpc call-null 0 :void :void 
+(defrpc call-null 0 :void :void 
   (:program frpc-des-prog 1)
   (:handler #'default-null-handler))
 
@@ -39,7 +39,7 @@
 (defun handle-get (name)
   (find-public-key name))
 
-(frpc:defrpc call-get 1 :string frpc-des-keybuf 
+(defrpc call-get 1 :string frpc-des-keybuf 
   (:program frpc-des-prog 1)
   (:arg-transformer (name) name)
   (:documentation "Get the public key for the named principal.")
@@ -47,28 +47,36 @@
 
 ;; -----------------------------------
 
-(defun auth-or-fail (name)
+(defun auth-or-fail (&optional name)
   ;; reject if not authenticated using DES for the same name as the person they are claiming to be
   (unless (eq (opaque-auth-flavour *rpc-remote-auth*) :auth-des)
     (frpc-log :trace "Not DES authenticated")
     (error 'rpc-auth-error))
-  (let ((aname (rpc-auth-principal)))
-    (unless (string-equal aname name)
-      (frpc-log :trace "Auth name ~A doesn't match requested name ~A" aname name)
-      (error 'rpc-auth-error))))
-
+  (when name 
+    (let ((aname (rpc-auth-principal)))
+      (unless (string-equal aname name)
+	(frpc-log :trace "Auth name ~A doesn't match requested name ~A" aname name)
+	(error 'rpc-auth-error)))))
+  
 (defun handle-set (arg)
+  ;; the commented version below allows any user to create, but only the specified user to modify 
+  ;; (auth-or-fail)
+  ;; (add-public-key (getf arg :name) (getf arg :public) 
+  ;; 		  ;; only allow modifications if already authenticated as this user
+  ;; 		  (string-equal (getf arg :name) (rpc-auth-principal)))
+
+  ;; this version only allows the specified user to modify 
   (auth-or-fail (getf arg :name))
   (add-public-key (getf arg :name) (getf arg :public))
   nil)
   
-(frpc:defrpc call-set 2 frpc-des-entry :void
+(defrpc call-set 2 frpc-des-entry :void
   (:program frpc-des-prog 1)
   (:arg-transformer (name secret)
     (list :name name :public (des-public secret)))
   (:documentation "Set the public key for the principal named NAME. SECRET should be the secret key, only
 the derived public key is sent to the remote database to be stored.")
-  (:handler #'handle-set)
+  (:handler #'handle-set))
 
 ;; -----------------------------------
 
@@ -77,7 +85,7 @@ the derived public key is sent to the remote database to be stored.")
   (remove-public-key name)
   nil)
   
-(frpc:defrpc call-unset 3 :string :void
+(defrpc call-unset 3 :string :void
   (:program frpc-des-prog 1)
   (:arg-transformer (name public)
     (list :name name :public public))
@@ -88,13 +96,15 @@ the derived public key is sent to the remote database to be stored.")
 
 (defun handle-list (void)
   (declare (ignore void))
-  (let ((entries (public-key-list)))
-    (mapcar (lambda (entry)
-	      (list :name (getf entry :name)
-		    :public (getf entry :public)))
-	    entries)))
+  (public-key-list))
 
-(frpc:defrpc call-list 4 :void (:optional frpc-des-entry-list)
+;; NOTE: if the database happens to be very large then it's possible there won't be enough space
+;; to return them all. If there is a call for it, a future version should offer some sort of tag 
+;; so that the client can continue reading from where the first call finished. 
+
+(defrpc call-list 4 
+  :void 
+  (:optional frpc-des-entry-list)
   (:program frpc-des-prog 1)
   (:documentation "List all database entries.")
   (:handler #'handle-list))

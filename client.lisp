@@ -548,6 +548,10 @@ OPTIONS allow customization of the generated client function:
 	      (cdr v)))
 	(cdr p))))
 
+;; WARNING: this macro seems nice to have but it's generally not a good idea to use it.
+;; I've got it here because there is a change that you might want to write server handlers
+;; which implicitly depend on the client calls provided by defrpc. That means you can't 
+;; specify the real handler in the defrpc form. This allows you to define it at some stage after.
 (defmacro defhandler (name (var program version proc) &body body)
   "Define a server handler for the procedure named by PROGRAM,VERSION,PROC."
   `(progn
