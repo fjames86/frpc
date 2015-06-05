@@ -14,7 +14,7 @@
 (defconstant +key-entry-size+ 128)
 
 ;; path to the file 
-(defvar *keylist-path* (merge-pathnames "frpc-des-keylist.dat"))
+(defvar *keylist-path* (merge-pathnames "frpc-des-keylist.dat" (user-homedir-pathname)))
 
 ;; the file mapping and its stream wrapper 
 (defvar *key-db* nil)
@@ -99,6 +99,7 @@
 		   (key-list-entry-timestamp entry) (get-universal-time))
 	     (file-position *key-db-stream* (* +key-entry-size+ i))
 	     (write-key-list-entry *key-db-stream* entry)
+	     (force-output *key-db-stream*) ;; ensure the buffers are flushed
 	     (return-from add-public-key))
 	    ((not (key-list-entry-active entry))
 	     ;; this entry is free, use it
@@ -108,6 +109,7 @@
 		   (key-list-entry-key entry) (integer-keybuf public))
 	     (file-position *key-db-stream* (* +key-entry-size+ i))
 	     (write-key-list-entry *key-db-stream* entry)
+	     (force-output *key-db-stream*) ;; ensure the buffers are flushed
 	     (return-from add-public-key))))))
     ;; no free entries, expand the mapping 
     (close-key-file)
@@ -118,7 +120,8 @@
 				      :key (integer-keybuf public)
 				      :active t)))
       (pounds:with-locked-mapping (*key-db-stream*)
-	(write-key-list-entry *key-db-stream* entry))))
+	(write-key-list-entry *key-db-stream* entry)
+	(force-output *key-db-stream*)))) ;; ensure the buffers are flushed
   nil)
 
 (defun remove-public-key (name)
@@ -136,6 +139,7 @@
 	    (setf (key-list-entry-active entry) nil)
 	    (file-position *key-db-stream* (* +key-entry-size+ (1+ i)))
 	    (write-key-list-entry *key-db-stream* entry)
+	     (force-output *key-db-stream*) ;; ensure the buffers are flushed
 	    (return-from remove-public-key nil))))))
   nil)
 

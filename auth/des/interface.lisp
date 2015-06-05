@@ -37,12 +37,12 @@
 ;; -----------------------------------
 
 (defun handle-get (name)
-  (find-public-key name))
+  (or (find-public-key name) 0))
 
 (defrpc call-get 1 :string frpc-des-keybuf 
   (:program frpc-des-prog 1)
   (:arg-transformer (name) name)
-  (:documentation "Get the public key for the named principal.")
+  (:documentation "Get the public key for the named principal. Returns 0 if not found.")
   (:handler #'handle-get))
 
 ;; -----------------------------------
@@ -72,10 +72,9 @@
   
 (defrpc call-set 2 frpc-des-entry :void
   (:program frpc-des-prog 1)
-  (:arg-transformer (name secret)
-    (list :name name :public (des-public secret)))
-  (:documentation "Set the public key for the principal named NAME. SECRET should be the secret key, only
-the derived public key is sent to the remote database to be stored.")
+  (:arg-transformer (name public)
+    (list :name name :public public))
+  (:documentation "Set the public key for the principal named NAME. PUBLIC should be the public key to set.")
   (:handler #'handle-set))
 
 ;; -----------------------------------

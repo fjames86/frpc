@@ -381,7 +381,7 @@ This is the default mechanism and requires no special treatment.
 ```
 
 ### 5.3 AUTH-DES
-This is provided by the FRPC-DES system and should be loaded first, e.g.
+This is provided by the FRPC-DES system and should be loaded using, e.g.
 ```
 CL-USER> (ql:quickload "frpc-des")
 ```
@@ -390,8 +390,8 @@ CL-USER> (ql:quickload "frpc-des")
 AUTH-DES authentication is based on a Diffie-Hellman key exchange. Each party (client and server) have a secret 
 key, from which public keys are derived. The public keys are exchanged beforehand by some unspecified mechanism.
 Traditionally this was implemented using an RPC service (defined by key_prot.x) but this is somewhat award to use.
-Frpc instead implements its own shared database of public keys, which is exported using RPC so that remote machines
-can access its entries. Local processes can simply read from the database.
+Instead frpc implements its own shared database of public keys, which is exported using RPC so that remote machines
+can access its entries. Local processes can simply read from the database, remote processes use the RPC interface.
 
 The local API is 
 * FIND-PUBLIC-KEY name ::= lookup the public key for this name
@@ -405,7 +405,7 @@ The RPC API is:
 * CALL-UNSET name ::= delete the entry for this name
 * CALL-LIST ::= enumerate all entries
 
-CALL-SET and CALL-UNSET may only be called by the same user and must have been authenticated using AUTH-DES.
+CALL-SET and CALL-UNSET may only be called by the named user and must have been authenticated using AUTH-DES.
 
 #### 5.3.2 Usage
 Note that the client must know the name of the principal the service is running under. That has to be 
