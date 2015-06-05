@@ -2,12 +2,21 @@
 ;;;; This code is licensed under the MIT license.
 
 ;; this file defines the database codes for persisting the user public keys.
+;; We mmap a file and carve it up into blocks of size +key-entry-size+ each (default 128 bytes).
+;; Each entry MUST fit inside this.
+;; The first block is reserved for the header, currently this is just an unsigned integer indicating the number
+;; of entries in the database.
+;;
 
 (in-package #:frpc-des)
 
+;; block size
 (defconstant +key-entry-size+ 128)
+
+;; path to the file 
 (defvar *keylist-path* (merge-pathnames "frpc-des-keylist.dat"))
 
+;; the file mapping and its stream wrapper 
 (defvar *key-db* nil)
 (defvar *key-db-stream* nil)
 
@@ -41,8 +50,7 @@
 	 (close-key-file)
 	 (open-key-file real-count))
 	((< real-count count)
-	 ;; the requested count is smaller than the current count
-	 ;; write a new count to the header
+	 ;; the requested count is greater than the current count so write the new count to the header
 	 (file-position *key-db-stream* 0)
 	 (nibbles:write-ub32/be count *key-db-stream*))))))
 
