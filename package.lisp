@@ -112,6 +112,7 @@
 	   #:verify 
 	   #:rpc-client-auth
 	   #:rpc-client-verf
+	   #:rpc-client-initial
 
 	   ;; default handler for null procedure
 	   #:default-null-handler

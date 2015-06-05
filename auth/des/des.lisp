@@ -385,7 +385,7 @@ VERIFIER should be T. Otherwise VERIFIER should be nil."
 
 (defmethod rpc-client-auth ((client des-client))
   ;; if initial request then send a fullname cred, otherwise send a nickname 
-  (if (frpc::rpc-client-initial client)
+  (if (rpc-client-initial client)
       (let ((timestamp (des-timestamp)))
 	;; store the timestamp so we can compare with the response timestamp
 	(setf (des-client-timestamp client) timestamp)
@@ -401,7 +401,7 @@ VERIFIER should be T. Otherwise VERIFIER should be nil."
 	(des-auth (des-client-nickname client)))))
 
 (defmethod rpc-client-verf ((client des-client))
-  (if (frpc::rpc-client-initial client)
+  (if (rpc-client-initial client)
       (des-initial-verf (des-client-key client) 
 			(des-client-window client)
 			(des-client-timestamp client))
@@ -415,17 +415,18 @@ VERIFIER should be T. Otherwise VERIFIER should be nil."
       (error 'rpc-error :description "Invalid DES verifier"))
     ;; store the nickname 
     (setf (des-client-nickname client) (authdes-verf-server-adv-nickname v)
-	  (frpc::rpc-client-initial client) nil)))
-
-
-
-
+	  (rpc-client-initial client) nil)))
 
 
 ;; ----------------------------------------------
 
 (defun des-init (name secret &optional (max-contexts 10))
-  "Initialize the server with its secret key so it can accept DES authentication."
+  "Open the DES key database and initialize the server with its secret key so it can accept DES authentication.
+
+NAME ::= name of the user the service should run under.
+SECRET ::= secret key for the user.
+MAX-CONTEXTS ::= maximum number of DES contexts.
+"
   (declare (type string name)
 	   (type integer secret)
 	   (type integer max-contexts))
