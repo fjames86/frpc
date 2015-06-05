@@ -6,7 +6,7 @@
   :author "Frank James <frank.a.james@gmail.com>"
   :description "An ONC-RPC implementation."
   :license "MIT"
-  :version "1.2.5"
+  :version "1.3.0"
   :components
   ((:file "package")
    (:file "log" :depends-on ("package"))
@@ -26,7 +26,7 @@
 (asdf:defsystem :frpc-des
   :name "frpc-des"
   :author "Frank James <frank.a.james@gmail.com>"
-  :description "Provides AUTH_DES authentication flavour for frpc."
+  :description "Provides AUTH-DES authentication flavour for frpc."
   :license "MIT"
   :components
   ((:module :auth
@@ -45,7 +45,7 @@
 (asdf:defsystem :frpc-gss
   :name "frpc-gss"
   :author "Frank James <frank.a.james@gmail.com>"
-  :description "Provides AUTH_GSS (Kerberos) authentication support for frpc."
+  :description "Provides AUTH-GSS (Kerberos) authentication support for frpc."
   :license "MIT"
   :depends-on (:frpc :cerberus))
 
