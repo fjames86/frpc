@@ -1,0 +1,87 @@
+
+Notes on defining frpc authentication providers.
+
+1. Introduction 
+Although ONCRPC has a small number of predefined authentication systems ("flavours") defined by the relevant rfcs,
+it also allows new ones to be defined. See http://www.iana.org/assignments/rpc-authentication-numbers/rpc-authentication-numbers.xhtml for a comprehensive list.
+
+With the exception of RPCSEC_GSS, which requires special treatment (see below), it is very easy to define new 
+authentication flavours in frpc.
+
+2. How to define your own authentication system.
+
+frpc uses a set of eql-specialized generic functions to implement auth flavours.
+
+2.1 Marshal opaque auth data.
+Because the opaque-auth structure contains opaque auth data, this needs to be converted into something useful and 
+specific to your authentication system. Provide eql-specialized methods for PACK-AUTH-DATA and UNPACK-AUTH-DATA,
+
+(define-auth-flavour :auth-myauth 400001)
+
+(defmethod pack-auth-data ((flavour (eql :auth-myauth)) data)
+  ;; data is your structure, return an octet vector containing its packed contents
+  (pack #'%write-my-auth-data data))
+
+(defmethod unpack-auth-data ((flavour (eql :auth-myauth)) buffer)
+  ;; buffer contains an opaque octet vector. you should parse it into a structure of your choice
+  (unpack #'%read-my-auth-data buffer))
+
+2.2 Define server authenticator
+Provide a method for AUTHENTICATE. If successfully authenticated, this should return an opaque-auth 
+structure containing the verifier to return to the client. If authentication fails it should return nil. It 
+should NOT signal an error.
+
+(defmethod authenticate ((flavour (eql :auth-myauth)) data verf)
+  ;; data is an unpacked auth-data, verf is an opaque-auth structure.
+  (make-opaque-auth :auth-null nil))
+
+2.3 Map authenticator into a string representing the caller
+For logging and authorization purposes it is useful, although not mandatory, to provide a method for 
+AUTH-PRINCIPAL-NAME. This should return a string representing the caller. 
+
+(defmethod auth-principal-name ((flavour (eql :auth-myauth)) data)
+  ;; data is the unpacked opaque-auth data
+  nil)
+
+2.4 Provide a client
+Subclass rpc-client to implement your own client class.
+
+(defclass myauth-client (rpc-client)
+  ())
+
+Typically you will want to initialize the instance in some way, e.g. to setup keys, do some initial exchange with
+the server. Provide an AFTER method of initialize-instance for that:
+
+(defmethod initialize-instance :after ((client myauth-client) &key)
+  nil)
+
+2.5 Generate call authenticator and verifier
+Provide methods to generate call authenticators and verifiers. 
+
+(defmethod rpc-client-auth ((client myauth-client))
+ ;; should return an opaque-auth structure
+ (make-opaque-auth :auth-myauth (make-my-auth-data)))
+
+(defmethod rpc-client-verf ((client myauth-client))
+ ;; should return an opaque-auth structure
+ (make-opaque-auth :auth-myauth (make-my-auth-data)))
+
+
+2.6 Optionally verify the server
+If your system expects the server to reply with a verifier (so the client can verify the server) then
+provide a method for verify. You should signal an error here if verification fails.
+
+(defmethod verify ((client myauth-client) verf)
+  ;; verf is the verifier the server responded with
+  nil)
+
+3. Why GSS is different.
+The RPCSEC_GSS flavour provides integrity and privacy services in addition to authentication. In order 
+to implement this the client and server need to modify the call args/results by wrapping them with a checksum
+and encrypting. Because this doesn't fit into the standard RPC authentication model it needs to be hard-coded
+to support it.
+
+
+Frank James
+June 2015.
+
