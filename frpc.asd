@@ -32,9 +32,12 @@
   ((:module :auth
             :pathname "auth"
             :components 
-            ((:file "keyserv")
-             (:file "des" :depends-on ("keyserv"))
-             (:file "keyserv-server" :depends-on ("des")))))
+	    ((:module :des
+		      :pathname "des"
+		      :components
+		      ((:file "package")
+		       (:file "database" :depends-on ("package"))
+		       (:file "des" :depends-on ("database")))))))
   :depends-on (:frpc :ironclad))
 
 

@@ -464,3 +464,8 @@ If no ports are provided then will add wildcard ports to TCP and UDP."
 
 ;; ------------------------
 
+;; a default handler for the null procedure
+(defun default-null-handler (void)
+  (declare (ignore void))
+  nil)
+

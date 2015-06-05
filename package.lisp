@@ -7,7 +7,7 @@
   (:export #:use-rpc-program
 	   #:use-rpc-host
 	   #:defrpc
-       #:defhandler
+	   #:defhandler
 	   #:find-handler
 	   #:generate-program-number
 	   #:defprogram
@@ -84,15 +84,15 @@
 
 	   ;; unix auth
 	   #:unix-client
-       #:auth-unix
+	   #:auth-unix
 	   #:auth-unix-stamp
 	   #:auth-unix-machine-name
 	   #:auth-unix-uid
 	   #:auth-unix-gid
 	   #:auth-unix-gids
-       #:get-unix-creds
-       #:unix-init
-
+	   #:get-unix-creds
+	   #:unix-init
+	   
 	   ;; debug logging
 	   #:*frpc-log*
 	   #:*frpc-log-path*
@@ -103,15 +103,18 @@
 	   #:gss-client
 	   #:gss-init
 
-       ;; for defining authentication providers
-       #:define-auth-flavour 
-       #:pack-auth-data
-       #:unpack-auth-data
-       #:authenticate
-       #:auth-principal-name
-       #:verify 
-       #:rpc-client-auth
-       #:rpc-client-verf
+	   ;; for defining authentication providers
+	   #:define-auth-flavour 
+	   #:pack-auth-data
+	   #:unpack-auth-data
+	   #:authenticate
+	   #:auth-principal-name
+	   #:verify 
+	   #:rpc-client-auth
+	   #:rpc-client-verf
+
+	   ;; default handler for null procedure
+	   #:default-null-handler
 
 	   ))
 

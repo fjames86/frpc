@@ -1,17 +1,10 @@
 ;;;; Copyright (c) Frank James 2015 <frank.a.james@gmail.com>
 ;;;; This code is licensed under the MIT license.
 
-(defpackage #:frpc-des
-  (:use #:cl #:frpc)
-  (:export #:des-client
-           #:des-init
-           #:des-public
-           #:des-conversation))
-
 (in-package #:frpc-des)
 
-(import '(des-client des-init des-public des-public-key des-conversation) :frpc)
-(export '(des-client des-init des-public des-public-key des-conversation) :frpc)
+;;(import '(des-client des-init des-public des-public-key des-conversation) :frpc)
+;;(export '(des-client des-init des-public des-public-key des-conversation) :frpc)
 
 ;; 9.3 DES authentication
 ;; Process is:
@@ -35,6 +28,11 @@
 ;; The server is free to flush the contexts whenever it wishes.
 
 
+;; The big unanswered question that remains is how to distribute the public keys (parts 2 and 7).
+;; This is supposed to be handled by an RPC service (key_prot.x) which provides the entry point to a 
+;; key database (and associated functions, such as encrypting conversation keys). However, this is a bit
+;; award for us because we are quite likely to be running from within the same process as the keyserver. Thus,
+;; we just use a bit of shared memory instead.
 
 ;; ------------- the authenticator -------------
 
@@ -201,41 +199,20 @@ VERIFIER should be T. Otherwise VERIFIER should be nil."
     (= (1+ (getf ts :seconds)) 
        (getf timestamp :seconds))))
 
-
-;; ----------------------------------------------------
-
-
-
-(defvar *des-private-key* nil
-  "The server's private key.")
-
-;; need a database of public keys. Only clients which have an entry in this list may be authenticated
-;; because we need to know their public key 
-(defvar *des-public-keys* nil
-  "List of public keys for each client that may talk to the server.")
-
-(defstruct des-key fullname key)
-
-;; FIXME: at the moment we assume we have local access to a list of public keys.
-;; this function should instead call out to the keyserv service.
-;; Of course, it may well be that this process is also hosting the keyservice, but we can't guarantee that.
-(defun find-des-public-key (fullname)
-  (let ((d (find-if (lambda (d)
-                      (string-equal (des-key-fullname d) fullname))
-                    *des-public-keys*)))
-    (when d (des-key-key d))))
+(defun des-secret ()
+  "Generate a random DES secret key."
+  (random +dh-modulus+))
 
 (defun des-public (secret)
   "Generate a DES public key from the secret key."
   (declare (type integer secret))
   (dh-public-key secret))
 
-(defun des-public-key (name public)
-  "Make a DES public key to pass to DES-INIT"
-  (declare (type string name)
-           (type integer public))
-  (make-des-key :fullname name :key public))
+(defun des-conversation ()
+  "Make a random conversation key."
+  (dh-conversation-key))
 
+;; ----------------------------------------------------
 
 ;; client contexts -- basically information about which clients have been authenticated
 (defstruct des-context 
@@ -260,28 +237,14 @@ VERIFIER should be T. Otherwise VERIFIER should be nil."
 
 ;;; -----------------------------------
 
-(defun des-init (secret public-keys &optional (max-contexts 10))
-  "Initialize the server with its secret key so it can accept DES authentication."
-  (dolist (k public-keys)
-    (unless (typep k 'des-key)
-      (error "Public key ~S not a DES-KEY" k)))
-  (setf *des-private-key* secret
-	*des-public-keys* public-keys
-	*des-contexts* (frpc::make-cyclic-buffer max-contexts)))
-
-
-;; --------------------------------------
-
-
 ;; server validates the client request. Returns a server verifier.
 (defun des-valid-client-request (auth verf)
   "This runs on the server and validates the initial client request. Returns a server verifier."
   (etypecase auth
     (authdes-fullname 
-     ;;(let ((conversation (keyserv:call-decrypt (authdes-fullname-name auth) :client (make-instance 'frpc:unix-client))))
-     (let* ((public (or (find-des-public-key (authdes-fullname-name auth))
+     (let* ((public (or (find-public-key (authdes-fullname-name auth))
 			(error "No public key for ~A" (authdes-fullname-name auth))))
-	    (common (dh-common-key *des-private-key* public)))
+	    (common (dh-common-key *server-secret* public)))
        ;; start by getting the converation key from the authenticator
        (let ((conversation (concatenate '(vector (unsigned-byte 8))
 					(dh-decrypt-conversation-key common 
@@ -330,9 +293,6 @@ VERIFIER should be T. Otherwise VERIFIER should be nil."
 				  (des-context-nickname context)))
 	   (error "No context for nickname ~A" auth))))))
 
-(defun des-conversation ()
-  "Make a random conversation key."
-  (dh-conversation-key))
 
 (defun des-initial-auth (conversation name client-secret server-public window timestamp)
   "Make a DES authenticator for initial requests."
@@ -389,7 +349,6 @@ VERIFIER should be T. Otherwise VERIFIER should be nil."
       (error (e)
 	(frpc-log :info "DES authentication failed: ~A" e)
 	nil))))
-
 
 (defmethod auth-principal-name ((type (eql :auth-des)) data)
   (let ((auth (unpack #'%read-authdes-cred data)))

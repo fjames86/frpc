@@ -70,6 +70,7 @@
   ((uid :initarg :uid :initform 0 :accessor unix-client-uid)
    (gid :initarg :gid :initform 0 :accessor unix-client-gid)
    (gids :initarg :gids :initform nil :accessor unix-client-gids)
+   (machine-name :initarg :machine-name :initform (machine-instance) :reader unix-client-machine-name)
    (nickname :initform nil :accessor unix-client-nickname)))
 
 (defmethod print-object ((client unix-client) stream)
@@ -81,7 +82,7 @@
       (make-opaque-auth :auth-unix
 			(make-auth-unix :stamp (- (get-universal-time) 
 						  (encode-universal-time 0 0 0 1 1 1970 0))
-					:machine-name (machine-instance)
+					:machine-name (unix-client-machine-name client)
 					:uid (unix-client-uid client)
 					:gid (unix-client-gid client)
 					:gids (unix-client-gids client)))
