@@ -224,6 +224,7 @@ Returns the GSS cred on success, signals an RPC-AUTH-ERROR on failure."
 ;; server 
 
 (defmethod authenticate ((flavour (eql :auth-gss)) data verf)
+  (declare (ignore verf))
   (let ((authp (gss-authenticate-handle data)))
     (when authp
       (frpc-log :trace "GSS authenticated")

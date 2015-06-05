@@ -88,11 +88,11 @@
 	  :data (:varray* :octet 400)))
 
 (defgeneric pack-auth-data (flavour data))
-(defmethod pack-auth-data (flavour data)
+(defmethod pack-auth-data ((flavour t) data)
   data)
 
 (defgeneric unpack-auth-data (flavour data))
-(defmethod unpack-auth-data (flavour data)
+(defmethod unpack-auth-data ((flavour t) data)
   data)
 
 ;; wrap the opaque auth so that we can unpack the data, dispatching on flavour
@@ -226,21 +226,28 @@ FLAVOUR is the authentication flavour, data is the authentication data. VERF is 
 Returns a response verifier to be sent back to the client or nil in the case of failure."))
 
 ;; default method for authentication rejects all requests
-(defmethod authenticate (flavour data verf) nil)
+(defmethod authenticate ((flavour t) (data t) (verf t)) nil)
 
 
 (defgeneric auth-principal-name (type data)
   (:documentation "Returns a string representing the principal that was authenticated, or nil if none available."))
 
 ;; default method returns nil
-(defmethod auth-principal-name (type data) nil)
+(defmethod auth-principal-name ((type t) (data t)) nil)
 
 
 ;; null authentication just returns nil
 (defmethod authenticate ((flavour (eql :auth-null)) data verf)
+  (declare (ignore data verf))
   (make-opaque-auth :auth-null nil))
-(defmethod pack-auth-data ((flavour (eql :auth-null)) data) nil)
-(defmethod unpack-auth-data ((flavour (eql :auth-null)) data) nil)
+
+(defmethod pack-auth-data ((flavour (eql :auth-null)) data) 
+  (declare (ignore data))
+  nil)
+
+(defmethod unpack-auth-data ((flavour (eql :auth-null)) data) 
+  (declare (ignore data))
+  nil)
 
 ;; -------- DEPRECATED --------------------------------
 ;; this was the old way to define RPC interfaces. It involved modifying 
@@ -358,4 +365,6 @@ In all cases returns a list of (name number) or nil if not found."
 (defmethod rpc-client-verf ((client rpc-client))
   (make-opaque-auth :auth-null nil))
 
-(defmethod verify ((client rpc-client) verf) t)
+(defmethod verify ((client rpc-client) verf)
+  (declare (ignore verf))
+  t)
