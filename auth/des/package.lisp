@@ -5,6 +5,7 @@
   (:use #:cl #:frpc)
   (:export #:des-client
            #:des-init
+	   #:des-secret
            #:des-public
            #:des-conversation
 

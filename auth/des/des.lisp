@@ -428,8 +428,7 @@ SECRET ::= secret key for the user.
 MAX-CONTEXTS ::= maximum number of DES contexts.
 "
   (declare (type string name)
-	   (type integer secret)
-	   (type integer max-contexts))
+	   (type integer secret max-contexts))
   (setf *des-contexts* (frpc::make-cyclic-buffer max-contexts)
 	*server-secret* secret)
   (open-key-file)
