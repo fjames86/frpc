@@ -95,7 +95,7 @@
 
 (defun handle-list (void)
   (declare (ignore void))
-  (public-key-list))
+  (list-public-keys))
 
 ;; NOTE: if the database happens to be very large then it's possible there won't be enough space
 ;; to return them all. If there is a call for it, a future version should offer some sort of tag 

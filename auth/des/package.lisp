@@ -12,7 +12,7 @@
 	   ;; access to local database
 	   #:add-public-key
 	   #:remove-public-key
-	   #:public-key-list
+	   #:list-public-keys
 	   #:find-public-key
 
 	   ;; RPC interface to database
