@@ -21,7 +21,7 @@
   mapping stream count)
 (defvar *db* nil)
 (defmacro with-locked-db (&body body)
-  `(pounds:with-locked-mapping ((db-mapping *db*)) ,@body))
+  `(pounds:with-locked-mapping ((db-stream *db*)) ,@body))
 
 ;;(defvar *key-db* nil)
 ;;(defvar *key-db-stream* nil)
@@ -49,7 +49,7 @@
     (t
      (let ((mapping (pounds:open-mapping *keylist-path* (* +key-entry-size+ count))))
        (setf *db* (make-db :mapping mapping
-			   :stream (pounds:make-mapping-stream *db*)
+			   :stream (pounds:make-mapping-stream mapping)
 			   :count count))
        ;; read the header, if the count is less than the size then remap
        (let ((real-count (key-db-count)))
