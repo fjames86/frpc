@@ -9,7 +9,8 @@
 
 (defpackage #:frpcgen
   (:use #:cl #:yacc #:cl-lex #:frpc)
-  (:export #:gen))
+  (:export #:gen
+           #:parse-definition))
 
 (in-package #:frpcgen)
 
@@ -358,4 +359,16 @@ Returns the parsed contents."
 	forms))))
 
       
+(defun parse-definition (pathspec)
+  "Parse the XDR definition in PATHSPEC. Returns the parsed contents."
+  (let ((body
+         (with-open-file (f pathspec :direction :input)
+           (with-output-to-string (s)
+             (do ((l (read-line f nil nil) (read-line f nil nil)))
+                 ((null l))
+               (princ l s) 
+               (fresh-line s))))))
+    ;;    (test-lexer body)
+    (test-parser body)))
+
 
