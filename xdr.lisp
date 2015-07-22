@@ -395,6 +395,8 @@
 	  (destructuring-bind (form &optional max-length) (cdr forms)
 	    (alexandria:with-gensyms (glen gi)
 	      `(let ((,glen (read-uint32 ,stream-sym)))
+             (when (> ,glen +max-octet-array-length+)
+               (error "Attempted to read a silly size array ~DMB" (truncate ,glen (* 1024 1024))))
 		 ,@(when max-length 
 			 `((when (> ,glen ,max-length) 
 			     (error "Length ~S exceeds maximum length ~S" ,glen ,max-length))))
