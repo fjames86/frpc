@@ -124,10 +124,12 @@
 
 (defxtype :string ((:reader read-xstring) (:writer write-xstring))
   ((stream)
-   (let* ((len (read-uint32 stream))
-	  (buff (nibbles:make-octet-vector (pad-index len))))
-     (read-sequence buff stream)
-     (babel:octets-to-string buff :start 0 :end len)))
+   (let ((len (read-uint32 stream)))
+     (when (> len +max-octet-array-length+)
+      (error "Attempted to read a silly size array ~DMB" (truncate len (* 1024 1024))))
+     (let ((buff (nibbles:make-octet-vector (pad-index len))))
+       (read-sequence buff stream)
+       (babel:octets-to-string buff :start 0 :end len))))
   ((stream obj)
    (let* ((octets (babel:string-to-octets obj))
 	  (length (length octets)))
@@ -187,7 +189,6 @@
 (defun read-octet-array (stream &optional buffer)
   (let ((len (read-uint32 stream)))
     (when (> len +max-octet-array-length+)
-      (break)
       (error "Attempted to read a silly size array ~DMB" (truncate len (* 1024 1024))))
     (let ((sequence (or buffer (nibbles:make-octet-vector len))))
       (dotimes (i len)
@@ -250,20 +251,20 @@
 
 (defun enum (enum slot)
   (let ((enums (if (listp enum)
-		   enum 
-		   (gethash enum *enums*))))
+                   enum 
+                   (gethash enum *enums*))))
     (unless enums
       (error "No enum defined for ~S" enum))
     (etypecase slot
       (symbol
        (dolist (s enums)
-	 (when (eq slot (car s))
-	   (return-from enum (cdr s)))))
+         (when (eq slot (car s))
+           (return-from enum (cdr s)))))
       (integer 
        (dolist (s enums)
-	 (when (= slot (cdr s))
-	   (return-from enum (car s))))))
-    nil))
+         (when (= slot (cdr s))
+           (return-from enum (car s))))))
+    slot))
 
 (defun enump (enum-type)
   (nth-value 1 (gethash enum-type *enums*)))
@@ -374,8 +375,10 @@
 	  ;; (:varray* form &optional max-length)
 	  (destructuring-bind (form &optional max-length) (cdr forms)
 	    (alexandria:with-gensyms (garr gi glen)
-	      `(let* ((,glen (read-uint32 ,stream-sym))
-		      (,garr (make-array ,glen)))
+	      `(let ((,glen (read-uint32 ,stream-sym)))
+             (when (> ,glen +max-octet-array-length+)
+               (error "Attempted to read a silly size array ~DMB" (truncate ,glen (* 1024 1024))))
+             (let ((,garr (make-array ,glen)))
 		 ,@(when max-length 
 		     `((when (> ,glen ,max-length) 
 			 (error "Length ~S exceeds maximum length ~S" ,glen ,max-length))))
@@ -386,7 +389,7 @@
          ,@(when (eq form :octet)
             `((read-array-padding stream ,glen)
 		 ,garr))
-	 ,garr))))
+	 ,garr)))))
 	 (:varray 
 	  ;; (:varray form &optional max-length)
 	  (destructuring-bind (form &optional max-length) (cdr forms)
