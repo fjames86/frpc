@@ -28,6 +28,12 @@
 	   #:read-xtype-list
 	   #:write-xtype-list
 
+	   ;; runtime XDR parsing 
+	   #:read-xdr-object
+	   #:write-xdr-object 
+	   #:make-xdr-reader
+	   #:make-xdr-writer 
+
 	   ;; enums/unions
 	   #:enum
 	   #:enump
