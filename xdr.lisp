@@ -122,6 +122,8 @@
     (unless (zerop m)
       (write-sequence (subseq #(0 0 0) 0 (- 4 m)) stream))))
 
+(defconstant +max-octet-array-length+ (* 50 1024 1024))
+
 (defxtype :string ((:reader read-xstring) (:writer write-xstring))
   ((stream)
    (let ((len (read-uint32 stream)))
@@ -183,8 +185,6 @@
     (dotimes (i length)
       (funcall writer stream (aref array i))))
   nil)
-
-(defconstant +max-octet-array-length+ (* 50 1024 1024))
 
 (defun read-octet-array (stream &optional buffer)
   (let ((len (read-uint32 stream)))
@@ -777,6 +777,10 @@ No meaningful return value.
        (write-xdr-object stream 
 			 (cadr slots) 
 			 (getf object (car slots)))))
+    ((eq (car spec) :optional)
+     (when object 
+       (write-uint32 stream 1)
+       (write-xdr-object stream (cadr spec) object)))
     (t 
      (error "Unknown spec ~S" spec))))
 		   
@@ -846,6 +850,10 @@ Returns the parsed object.
 	 ((null specs) obj)
        (setf (getf obj (car specs))
 	     (read-xdr-object stream (cadr specs)))))
+    ((eq (car spec) :optional)
+     (let ((flag (read-uint32 stream)))
+       (unless (zerop flag)
+	 (read-xdr-object stream (cadr spec)))))
     (t 
      (error "Unknown spec ~S" spec))))
 
