@@ -59,6 +59,8 @@
 	   ;; client
 	   #:rpc-client 
 	   #:call-rpc
+	   #:send-rpc
+	   #:receive-rpc
 	   #:*rpc-host*
 	   #:*rpc-port*
 

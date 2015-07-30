@@ -549,7 +549,7 @@ OPTIONS allow customization of the generated client function:
 	(cdr p))))
 
 ;; WARNING: this macro seems nice to have but it's generally not a good idea to use it.
-;; I've got it here because there is a change that you might want to write server handlers
+;; I've got it here because there is a chance that you might want to write server handlers
 ;; which implicitly depend on the client calls provided by defrpc. That means you can't 
 ;; specify the real handler in the defrpc form. This allows you to define it at some stage after.
 (defmacro defhandler (name (var program version proc) &body body)
@@ -561,74 +561,117 @@ OPTIONS allow customization of the generated client function:
 
 ;;------------------------------------------------------------------------
 
-;; these could be used in some sort of asynchronous way.
-;; For this to be useful we need the following which is currently only implemented in CALL-RPC:
-;; * client provides default values
-;; * authentication using a client
-;; * GSS integrity/privacy levels modify the call args/result 
-;; 
-;; I imagine something like this, which sends 10 requests and receives replies
-;; (with-rpc-connection (c host port)
-;;   (do ((ids nil) (i 0 (1+ i))) ((= i 10) ids)
-;;     (let ((id (send-rpc c 'my-arg (my-arg))))
-;;       (push (list id) ids)
-;;       (multiple-value-bind (res rid) (receive-rpc c 'res-type nil)
-;;         ;; match up the response id with a sent id
-;;         (let ((pair (assoc rid ids)))
-;;           (when pair (setf (cadr pair) res)))))))
+(defun send-rpc (client arg-type arg proc)
+  "Send an RPC request and return immediately. Does not wait for a reply.
+Responses should be collected with calls to RECEIVE-RPC.
 
-;; (defun send-rpc (connection arg-type arg &key (program 0) (version 0) (proc 0))
-;;   "Send a request and return immediately (does not block). Returns the request ID."
-;;   (etypecase connection
-;;     (usocket:stream-usocket
-;;      (let ((stream (usocket:socket-stream connection))
-;;            (req (make-rpc-request program proc 
-;;                                   :version version)))
-;;        (let ((buffer (flexi-streams:with-output-to-sequence (output)
-;;                        (write-request output 
-;;                                       req
-;;                                       arg-type
-;;                                       arg))))
-;;          ;; write as a single fragment to the socket
-;;          (write-uint32 stream (logior #x80000000 (length buffer)))
-;;          (write-sequence buffer stream)
-;;          (force-output stream))
-;;        (rpc-msg-xid req)))
-;;     (usocket:datagram-usocket 
-;;      (let ((buffer (frpc.streams:allocate-buffer))
-;;            (req (make-rpc-request program proc 
-;;                                   :version version)))
-;;        (let ((count (frpc.streams:with-buffer-stream (stream buffer)
-;;                       (write-request stream 
-;;                                      req
-;;                                      arg-type
-;;                                      arg))))
-;;          (usocket:socket-send connection buffer count ))
-;;        (rpc-msg-xid req)))))
+CLIENT ::= an RPC-CLIENT instance. 
+The client MUST have its PROGRAM, VERSION and CONNECTION slots set.
 
-;; (defun receive-rpc (connection result-type &optional (timeout 1))
-;;   "Wait for an RPC reply from the connection. Returns nil if the timeout expires before a response is received.
-;; Returns (values result xid)."
-;;   (when (usocket:wait-for-input connection :timeout timeout :ready-only t)
-;;     ;; the socket is ready to receive a response
-;;     (etypecase connection
-;;       (usocket:stream-usocket    
-;;        (let ((stream (usocket:socket-stream connection)))
-;;          (flexi-streams:with-input-from-sequence (input (read-fragmented-message stream))
-;;            (multiple-value-bind (msg res) (read-response input result-type)
-;;              (values res (rpc-msg-xid msg))))))
-;;       (usocket:datagram-usocket
-;;        (let ((buffer (frpc.streams:allocate-buffer)))
-;;          (multiple-value-bind (%buffer count remote-host remote-port) (progn (usocket:socket-receive connection buffer 65507))
-;;            (declare (ignore %buffer))
-;;            (frpc-log :trace "Received response from ~A:~A (count ~A)" remote-host remote-port count)
-;;            ;; sbcl bug 1426667: socket-receive on x64 windows doesn't correctly check for errors 
-;;            ;; workaround is to check for -1 as an unsigned int.
-;;            ;; Seems like there is a similar bug in the usocket Lispworks codes too
-;;            (when (or (= count #xffffffff) (= count -1))
-;;              (error "Error: recvfrom returned -1"))
-;;            (let ((input (frpc.streams:make-buffer-stream buffer :end count)))
-;;              (multiple-value-bind (msg res) (read-response input result-type)
-;;                (values res (rpc-msg-xid msg))))))))))
+ARG-TYPE ::= an XDR writer function or a symbol naming an XDR type.
+ARG ::= object to feed to the XDR writer function.
+PROC ::= integer naming the procedure to call.
 
-    
+Returns the XID for the request sent."
+  (declare (type rpc-client client)
+	   (type integer proc)
+	   (type (or function symbol) arg-type))
+  (let ((auth (rpc-client-auth client))
+	(verf (rpc-client-verf client))
+	(program (rpc-client-program client))
+	(version (rpc-client-version client))
+	(connection (rpc-client-connection client)))
+    (unless program (error "Client must have RPC program set."))
+    (unless version (error "Client must have RPC version set."))
+    (unless connection (error "Client must have RPC connection set."))
+
+    ;; when we're doing gss security levels :integrity or :privacy we need to modify the call args
+    (when (typep client 'gss-client)
+      (case (gss-client-service client)
+	(:integrity 
+	 ;; pack and checksum the argument
+	 (setf arg-type (let ((w arg-type))
+			  (lambda (stream obj)
+			    (write-gss-integ stream w obj
+					     (gss-client-context client)
+					     (gss-client-seqno client))))))
+	(:privacy 
+	 ;; pack, checksum and encrypt 
+	 (setf arg-type (let ((a arg-type))
+			  (lambda (stream obj)
+			    (write-gss-priv stream a obj
+					    (gss-client-context client)
+					    (gss-client-seqno client))))))))
+
+    (let* ((buffer (frpc.streams:allocate-buffer))
+	   (msg (make-rpc-request program proc 
+				  :version version
+				  :auth auth
+				  :verf verf))
+	   (count (frpc.streams:with-buffer-stream (stream buffer)
+		    (write-request stream
+				   msg
+				   arg-type
+				   arg))))
+      (etypecase connection
+	(usocket:datagram-usocket
+	 (usocket:socket-send connection buffer count))
+	(usocket:stream-usocket
+	 (write-sequence buffer (usocket:socket-stream connection) :end count)))
+      (rpc-msg-xid msg))))
+
+(defun receive-rpc (client res-type)
+  "Waits for an RPC reply. If the TIMEOUT slot of the client is set then will wait
+for TIMEOUT seconds, otherwise waits indefinitely.
+
+CLIENT ::= an RPC-CLIENT instance. 
+The client MUST have its CONNECTION slot set.
+
+RES-TYPE ::= reader function or symbol naming an XDR type.
+
+Returns (values result xid) where XID is the transaction ID of the 
+reply received. This should be used to match up replies with requests
+sent from SEND-RPC.
+"
+  (declare (type rpc-client client)
+	   (type (or function symbol) res-type))
+  (let ((socket (rpc-client-connection client))
+	(timeout (rpc-client-timeout client)))
+    (unless socket (error "Client must have RPC connection set."))
+    (let ((buffer nil))
+      (when (usocket:wait-for-input socket :timeout timeout :ready-only t)
+	(etypecase socket 
+	  (usocket:datagram-usocket
+	   (setf buffer (frpc.streams:allocate-buffer))
+	   (multiple-value-bind (%buffer count remote-host remote-port) (usocket:socket-receive socket buffer (length buffer))
+	     (declare (ignore %buffer count remote-host remote-port))))
+	  (usocket:stream-usocket
+	   (setf buffer (read-fragmented-message (usocket:socket-stream socket)))))
+
+	;; when we're doing gss security levels :integrity or :privacy we need to modify the result
+	(when (typep client 'gss-client)
+	  (case (gss-client-service client)
+	    (:integrity 
+	     ;; pack and checksum the argument
+	     (setf res-type (let ((r res-type))
+				 (lambda (stream)
+				   (read-gss-integ stream r
+						   (gss-client-context client)
+						   (gss-client-seqno client))))))
+	    (:privacy 
+	     ;; pack, checksum and encrypt 
+	     (setf res-type (let ((r res-type))
+				 (lambda (stream)
+				   (read-gss-priv stream r
+						  (gss-client-context client)
+						  (gss-client-seqno client))))))))
+
+	(let (res msg)
+	  (frpc.streams:with-buffer-stream (stream buffer)
+	    (multiple-value-bind (%msg verf) (read-response stream res-type)
+	      (declare (ignore verf))
+	      (setf res (read-xtype res-type stream)
+		    msg %msg)))
+	  (values res (rpc-msg-xid msg)))))))
+  
+
