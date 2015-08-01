@@ -65,6 +65,9 @@
 	   #:*rpc-port*
 
 	   ;; server
+	   #:rpc-server
+	   #:rpc-server-udp-ports
+	   #:rpc-server-tcp-ports
 	   #:make-rpc-server
 	   #:start-rpc-server
 	   #:run-rpc-server

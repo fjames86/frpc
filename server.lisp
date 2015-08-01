@@ -52,9 +52,10 @@ if it is of type :AUTH-UNIX or :AUTH-SHORT. Returns nil if could not be found."
   tcp-ports
   (timeout 60)
   programs 
-  exiting)
+  exiting
+  timers)
 
-(defun make-rpc-server (&key udp-ports tcp-ports programs (timeout 60))
+(defun make-rpc-server (&key udp-ports tcp-ports programs (timeout 60) timers)
   "Make an RPC server instance. 
 
 PROGRAMS should be a list of program numbers to be accepted by the server, 
@@ -74,7 +75,8 @@ TIMEOUT specifies the duration (in seconds) that a TCP connection should remain 
 				      programs)
 		    :udp-ports udp-ports
 		    :tcp-ports tcp-ports
-		    :timeout timeout))
+		    :timeout timeout
+		    :timers timers))
 
 ;; describes a TCP connection
 (defstruct rpc-connection 
@@ -321,7 +323,11 @@ TIMEOUT specifies the duration (in seconds) that a TCP connection should remain 
 
 	   ;; the polling-loop
 	   (do ((udp-buffer (nibbles:make-octet-vector 65507))
-		(prev-time (get-universal-time)))
+		(prev-time (get-universal-time))
+		(timers (mapcar (lambda (timer)
+				  (destructuring-bind (interval cb arg) timer
+				    (list (+ (get-universal-time) interval) interval cb arg)))
+				(rpc-server-timers server))))
 	       ((rpc-server-exiting server))
 
 	     ;; if any connections are getting old then close them
@@ -329,7 +335,14 @@ TIMEOUT specifies the duration (in seconds) that a TCP connection should remain 
 	     (let ((now (get-universal-time)))
 	       (when (> now prev-time)
 		 (setf connections (purge-connection-list connections now (rpc-server-timeout server))
-		       prev-time now)))
+		       prev-time now))
+	     
+	       ;; iterate over the timers
+	       (dolist (timer timers)
+		 (destructuring-bind (next interval cb arg) timer
+		   (when (> now next)
+		     (setf (car timer) (+ now interval))
+		     (funcall cb arg)))))
 	     
 	     ;; poll and timeout each second so that we can check the exiting flag and purge connections
 	     (let ((ready (usocket:wait-for-input (append tcp-sockets 
@@ -469,3 +482,4 @@ If no ports are provided then will add wildcard ports to TCP and UDP."
   (declare (ignore void))
   nil)
 
+;; -------------------------------------------------
