@@ -409,6 +409,8 @@ By default the generated function will accept a single argument which must match
 
 OPTIONS allow customization of the generated client function:
 
+\(:program program version\) PROGRAM and VERSION name the program name/number and the version number.
+
 \(:arg-transformer lambda-list &body body\) makes it possible to augment the default function parameters before passing them to CALL-RPC. The body should return a value matching the type specified by ARG-TYPE.
 
 \(:transformer (var) &body body\) runs after CALL-RPC has returned with VAR bound to the result. This makes it possible to destructure the result object.
