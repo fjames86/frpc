@@ -69,6 +69,11 @@
 	   #:rpc-server-udp-ports
 	   #:rpc-server-tcp-ports
 	   #:make-rpc-server
+	   ;; generalized server API
+	   #:startup-rpc-server
+	   #:shutdown-rpc-server
+	   #:accept-rpc-request
+	   ;; simple single-threaded server API
 	   #:start-rpc-server
 	   #:run-rpc-server
 	   #:stop-rpc-server

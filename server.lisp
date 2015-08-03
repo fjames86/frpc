@@ -47,15 +47,19 @@ if it is of type :AUTH-UNIX or :AUTH-SHORT. Returns nil if could not be found."
 
 ;; stores the information about the rpc server, its thread, exit flag etc
 (defstruct (rpc-server (:constructor %make-rpc-server))
-  thread 
-  udp-ports
-  tcp-ports
-  (timeout 60)
-  programs 
-  exiting
-  timers)
+  thread                   ;; the server thread
+  udp-ports                ;; list of UDP listening ports
+  tcp-ports                ;; list of TCP listening ports
+  (timeout 60)             ;; TCP connection timeout 
+  programs                 ;; List of accepting programs 
+  exiting                  ;; server thread exiting flag 
+;; new slots for refactored server codes
+ tcp-sockets               ;; list of TCP listening sockets 
+ udp-sockets               ;; list of UDP listening sockets 
+ connections)              ;; list of accepted TCP connections 
 
-(defun make-rpc-server (&key udp-ports tcp-ports programs (timeout 60) timers)
+
+(defun make-rpc-server (&key udp-ports tcp-ports programs (timeout 60))
   "Make an RPC server instance. 
 
 PROGRAMS should be a list of program numbers to be accepted by the server, 
@@ -75,8 +79,7 @@ TIMEOUT specifies the duration (in seconds) that a TCP connection should remain 
 				      programs)
 		    :udp-ports udp-ports
 		    :tcp-ports tcp-ports
-		    :timeout timeout
-		    :timers timers))
+		    :timeout timeout))
 
 ;; describes a TCP connection
 (defstruct rpc-connection 
@@ -226,7 +229,7 @@ TIMEOUT specifies the duration (in seconds) that a TCP connection should remain 
 			     :id id
 			     :auth-stat :gss-cred-problem))))))
 
-(defun process-rpc-request (input-stream output-stream &key host port protocol)
+(defun process-rpc-request (input-stream output-stream &key host port protocol programs)
   "Process a request from the input stream, writing the response to the output stream."
   (let* ((msg (handler-case (%read-rpc-msg input-stream)
                 (error (e)
@@ -244,6 +247,14 @@ TIMEOUT specifies the duration (in seconds) that a TCP connection should remain 
     (let* ((call (xunion-val (rpc-msg-body msg)))
            (auth (call-body-auth call)))
       
+      ;; check here that the call program is in the list of programs which we are willing to handle 
+      (unless (or (null programs) (member (call-body-prog call) programs))
+      	(write-rpc-response output-stream
+      			    :accept :prog-unavail
+      			    :id (rpc-msg-xid msg))
+      	(return-from process-rpc-request))
+			    
+		  
       ;; if the authenticator is a GSS init (FIXME: or continue) command then we need to do special things
       (when (and (eq (opaque-auth-flavour auth) :auth-gss)
                  (eq (gss-cred-proc (opaque-auth-data auth)) :init))
@@ -275,164 +286,72 @@ TIMEOUT specifies the duration (in seconds) that a TCP connection should remain 
 
 ;; -----------------------------------------------------------------
 
-					
-;; FIXME: should we put a limit on the maximum number of simultaneous connections?
+;; new versions of the single-threaded server using the new API
 (defun run-rpc-server (server)
-  "Run the RPC server until the SERVER-EXITING flag is set."
+  "Keep processing RPC requests until the EXITING flag is set."
   (declare (type rpc-server server))
-  (let (tcp-sockets udp-sockets connections)
-    (unwind-protect 
-	 (progn 
-	   ;; collect the sockets this way so that if there is an error thrown (such as can't listen on port)
-	   ;; then we can gracefully fail, and close the sockets we have opened
-	   ;; if we mapcar to collect them then we leak the sockets we opened before the failure
-	   (dolist (port (rpc-server-tcp-ports server))
-	     (push (usocket:socket-listen usocket:*wildcard-host* port
-					  :reuse-address t
-					  :element-type '(unsigned-byte 8))
-		   tcp-sockets))
-	   (setf (rpc-server-tcp-ports server)
-		 (mapcar #'usocket:get-local-port tcp-sockets))
-	   (dolist (port (rpc-server-udp-ports server))
-	     (push (usocket:socket-connect nil nil 
-					   :protocol :datagram
-					   :element-type '(unsigned-byte 8)
-					   :local-port port)
-		   udp-sockets))
-	   (setf (rpc-server-udp-ports server)
-		 (mapcar #'usocket:get-local-port udp-sockets))
-
-
-	   ;; if we are adding to the remote port mapper then do it now. 
-	   ;; this allows us to resolve wildcard port numbers
-	   (let ((pmap-p (or (member 111 (rpc-server-tcp-ports server))
-			     (member 111 (rpc-server-udp-ports server)))))
-	     (if pmap-p
-		 ;; since we are running the port mapper from this image
-		 (frpc.bind:add-all-mappings (rpc-server-tcp-ports server)
-					     (rpc-server-udp-ports server)                              
-					     :rpc nil
-					     :programs (rpc-server-programs server))
-		 ;; add the port mappings to the remote port mapper 
-		 (handler-case (frpc.bind:add-all-mappings (rpc-server-tcp-ports server)
-							   (rpc-server-udp-ports server)                              
-							   :rpc t
-							   :programs (rpc-server-programs server))
-		   (error (e)
-		     (frpc-log :info "Failed to add port mapping: ~A" e)))))
-
-	   ;; the polling-loop
-	   (do ((udp-buffer (nibbles:make-octet-vector 65507))
-		(prev-time (get-universal-time))
-		(timers (mapcar (lambda (timer)
-				  (destructuring-bind (interval cb arg) timer
-				    (list (+ (get-universal-time) interval) interval cb arg)))
-				(rpc-server-timers server))))
-	       ((rpc-server-exiting server))
-
-	     ;; if any connections are getting old then close them
-	     ;; only do the check at most once per second
-	     (let ((now (get-universal-time)))
-	       (when (> now prev-time)
-		 (setf connections (purge-connection-list connections now (rpc-server-timeout server))
-		       prev-time now))
-	     
-	       ;; iterate over the timers
-	       (dolist (timer timers)
-		 (destructuring-bind (next interval cb arg) timer
-		   (when (> now next)
-		     (setf (car timer) (+ now interval))
-		     (funcall cb arg)))))
-	     
-	     ;; poll and timeout each second so that we can check the exiting flag and purge connections
-	     (let ((ready (usocket:wait-for-input (append tcp-sockets 
-							  udp-sockets
-							  (mapcar #'rpc-connection-conn connections))
-						  :ready-only t :timeout 1)))
-	       (dolist (socket ready)
-		 (etypecase socket
-		   (usocket:stream-server-usocket
-		    ;; a tcp socket to accept
-		    (let ((conn (make-rpc-connection :conn
-						     (usocket:socket-accept socket)
-						     :time 
-						     (get-universal-time))))
-		      (frpc-log :info "Accepting TCP connection from ~A:~A" 
-				 (usocket:get-peer-address (rpc-connection-conn conn))
-				 (usocket:get-peer-port (rpc-connection-conn conn)))
-		      (push conn connections)))
-		   (usocket:datagram-usocket
-		    ;; a udp socket is ready to read from
-		    (handler-case 
-			(multiple-value-bind (%buffer count remote-host remote-port) (usocket:socket-receive socket udp-buffer 65507)
-			  (declare (ignore %buffer))
-			  (cond
-			    ((or (< count 0) (= count #xffffffff))
-			     ;; some implementations (e.g. up to SBCL 1.2.10 x64, LispWorks) return error codes 
-			     ;; this way rather than signalling an error
-			     (frpc-log :info "recvfrom returned -1"))
-			    (t 
-			     (flexi-streams:with-input-from-sequence (input-stream udp-buffer :end count)
-			       (let ((response-buffer 
-				      (flexi-streams:with-output-to-sequence (output-stream)
-					(process-rpc-request input-stream output-stream
-							     :host remote-host 
-							     :port remote-port
-							     :protocol :udp))))
-				 (unless (zerop (length response-buffer))
-				   (usocket:socket-send socket 
-							response-buffer
-							(length response-buffer)
-							:host remote-host
-							:port remote-port)))))))
-		      (error (e)
-			;; windows is known to throw an error on receive if there was no-one 
-			;; listening on the port the previous UDP packet was sent to.
-			(frpc-log :info "error handling udp: ~A" e))))
-		   (usocket:stream-usocket 
-		    ;; a TCP connection is ready to read 
-		    (let ((c (find socket connections :key #'rpc-connection-conn)))
-		      (setf (rpc-connection-time c) (get-universal-time)))
-		    (handler-case 
-			;; FIXME: replace this with a gray stream that wraps the underlying socket stream
-			(let ((buffer (read-fragmented-message (usocket:socket-stream socket))))
-			  (flexi-streams:with-input-from-sequence (input-stream buffer)
-			    (let ((response-buffer 
-				   (flexi-streams:with-output-to-sequence (output-stream)
-				     (process-rpc-request input-stream output-stream
-							  :host (usocket:get-peer-address socket)
-							  :port (usocket:get-peer-port socket)
-							  :protocol :tcp))))
-			      (unless (zerop (length response-buffer))
-				(write-uint32 (usocket:socket-stream socket)
-					      (logior #x80000000 (length response-buffer)))
-				(write-sequence response-buffer (usocket:socket-stream socket)))
-                  (force-output (usocket:socket-stream socket)))))
-		      (end-of-file ()
-			(frpc-log :info "Connection closed by remote host")
-			(setf connections (remove socket connections :key #'rpc-connection-conn)))
-		      (error (e)
-			(frpc-log :info "Error: ~A" e)
-			(ignore-errors (usocket:socket-close socket))
-			(setf connections (remove socket connections :key #'rpc-connection-conn))))))))))
-
-      ;; close outstanding connections
-      (dolist (conn connections)
-	(ignore-errors 
-	  (usocket:socket-close (rpc-connection-conn conn))))
-      ;; close the server sockets
-      (dolist (tcp tcp-sockets)
-	(usocket:socket-close tcp))
-      (dolist (udp udp-sockets)
-	(usocket:socket-close udp)))))
+  (do ()
+      ((rpc-server-exiting server))
+    (accept-rpc-request server)))
 
 (defun start-rpc-server (server)
-  "Start the RPC server in a new thread. Adds all port mappings to the local port mapper.
+  "Startup the RPC server, then spawn a new thread to process requests.
+Call STOP-RPC-SERVER to shut the server down.
 
-If no ports are provided then will add wildcard ports to TCP and UDP."
+SERVER ::= an instance of RPC-SERVER, as returned from MAKE-RPC-SERVER."
   (declare (type rpc-server server))
+  (startup-rpc-server server)
+  (setf (rpc-server-thread server)
+	(bt:make-thread (lambda () (run-rpc-server server))
+			:name "rpc-server-thread"))
+  server)
 
-  (setf (rpc-server-exiting server) nil)
+(defun stop-rpc-server (server)
+  "Stop the RPC server processing thread and wait for it to exit.
+Then shuts the server down to free all resources.
+
+SERVER ::= an instance of RPC-SERVER which was used to spawn an accepting 
+thread by START-RPC-SERVER.
+"
+  (declare (type rpc-server server))
+  (setf (rpc-server-exiting server) t)
+  (bt:join-thread (rpc-server-thread server))
+  (shutdown-rpc-server server)
+  nil)
+
+
+;; -------------------------------------------------
+
+;; a default handler for the null procedure
+(defun default-null-handler (void)
+  (declare (ignore void))
+  nil)
+
+;; -------------------------------------------------
+
+(defun startup-rpc-server (server) 
+  "Initialize the RPC server and allocate listening ports.
+
+SERVER ::= an instance of RPC-SERVER, as returned from MAKE-RPC-SERVER.
+
+If no ports are specified, a wildcard port is added to both UDP and TCP ports.
+
+If no portmapper is detected to be running on localhost, then port 111 is 
+added to both UDP and TCP port lists, so that the port mapper will be run by this server.
+
+Can signal RPC errors if unable to communicate with local port mapper or unable
+to bind the listening sockets.
+
+This server should then be used to accept and process RPC requests by calling
+ACCEPT-RPC-REQUEST. 
+
+Call SHUTDOWN-RPC-SERVER to free all resources and close the sockets.
+"
+  (declare (type rpc-server server))
+  (let ((programs (rpc-server-programs server)))
+
+  (setf (rpc-server-exiting server) nil
+	(rpc-server-thread server) nil)
 
   (unless *handlers* (warn "No programs registered."))
 
@@ -449,37 +368,197 @@ If no ports are provided then will add wildcard ports to TCP and UDP."
       (warn "No port mapper detected, running portmap locally.")
       (pushnew 111 (rpc-server-udp-ports server))
       (pushnew 111 (rpc-server-tcp-ports server))))
-	
 
-  (setf (rpc-server-thread server)
-        (bt:make-thread (lambda ()
-                          (run-rpc-server server))
-                        :name "rpc-server-thread"))
-   
-  server)
+  (let (tcp-sockets udp-sockets)
+    (handler-bind ((error (lambda (e)
+			    (declare (ignore e))
+			    (dolist (s tcp-sockets)
+			      (usocket:socket-close s))
+			    (dolist (s udp-sockets)
+			      (usocket:socket-close s)))))
+      (dolist (port (rpc-server-tcp-ports server))
+	(push (usocket:socket-listen usocket:*wildcard-host* port
+				     :reuse-address t
+				     :element-type '(unsigned-byte 8))
+	      tcp-sockets))
+      (dolist (port (rpc-server-udp-ports server))
+	(push (usocket:socket-connect nil nil 
+				      :protocol :datagram
+				      :element-type '(unsigned-byte 8)
+				      :local-port port)
+	      udp-sockets))
+      
+      ;; add all port mappings 
+      (let ((client (make-instance 'unix-client :host "localhost"))
+	    (rpcp (member 111 (union (rpc-server-tcp-ports server) (rpc-server-udp-ports server)))))
+	(dolist (program (or programs (mapcar #'car *handlers*)))
+	  (dolist (version (mapcar #'car (find-handler program)))
+	    (dolist (s tcp-sockets)
+	      (let* ((port (usocket:get-local-port s))
+		     (mapping (frpc.bind:make-mapping :program program
+						      :version version
+						      :protocol :tcp
+						      :port port)))
+		(when (if (= program frpc.bind::+pmapper-program+) 
+			  (= port 111)
+			  t)
+		  (if rpcp
+		      ;; we are running the port mapper from within Lisp, we can just add the mapping directly 
+		      (frpc.bind:add-mapping mapping)
+		      (frpc.bind:call-set mapping :client client)))))
+	    (dolist (s udp-sockets)
+	      (let* ((port (usocket:get-local-port s))
+		     (mapping (frpc.bind:make-mapping :program program
+						      :version version
+						      :protocol :udp
+						      :port port)))
+		(when (if (= program frpc.bind::+pmapper-program+)
+			  (= port 111)
+			  t)
+		  (if rpcp
+		      (frpc.bind:add-mapping mapping)
+		      (frpc.bind:call-set mapping :client client)))))))))
 
-(defun stop-rpc-server (server)
-  "Stop the RPC server and wait until its thread to exit. Removes all port mappings."
+    (setf (rpc-server-tcp-sockets server) tcp-sockets
+	  (rpc-server-udp-sockets server) udp-sockets)
+
+    nil)))
+  
+  
+
+(defun shutdown-rpc-server (server)
+  "Close all opened sockets and shut the server down.
+
+SERVER ::= an instance of RPC-SERVER.
+"
   (declare (type rpc-server server))
+  (let ((tcp-sockets (rpc-server-tcp-sockets server))
+	(udp-sockets (rpc-server-udp-sockets server))
+	(programs (rpc-server-programs server)))
+    ;; remove all port mappings 
+    (let ((tcp-ports (mapcar #'usocket:get-local-port tcp-sockets))
+	  (udp-ports (mapcar #'usocket:get-local-port udp-sockets))
+	  (client (make-instance 'unix-client :host "localhost")))
+      (dolist (program (or programs (mapcar #'car *handlers*)))
+	(dolist (version (mapcar #'car (find-handler program)))
+	  (dolist (s tcp-sockets)
+	    (let* ((port (usocket:get-local-port s))
+		   (mapping (frpc.bind:make-mapping :program program
+						    :version version
+						    :protocol :tcp
+						    :port port)))		 
+	      (if (member 111 (union tcp-ports udp-ports))
+		;; we are running the port mapper from within Lisp, we can just remove the mapping directly 
+		(frpc.bind:rem-mapping mapping)
+		(frpc.bind:call-unset mapping :client client))))
+	  (dolist (s udp-sockets)
+	    (let* ((port (usocket:get-local-port s))
+		   (mapping (frpc.bind:make-mapping :program program
+						    :version version
+						    :protocol :udp
+						    :port port)))
+		(if (member 111 (union tcp-ports udp-ports))
+		    (frpc.bind:rem-mapping mapping)
+		    (frpc.bind:call-unset mapping :client client)))))))
 
-  ;; remove the port mappings
-  (frpc.bind:remove-all-mappings (rpc-server-udp-ports server)
-                                 (rpc-server-tcp-ports server)
-                                 :rpc t
-				 :programs (rpc-server-programs server))
-
-  ;; set flag and wait for thread to exit
-  (setf (rpc-server-exiting server) t)
-  (bt:join-thread (rpc-server-thread server))
-
+    (dolist (s tcp-sockets)
+      (usocket:socket-close s))
+    (dolist (s udp-sockets)
+      (usocket:socket-close s)))
   nil)
 
+(defun accept-rpc-request (server &key (timeout 1))
+  "Accept and process a single RPC request.
 
-;; ------------------------
+SERVER ::= an RPC-SERVER instance that has been started, by first calling STARTUP-RPC-SERVER.
+TIMEOUT ::= timeout in seconds to wait for the request. NIL implies waiting indefinitely.
 
-;; a default handler for the null procedure
-(defun default-null-handler (void)
-  (declare (ignore void))
-  nil)
+No meaningful return value.
+"
+  (declare (type rpc-server server))
+  ;; start by purging connections which may have timed out 
+  (setf (rpc-server-connections server)
+	(purge-connection-list (rpc-server-connections server) 
+			       (get-universal-time)
+			       (rpc-server-timeout server)))
 
-;; -------------------------------------------------
+  (let ((tcp-sockets (rpc-server-tcp-sockets server))
+	(udp-sockets (rpc-server-udp-sockets server))
+	(programs (rpc-server-programs server)))
+    ;; poll and timeout, process any sockets which are ready 
+    (let* ((udp-buffer (frpc.streams:allocate-buffer))
+	   (ready (usocket:wait-for-input (append tcp-sockets 
+						  udp-sockets
+						  (mapcar #'rpc-connection-conn (rpc-server-connections server)))
+					  :ready-only t :timeout timeout)))
+      (dolist (socket ready)
+	(etypecase socket
+	  (usocket:stream-server-usocket
+	   ;; a tcp socket to accept
+	   (let ((conn (make-rpc-connection :conn
+					    (usocket:socket-accept socket)
+					    :time 
+					    (get-universal-time))))
+	     (frpc-log :info "Accepting TCP connection from ~A:~A" 
+		       (usocket:get-peer-address (rpc-connection-conn conn))
+		       (usocket:get-peer-port (rpc-connection-conn conn)))
+	     (push conn (rpc-server-connections server))))
+	  (usocket:datagram-usocket
+	   ;; a udp socket is ready to read from
+	   (handler-case 
+	       (multiple-value-bind (%buffer count remote-host remote-port) (usocket:socket-receive socket udp-buffer 65507)
+		 (declare (ignore %buffer))
+		 (cond
+		   ((or (< count 0) (= count #xffffffff))
+		    ;; some implementations (e.g. up to SBCL 1.2.10 x64, LispWorks) return error codes 
+		    ;; this way rather than signalling an error
+		    (frpc-log :info "recvfrom returned -1"))
+		   (t 
+		    (flexi-streams:with-input-from-sequence (input-stream udp-buffer :end count)
+		      (let ((response-buffer 
+			     (flexi-streams:with-output-to-sequence (output-stream)
+			       (process-rpc-request input-stream output-stream
+						    :host remote-host 
+						    :port remote-port
+						    :protocol :udp
+						    :programs programs))))
+			(unless (zerop (length response-buffer))
+			  (usocket:socket-send socket 
+					       response-buffer
+					       (length response-buffer)
+					       :host remote-host
+					       :port remote-port)))))))
+	     (error (e)
+	       ;; windows is known to throw an error on receive if there was no-one 
+	       ;; listening on the port the previous UDP packet was sent to.
+	       (frpc-log :info "error handling udp: ~A" e))))
+	  (usocket:stream-usocket 
+	   ;; a TCP connection is ready to read 
+	   (let ((c (find socket (rpc-server-connections server) :key #'rpc-connection-conn)))
+	     (setf (rpc-connection-time c) (get-universal-time)))
+	   (handler-case 
+	       ;; FIXME: replace this with a gray stream that wraps the underlying socket stream
+	       (let ((buffer (read-fragmented-message (usocket:socket-stream socket))))
+		 (flexi-streams:with-input-from-sequence (input-stream buffer)
+		   (let ((response-buffer 
+			  (flexi-streams:with-output-to-sequence (output-stream)
+			    (process-rpc-request input-stream output-stream
+						 :host (usocket:get-peer-address socket)
+						 :port (usocket:get-peer-port socket)
+						 :protocol :tcp
+						 :programs programs))))
+		     (unless (zerop (length response-buffer))
+		       (write-uint32 (usocket:socket-stream socket)
+				     (logior #x80000000 (length response-buffer)))
+		       (write-sequence response-buffer (usocket:socket-stream socket)))
+		     (force-output (usocket:socket-stream socket)))))
+	     (end-of-file ()
+	       (frpc-log :info "Connection closed by remote host")
+	       (setf (rpc-server-connections server)
+		     (remove socket (rpc-server-connections server) :key #'rpc-connection-conn)))
+	     (error (e)
+	       (frpc-log :info "Error: ~A" e)
+	       (ignore-errors (usocket:socket-close socket))
+	       (setf (rpc-server-connections server)
+		     (remove socket (rpc-server-connections server) :key #'rpc-connection-conn))))))))))
+

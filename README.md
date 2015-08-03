@@ -197,6 +197,27 @@ If you don't supply any ports to `MAKE-RPC-SERVER` then a wildcard port will be 
 allows for a randomly allocated high-numberd port to be used. You may enforce such befhaviour yourself by supplying 0 as a port number
 if you wish. 
 
+### 3.4 Advanced usage
+If you want more fine-grained control over the RPC server processing, you can make use of the following functions:
+
+```
+CL-USER> (defvar *server* (make-rpc-server))
+CL-USER> (startup-rpc-server *server*)
+CL-USER> (accept-rpc-request *server*) ;; keep calling this to process requests
+CL-USER> (shutdown-rpc-server *server*)
+```
+
+* Allocate a server using `MAKE-RPC-SERVER` as described above.
+* Allocate sockets and setup port bindings by calling `STARTUP-RPC-SERVER`.
+* Keep processing RPC requests by calling `ACCEPT-RPC-REQUEST`.
+* Remove port mappings and close all sockets by calling `SHUTDOWN-RPC-SERVER`.
+
+Note that by using this lower-level API you get to control which thread the RPC processing
+occurs in. It also gives you the possibility to perform extra processing in your 
+processing loop. 
+
+At present `ACCEPT-RPC-REQUEST` is not thread safe.
+
 ## 4. XDR serializer
 
 The XDR serializer is largely decoupled from the rpc implementation. This means it 
