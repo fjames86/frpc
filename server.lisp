@@ -390,41 +390,46 @@ Call SHUTDOWN-RPC-SERVER to free all resources and close the sockets.
       
       ;; add all port mappings 
       (let ((client (make-instance 'unix-client :host "localhost"))
-	    (rpcp (member 111 (union (rpc-server-tcp-ports server) (rpc-server-udp-ports server)))))
-	(dolist (program (or programs (mapcar #'car *handlers*)))
-	  (dolist (version (mapcar #'car (find-handler program)))
-	    (dolist (s tcp-sockets)
-	      (let* ((port (usocket:get-local-port s))
-		     (mapping (frpc.bind:make-mapping :program program
-						      :version version
-						      :protocol :tcp
-						      :port port)))
-		(when (if (= program frpc.bind::+pmapper-program+) 
-			  (= port 111)
-			  t)
-		  (if rpcp
-		      ;; we are running the port mapper from within Lisp, we can just add the mapping directly 
-		      (frpc.bind:add-mapping mapping)
-		      (frpc.bind:call-set mapping :client client)))))
-	    (dolist (s udp-sockets)
-	      (let* ((port (usocket:get-local-port s))
-		     (mapping (frpc.bind:make-mapping :program program
-						      :version version
-						      :protocol :udp
-						      :port port)))
-		(when (if (= program frpc.bind::+pmapper-program+)
-			  (= port 111)
-			  t)
-		  (if rpcp
-		      (frpc.bind:add-mapping mapping)
-		      (frpc.bind:call-set mapping :client client)))))))))
+            (rpcp (member 111 (union (rpc-server-tcp-ports server) (rpc-server-udp-ports server)))))
+        (dolist (program (or programs (mapcar #'car *handlers*)))
+          (dolist (version (mapcar #'car (find-handler program)))
+            (dolist (s tcp-sockets)
+              (let* ((port (usocket:get-local-port s))
+                     (mapping (frpc.bind:make-mapping :program program
+                                                      :version version
+                                                      :protocol :tcp
+                                                      :port port)))
+                ;; advertise this program on this port if EITHER:
+                ;; this is the portmapper and the designated port mapper port (111)
+                ;; or this is NOT the portmapper and the port is NOT 111
+                (when (or (and (= program frpc.bind::+pmapper-program+) 
+                               (= port 111))
+                          (and (not (= program frpc.bind::+pmapper-program+))
+                               (not (= port 111))))
+                  (if rpcp
+                      ;; we are running the port mapper from within Lisp, we can just add the mapping directly 
+                      (frpc.bind:add-mapping mapping)
+                      (frpc.bind:call-set mapping :client client)))))
+            (dolist (s udp-sockets)
+              (let* ((port (usocket:get-local-port s))
+                     (mapping (frpc.bind:make-mapping :program program
+                                                      :version version
+                                                      :protocol :udp
+                                                      :port port)))
+                (when (or (and (= program frpc.bind::+pmapper-program+)
+                               (= port 111))
+                          (and (not (= program frpc.bind::+pmapper-program+))
+                               (not (= port 111))))
+                  (if rpcp
+                      (frpc.bind:add-mapping mapping)
+                      (frpc.bind:call-set mapping :client client)))))))))
 
     (setf (rpc-server-tcp-sockets server) tcp-sockets
-	  (rpc-server-udp-sockets server) udp-sockets)
+          (rpc-server-udp-sockets server) udp-sockets)
 
     nil)))
-  
-  
+
+
 
 (defun shutdown-rpc-server (server)
   "Close all opened sockets and shut the server down.
