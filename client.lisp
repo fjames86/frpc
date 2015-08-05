@@ -342,6 +342,13 @@ CLIENT should be an instance of RPC-CLIENT or its subclasses. This is the ONLY w
                                             (gss-client-context client)
                                             (gss-client-seqno client))))))))
   
+  ;; touch up the protocol if a connection is provided 
+  (when connection
+    (setf protocol
+          (etypecase connection
+            (usocket:datagram-usocket :udp)
+            (usocket:stream-usocket :tcp))))
+
   (multiple-value-bind (res verf) 
       (ecase protocol
 	(:tcp
