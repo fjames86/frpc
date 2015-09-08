@@ -68,6 +68,12 @@
 (define-auth-flavour :auth-rsa 5) ;; AUTH_RSA/Gluster, the Gluster protocols use this for their own flavour 
 (define-auth-flavour :auth-gss 6)
 
+;; These are needed for NFS, see rfc5531 https://tools.ietf.org/html/rfc5531
+(define-auth-flavour :auth-spnego 390000)
+(define-auth-flavour :kerberos-v5 390003)
+(define-auth-flavour :kerberos-v5-integrity 390004)
+(define-auth-flavour :kerberos-v5-privacy 390005)
+
 ;; -------------------------------------------
 
 ;; structs
