@@ -79,12 +79,18 @@
 (defun pack (writer obj)
   "Write the object into an octet-buffer."
   (flexi-streams:with-output-to-sequence (v :element-type 'nibbles:octet)
-    (funcall writer v obj)))
+    (funcall (if (functionp writer)
+                 writer 
+                 (xtype-writer writer))
+             v obj)))
 
 (defun unpack (reader buffer)
   "Read the object from an octet-buffer."
   (flexi-streams:with-input-from-sequence (v buffer)
-    (funcall reader v)))
+    (funcall (if (functionp reader)
+                 reader
+                 (xtype-reader reader))
+             v)))
 
 ;; ------ type definitions ---
 
